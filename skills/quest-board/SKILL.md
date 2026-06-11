@@ -1,6 +1,6 @@
 ---
 name: quest-board
-description: Ask the user interactive questions in the browser (single/multi choice, yes-no, free text, scale) and/or present custom-HTML prototypes, then wait for Submit and read JSON answers. Use instead of built-in question tools when questions benefit from rich layout/visuals, when presenting a prototype or design idea for feedback, or when collecting several answers at once. Triggers - asking the user to choose between options or approaches, reviewing a UI mockup, gathering structured requirements, "show the user", "get feedback".
+description: Ask the user interactive questions in a browser board (single/multi choice, yes-no, free text, scale, optional HTML visuals per question) and/or present interactive HTML prototypes, then wait for Submit and read JSON answers. PROACTIVELY use whenever you would otherwise (a) call a native ask-user/question tool with 2+ questions or options that need explanation, (b) describe a UI/design/plan in prose that a visual would show better, or (c) hand-roll an HTML file or local server to demo an idea - quest-board replaces all three. Triggers - clarify requirements before ambiguous work, choose between approaches, plan approval, design/UX feedback, mockup or prototype review, compare alternatives, survey, "ask the user", "show the user", "which do you prefer", "get feedback". Skip only for a single trivial yes/no confirmation.
 ---
 
 # quest-board (`qbd`)
@@ -15,6 +15,21 @@ If `qbd` is not installed: `npm i -g @khanglvm/quest-board` or invoke via
 
 **Full reference: run `qbd agent` (complete guide) and `qbd schema` (spec JSON
 Schema).** The essentials are below.
+
+## When to use qbd vs your native question tool
+
+| Situation | Use |
+|---|---|
+| One trivial confirmation ("proceed?") | native tool |
+| 2+ questions, or options that need descriptions | **qbd** |
+| Choice is easier to make visually (layouts, designs, diagrams) | **qbd** (per-question `html`) |
+| Present a prototype / demo an idea | **qbd show** — never hand-roll an HTML file + server |
+| Gather requirements / plan approval / feedback round | **qbd** |
+| Something you can decide yourself from context | neither — just decide |
+
+Once the user has answered one board in a session, prefer boards for later
+question rounds too — they've shown they engage with them. Batch related
+questions into ONE board rather than opening several in a row.
 
 ## Choose a pattern
 
@@ -46,7 +61,7 @@ answers.
   "questions": [
     { "id": "approach", "type": "single", "label": "Which one?", "required": true,
       "options": [{ "value": "a", "label": "A", "description": "fast" }, "B"], "other": true },
-    { "id": "parts", "type": "multi", "label": "Include?", "options": ["api", "ui"] },
+    { "id": "parts", "type": "multi", "label": "Include?", "options": ["api", "ui"], "note": true },
     { "id": "ship", "type": "yesno", "label": "Ship now?" },
     { "id": "why", "type": "textarea", "label": "Reasoning?" },
     { "id": "conf", "type": "scale", "label": "Confidence", "min": 1, "max": 5 }
@@ -57,6 +72,10 @@ answers.
 Types: `single`, `multi`, `yesno`, `text`, `textarea`, `scale`. Users may
 submit with unanswered questions (returned in `skipped`) unless
 `"allowPartial": false` or per-question `"required": true`.
+
+Set `"note": true` on a question to add a small optional free-text field under
+it — use when the user may want to qualify their choice (e.g. multi-selects,
+approach picks). Returned separately as `result.notes[questionId]`.
 
 Quick one-liners without a spec file:
 
@@ -76,6 +95,21 @@ qbd ask -q "Deploy now?::yesno" -q "!Env::single::dev,staging,prod"   # "!" = re
   question). Self-contained HTML (inline CSS/JS). Fragments (no `<html>` tag)
   are auto-wrapped to match the user's theme; full documents are served
   verbatim and get a `?theme=light|dark` query param.
+
+## Recipes
+
+**Plan approval** — board-level `html` rendering the plan as styled sections,
+one `yesno` "Approve this plan?", one `multi` "Which parts should change?"
+(options = plan steps, `"note": true`), one `textarea` for concerns.
+
+**Requirements gathering** — one board with: `single` for the core approach
+(options with `description`s + `"other": true`), `multi` for scope,
+`scale` for urgency, `textarea` for constraints. Mark only the true blockers
+`required`.
+
+**A/B design review** — `single` question whose `html` shows both options
+side by side (flex row of two styled panels), options `["A", "B"]`,
+plus a `scale` for confidence and a `textarea` for what's missing from both.
 
 ## Reuse & management
 

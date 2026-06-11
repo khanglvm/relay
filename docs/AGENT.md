@@ -67,7 +67,9 @@ qbd show --html-file prototype.html --title "Dashboard concept" --height 600
         "Approach B"                                    // plain strings work too
       ],
       "other": true },                                  // adds a free-text "Other" option
-    { "id": "scope", "type": "multi", "label": "Include which parts?", "options": ["api", "ui", "docs"] },
+    { "id": "scope", "type": "multi", "label": "Include which parts?", "options": ["api", "ui", "docs"],
+      "note": true },                                   // optional free-text under the question
+                                                        //   → returned as result.notes.scope
     { "id": "ship", "type": "yesno", "label": "Ship this week?" },
     { "id": "name", "type": "text", "label": "Project codename?", "placeholder": "e.g. falcon" },
     { "id": "notes", "type": "textarea", "label": "Any constraints?" },
@@ -104,13 +106,17 @@ boolean/bool/yn→yesno, input→text, longtext→textarea, rating/likert→scal
   "answers": { "approach": "a", "scope": ["api", "ui"], "ship": "yes", "confidence": 4 },
   "skipped": ["name"],
   "comment": "free-text note from the user",
+  "notes": { "scope": "docs can wait until the API settles" },
   "finishedAt": "2026-06-11T03:00:00.000Z",
   "durationMs": 42000
 }
 ```
 
 Unanswered questions are absent from `answers` and listed in `skipped`.
-On `timeout`/`cancelled`, a `draft` field carries the autosaved partial answers.
+Questions with `"note": true` show a small optional free-text field; non-empty
+notes come back in `notes` keyed by question id (use it where users may want
+to qualify a choice). On `timeout`/`cancelled`, a `draft` field carries the
+autosaved partial answers.
 
 ## Custom HTML visualization — sizing contract
 

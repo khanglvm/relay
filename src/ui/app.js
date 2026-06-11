@@ -55,11 +55,12 @@
   // ---------- state ----------
   // state.answers holds raw control state; state.other holds the "Other"
   // free-text per question; getValue() derives the final answer value.
-  const state = { answers: {}, other: {}, comment: '' };
+  const state = { answers: {}, other: {}, notes: {}, comment: '' };
   let submitted = false;
 
   function seedFromPrefill(prefill) {
     state.comment = prefill.comment || '';
+    if (prefill.notes && typeof prefill.notes === 'object') state.notes = { ...prefill.notes };
     const ans = prefill.answers || {};
     for (const q of QS) {
       const v = ans[q.id];
@@ -112,11 +113,14 @@
 
   function payload() {
     const answers = {};
+    const notes = {};
     for (const q of QS) {
       const v = getValue(q);
       if (v !== undefined) answers[q.id] = v;
+      const n = typeof state.notes[q.id] === 'string' ? state.notes[q.id].trim() : '';
+      if (n) notes[q.id] = n;
     }
-    return { answers, comment: (state.comment || '').trim() };
+    return { answers, comment: (state.comment || '').trim(), notes };
   }
 
   // ---------- real-time autosave ----------
@@ -381,7 +385,17 @@
     else if (q.type === 'yesno') control.append(segButtons(q, ['yes', 'no'], ['Yes', 'No']));
     else if (q.type === 'scale') control.append(controlScale(q));
     else control.append(controlText(q, q.type === 'textarea'));
-    card.append(control, el('p', { class: 'errmsg' }, 'This question is required.'));
+    card.append(control);
+    if (q.note) {
+      const noteInput = el('input', { type: 'text', class: 'qnote', placeholder: 'optional note about this answer…' });
+      noteInput.value = typeof state.notes[q.id] === 'string' ? state.notes[q.id] : '';
+      noteInput.addEventListener('input', () => {
+        state.notes[q.id] = noteInput.value;
+        scheduleSave();
+      });
+      card.append(el('div', { class: 'qnotewrap' }, noteInput));
+    }
+    card.append(el('p', { class: 'errmsg' }, 'This question is required.'));
     cards[q.id] = card;
     app.append(card);
   });
@@ -464,6 +478,19 @@
       setTimeout(() => { if (!submitted) banner.style.display = 'none'; }, 4000);
     }
   });
+
+  // ---------- prefilled load: jump past what's already answered ----------
+  // On reload/reopen with saved answers, scroll to the first unanswered
+  // question so the user doesn't re-scan questions they already did.
+  if (boot.prefill && QS.length) {
+    const answered = QS.filter((q) => getValue(q) !== undefined).length;
+    const firstOpen = QS.find((q) => getValue(q) === undefined);
+    if (answered > 0 && firstOpen) {
+      setTimeout(() => {
+        cards[firstOpen.id].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 350);
+    }
+  }
 
   // ---------- heartbeat ----------
   let misses = 0;

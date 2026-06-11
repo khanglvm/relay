@@ -384,6 +384,51 @@ function cmdRm(args) {
 
 const SKILL_SRC = path.join(PKG_ROOT, 'skills', 'quest-board');
 
+const KNOWN_SKILL_DIRS = () => ({
+  claude: path.join(os.homedir(), '.claude', 'skills', 'quest-board'),
+  codex: path.join(os.homedir(), '.codex', 'skills', 'quest-board'),
+});
+
+// One-time stderr nudge so agents that only have the CLI discover the skill.
+function firstRunHint() {
+  try {
+    const marker = path.join(HOME, '.hinted');
+    if (fs.existsSync(marker)) return;
+    fs.mkdirSync(HOME, { recursive: true });
+    fs.writeFileSync(marker, new Date().toISOString());
+    const installed = Object.values(KNOWN_SKILL_DIRS()).some((p) => fs.existsSync(path.join(p, 'SKILL.md')));
+    if (!installed) {
+      process.stderr.write(
+        'tip (AI agents): qbd bundles a universal skill — install it with `qbd skill install`; full guide: `qbd agent`\n'
+      );
+    }
+  } catch {
+    // never let the hint break a real command
+  }
+}
+
+// Installed skill copies are snapshots — warn when they lag the CLI.
+function skillFreshnessWarning() {
+  try {
+    for (const [agent, dir] of Object.entries(KNOWN_SKILL_DIRS())) {
+      if (!fs.existsSync(path.join(dir, 'SKILL.md'))) continue;
+      let installedVersion = null;
+      try {
+        installedVersion = fs.readFileSync(path.join(dir, '.qbd-version'), 'utf8').trim();
+      } catch {
+        // pre-0.1.2 install without a version marker
+      }
+      if (installedVersion !== VERSION) {
+        process.stderr.write(
+          `note: the quest-board skill installed for ${agent} is from qbd ${installedVersion ?? '<0.1.2'}, you run ${VERSION} — refresh with \`qbd skill install\`\n`
+        );
+      }
+    }
+  } catch {
+    // best effort only
+  }
+}
+
 function skillTargets(target) {
   const home = os.homedir();
   const known = {
@@ -416,6 +461,7 @@ function cmdSkill(rest) {
     for (const t of targets) {
       fs.mkdirSync(path.dirname(t), { recursive: true });
       fs.cpSync(SKILL_SRC, t, { recursive: true });
+      fs.writeFileSync(path.join(t, '.qbd-version'), VERSION);
       installed.push(t);
     }
     printJson({ installed, note: 'most agents pick new skills up immediately; if yours does not, re-list skills or restart the session' });
@@ -493,6 +539,10 @@ AI AGENTS    run \`qbd agent\` for the complete machine-oriented guide.
 
 export async function main(argv) {
   const [cmd, ...rest] = argv;
+  if (cmd !== '__serve') firstRunHint();
+  if (cmd === undefined || cmd === 'help' || cmd === '--help' || cmd === '-h' || cmd === 'agent' || cmd === 'skill') {
+    skillFreshnessWarning();
+  }
   try {
     switch (cmd) {
       case undefined:
@@ -544,6 +594,7 @@ export async function main(argv) {
   } catch (err) {
     if (err instanceof CliError) {
       process.stderr.write(`qbd: ${err.message}\n`);
+      if (err.code === 4) process.stderr.write('run `qbd agent` for the agent-oriented guide\n');
       return err.code;
     }
     throw err;

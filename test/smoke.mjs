@@ -76,7 +76,7 @@ const SPEC = {
   intro: 'hello',
   questions: [
     { id: 'ship', type: 'yesno', label: 'Ship it?', required: true },
-    { id: 'parts', type: 'multi', label: 'Parts?', options: ['api', 'ui', 'docs'], other: true },
+    { id: 'parts', type: 'multi', label: 'Parts?', options: ['api', 'ui', 'docs'], other: true, note: true },
     { id: 'name', type: 'text', label: 'Name?' },
     { id: 'conf', type: 'scale', label: 'Confidence?', min: 1, max: 5 },
     {
@@ -114,6 +114,7 @@ console.log('1. blocking ask → submit');
   const res = await post(url, '/api/submit', {
     answers: { ship: 'yes', parts: ['api', 'custom-other'], conf: 4, layout: 'a' },
     comment: 'looks good',
+    notes: { parts: 'api first, ui can wait' },
   });
   ok(res.ok, 'POST /api/submit accepted');
   const { code, stdout } = await exited;
@@ -124,6 +125,7 @@ console.log('1. blocking ask → submit');
   ok(result.answers.parts.includes('custom-other'), '"other" free-text value round-trips');
   ok(result.skipped.includes('name'), 'unanswered question listed in skipped');
   ok(result.comment === 'looks good', 'comment round-trips');
+  ok(result.notes?.parts === 'api first, ui can wait', 'per-question note round-trips in result.notes');
   void child;
 }
 

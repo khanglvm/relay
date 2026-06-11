@@ -26,7 +26,7 @@ function buildPage(record) {
   // Prefill from the LIVE draft at request time (drafts autosave in real time),
   // so a mid-fill page reload restores everything the user already entered.
   const prefill = record.draft
-    ? { answers: record.draft.answers || {}, comment: record.draft.comment || '' }
+    ? { answers: record.draft.answers || {}, comment: record.draft.comment || '', notes: record.draft.notes || {} }
     : null;
   const boot = { boardId: record.id, spec: clientSpec, prefill, pref: loadPref() };
   const json = JSON.stringify(boot).replace(/</g, '\\u003c');
@@ -95,6 +95,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
       record.draft = {
         answers: record.result.answers,
         comment: record.result.comment || '',
+        notes: record.result.notes || {},
         updatedAt: new Date().toISOString(),
       };
     }
@@ -138,6 +139,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         record.draft = {
           answers: body.answers && typeof body.answers === 'object' ? body.answers : {},
           comment: typeof body.comment === 'string' ? body.comment : '',
+          notes: body.notes && typeof body.notes === 'object' ? body.notes : {},
           updatedAt: new Date().toISOString(),
         };
         saveBoard(record);
@@ -153,6 +155,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
           answers,
           skipped,
           comment: typeof body.comment === 'string' ? body.comment : '',
+          notes: body.notes && typeof body.notes === 'object' ? body.notes : {},
         });
       } else {
         sendJson(res, 404, { error: 'not found' });
@@ -195,6 +198,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
       answers: partial.answers ?? null,
       skipped: partial.skipped ?? null,
       comment: partial.comment ?? '',
+      notes: partial.notes ?? null,
       createdAt: record.createdAt,
       finishedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAt,
