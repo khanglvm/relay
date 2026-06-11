@@ -1,0 +1,43 @@
+{
+  "name": "@khanglvm/quest-board",
+  "version": "0.1.0",
+  "description": "Browser-based question boards & HTML idea visualization for AI coding agents (Claude Code, Codex, …): ask users structured questions, present prototypes, wait for submit, read answers as JSON.",
+  "keywords": [
+    "ai-agents",
+    "claude-code",
+    "codex",
+    "cli",
+    "interactive-questions",
+    "human-in-the-loop",
+    "prototype",
+    "visualization",
+    "agent-skill"
+  ],
+  "license": "MIT",
+  "author": "Le Vu Minh Khang (https://github.com/khanglvm)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/khanglvm/quest-board.git"
+  },
+  "homepage": "https://github.com/khanglvm/quest-board#readme",
+  "bugs": "https://github.com/khanglvm/quest-board/issues",
+  "type": "module",
+  "bin": {
+    "qbd": "bin/qbd.js",
+    "quest-board": "bin/qbd.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "skills",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.3"
+  },
+  "scripts": {
+    "test": "node test/smoke.mjs"
+  }
+}

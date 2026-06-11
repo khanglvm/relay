@@ -1,0 +1,27 @@
+{
+  "title": "Auth feature — decisions needed",
+  "intro": "I'm about to implement authentication. Three decisions before I start:",
+  "questions": [
+    {
+      "id": "provider",
+      "type": "single",
+      "label": "Which auth approach?",
+      "required": true,
+      "options": [
+        { "value": "oauth", "label": "OAuth (GitHub + Google)", "description": "no password storage, needs provider setup" },
+        { "value": "magic-link", "label": "Magic links", "description": "email-based, no passwords" },
+        { "value": "password", "label": "Classic email + password", "description": "full control, more security surface" }
+      ],
+      "other": true
+    },
+    {
+      "id": "scope",
+      "type": "multi",
+      "label": "Which surfaces need auth in this iteration?",
+      "options": ["web app", "REST API", "admin panel", "CLI"]
+    },
+    { "id": "mfa", "type": "yesno", "label": "Include 2FA now (vs. a later iteration)?" },
+    { "id": "priority", "type": "scale", "label": "How urgent is this feature?", "min": 1, "max": 5, "minLabel": "whenever", "maxLabel": "blocking" },
+    { "id": "constraints", "type": "textarea", "label": "Any constraints I should know about?", "placeholder": "compliance, existing user table, …" }
+  ]
+}
