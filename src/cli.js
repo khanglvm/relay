@@ -406,6 +406,7 @@ function cmdSkill(rest) {
   const sub = rest[0];
   if (sub === 'path') {
     console.log(SKILL_SRC);
+    process.stderr.write('(bundled skill source — copy into your agent with `qbd skill install`)\n');
     return 0;
   }
   if (sub === 'install') {
@@ -417,7 +418,7 @@ function cmdSkill(rest) {
       fs.cpSync(SKILL_SRC, t, { recursive: true });
       installed.push(t);
     }
-    printJson({ installed, note: 'restart your agent session (or re-list skills) to pick it up' });
+    printJson({ installed, note: 'most agents pick new skills up immediately; if yours does not, re-list skills or restart the session' });
     return 0;
   }
   console.log(`quest-board ships a universal agent skill (Claude Code, Codex, and any SKILL.md-aware agent).
