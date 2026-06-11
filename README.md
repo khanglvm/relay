@@ -5,22 +5,37 @@
 `rly` lets an AI agent (Claude Code, Codex, or anything that can run a CLI) ask
 its user structured questions in a clean browser page — single/multi choice,
 yes-no, free text, rating scales — and/or present rich content blocks (markdown,
-charts, diagrams, tables, code, custom HTML), then **block until the user clicks
+charts, diagrams, tables, code, sandboxed HTML, Graphviz and PlantUML diagrams), then **block until the user clicks
 Submit** and read the answers as JSON. No more "type *done* in the terminal",
 no more hand-rolled HTML + throwaway servers.
 
 Users can **hover chart points, diagram nodes, table cells, or select text to
 leave inline comments** — returned alongside answers as `result.annotations`.
+Agents can reply to those comments and reopen the board as a conversation thread.
 
 - Zero runtime dependencies — plain Node ≥ 18, vanilla HTML/CSS/JS UI
 - Light/dark theme (auto + manual toggle), responsive, content-focused
 - Real-time answer autosave (drafts survive timeout/cancel)
 - Auto-closes the tab after submit and unblocks the CLI
-- Native content blocks: markdown, mermaid diagrams, Chart.js charts, tables, code, sandboxed HTML
-- Chart.js and Mermaid are **vendored and lazy-loaded** only when a board uses them — the base board stays dependency-free and as fast as before
+- Native content blocks: markdown, mermaid diagrams, Graphviz diagrams, PlantUML, Chart.js charts, tables, code, sandboxed HTML
+- Chart.js, Mermaid, and Graphviz are **vendored and lazy-loaded** only when a board uses them — the base board stays dependency-free and as fast as before
 - Element-level annotations: users comment on chart points, diagram nodes, table cells, text, or custom HTML elements; returned as `result.annotations`
+- **Threaded annotation replies**: agents can reply to user comments via `rly reopen --replies`; conversations shown inline in the board
+- **Live board mutation**: `rly update` lets an agent push a new spec to an already-open board; the page reloads and prefills answers from draft
 - Multiple boards at once, local history: reuse / modify / reopen / remove
 - Agent-first: JSON on stdout, logs on stderr, `--detach` + `wait` for shell tools with execution time limits, built-in agent guide & skill
+
+## See it
+
+| Light theme | Dark theme |
+|---|---|
+| ![relay board light theme](https://raw.githubusercontent.com/khanglvm/relay/main/docs/assets/board-light.png) | ![relay board dark theme](https://raw.githubusercontent.com/khanglvm/relay/main/docs/assets/board-dark.png) |
+
+| Annotation popover | Mobile |
+|---|---|
+| ![Annotation comment on a chart bar](https://raw.githubusercontent.com/khanglvm/relay/main/docs/assets/annotations.png) | ![Mobile view at 375px](https://raw.githubusercontent.com/khanglvm/relay/main/docs/assets/mobile.png) |
+
+![relay demo — board to annotation to summary](https://raw.githubusercontent.com/khanglvm/relay/main/docs/assets/demo.gif)
 
 ## Install
 
@@ -198,13 +213,54 @@ on phones. Height: 100–2400 px, default 360. Fragments (no `<html>` tag) are
 auto-wrapped to match the current theme; full documents receive a
 `?theme=light|dark` query param.
 
+### Graphviz diagram
+
+```json
+{ "type": "graphviz", "dot": "digraph { a -> b -> c }", "height": 300 }
+```
+
+Rendered entirely **offline** via the vendored `viz-standalone.js` (Graphviz compiled to
+WebAssembly). Never upscaled past the diagram's natural width; shrinks on narrow screens;
+container max-height 1200 px with scroll. Nodes (`g.node`) and edges (`g.edge`) are
+individually annotatable. Use Graphviz for precise dependency graphs, call graphs, or
+state machines where Mermaid's auto-layout doesn't give enough control.
+
+### PlantUML diagram
+
+```json
+{ "type": "plantuml", "code": "@startuml\nA -> B: request\n@enduml", "height": 340 }
+```
+
+Rendered via a **PlantUML server** (default: `https://www.plantuml.com/plantuml`). The
+diagram source is deflate-encoded client-side and sent as a URL parameter — no server
+round-trip for the page itself, just an `<img>` request. If the server is unreachable or
+the browser lacks `CompressionStream`, a muted error card is shown.
+
+**Privacy note:** diagram source is encoded and sent to the configured PlantUML server.
+For sensitive diagrams, host your own server and pass `"server": "https://plantuml.example.com"`.
+
+The rendered image is registered as a single annotatable element (target kind `image`).
+Use PlantUML for UML sequence diagrams, class diagrams, and component diagrams.
+
 ## Annotations
 
 Users can leave inline comments on any annotatable element — chart data points,
-mermaid nodes, table cells, text selections inside markdown, and labelled
+mermaid nodes, graphviz nodes and edges, table cells, text selections inside markdown, and labelled
 elements inside custom HTML. A small pin icon appears on hover; clicking opens a
 comment popover. Comments are autosaved with the draft and returned in the final
 result.
+
+**Threaded replies:** each annotation can have replies. Agents can read
+`result.annotations`, compose replies, and reopen the board as a conversation:
+
+```sh
+# After reading result.annotations from a previous board:
+rly reopen <id> --replies replies.json
+# replies.json: [{"annotationId":"a1","text":"Good catch — fixed in the next sprint."}]
+```
+
+The board reopens with agent replies shown inline under each comment. Users can reply
+back; the conversation grows with each `rly reopen --replies` cycle.
 
 ### result.annotations shape
 
@@ -226,12 +282,19 @@ result.
         "value": 19
       },
       "text": "Feb spike was due to the onboarding push — not repeatable.",
-      "createdAt": "2026-06-11T10:23:00.000Z"
+      "author": "user",
+      "createdAt": "2026-06-11T10:23:00.000Z",
+      "replies": [
+        { "author": "agent", "text": "Confirmed — excluded from the trend line.", "createdAt": "2026-06-11T11:00:00.000Z" }
+      ]
     }
   ],
   "durationMs": 58000
 }
 ```
+
+Each annotation has an optional `author` (`"user"` | `"agent"`, default `"user"`) and
+an optional `replies` array (capped at 50; each reply: `{author, text, createdAt}`).
 
 ### Annotation target kinds
 
@@ -239,9 +302,11 @@ result.
 |---|---|
 | `chart-element` | a bar, point, or pie slice — includes `datasetIndex`, `index`, `label`, `value` |
 | `mermaid-node` | a node in a diagram — includes `nodeId`, `text` |
+| `graphviz-node` | a node or edge in a Graphviz diagram — includes `nodeId`, `text` |
 | `table-cell` | a cell — includes `row` (0-based), `col` (column key), `value` |
 | `text` | a text selection inside a markdown block — includes `quote`, `prefix`, `suffix` |
 | `html-element` | a labelled element inside custom HTML (via `kit.js`) — includes `label`, optional `detail` |
+| `image` | a PlantUML diagram image — includes `label` |
 
 ### kit.js — annotatable custom HTML
 
@@ -272,6 +337,8 @@ opens the annotation popover in the parent page anchored to that element.
 | `rly list [--json]` | Running boards |
 | `rly open [id]` | Re-open the browser tab of a running board |
 | `rly reopen <id>` | Serve a saved board again, **prefilled with saved answers** |
+| `rly reopen <id> --replies file.json` | Reopen with agent replies appended to matching annotations |
+| `rly update <id> [--file spec.json \| --title T \| --intro I \| -q "…"]` | Push a new spec to a running board — page reloads, answers survive via draft |
 | `rly reuse <id> [--dump]` | Re-run a past board as a new one (blank) |
 | `rly stop <id> \| --all` | Stop running board(s) — draft preserved |
 | `rly history [--limit n] [--json]` | Saved boards |

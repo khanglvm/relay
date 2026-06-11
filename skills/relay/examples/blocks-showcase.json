@@ -28,6 +28,15 @@
     },
     {
       "type": "markdown",
+      "md": "## Service dependency graph\nThe Graphviz diagram below shows precise call-time dependencies between services. Click any node or edge to leave a comment."
+    },
+    {
+      "type": "graphviz",
+      "dot": "digraph services {\n  rankdir=LR\n  node [shape=box style=filled fontname=Helvetica fontsize=11]\n  Gateway    [fillcolor=\"#c8e6c9\"]\n  APIService [fillcolor=\"#fff9c4\"]\n  AuthService[fillcolor=\"#c8e6c9\"]\n  DB         [shape=cylinder fillcolor=\"#bbdefb\"]\n  Cache      [shape=cylinder fillcolor=\"#bbdefb\"]\n  Worker     [fillcolor=\"#fff9c4\"]\n  Gateway    -> APIService\n  Gateway    -> AuthService\n  APIService -> DB\n  APIService -> Cache\n  APIService -> Worker [style=dashed label=\"async\"]\n  Worker     -> DB\n}",
+      "height": 260
+    },
+    {
+      "type": "markdown",
       "md": "## Service health snapshot\nCurrent status as of the last deployment. Click any cell to comment."
     },
     {

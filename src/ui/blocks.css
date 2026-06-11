@@ -168,3 +168,37 @@
 }
 .blk-mermaid .node,
 .blk-mermaid .edgeLabel { cursor: default; }
+
+/* ---------- graphviz (offline, vendored Viz.js) ---------- */
+.blk-graphviz {
+  overflow: auto;
+  max-height: 1200px;
+  text-align: center;
+  /* graphviz draws on its own white canvas; frame it as a deliberate card so
+     it reads intentional in dark mode instead of a stray white rectangle */
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+}
+.blk-graphviz svg {
+  max-width: 100%;
+  height: auto;
+}
+.blk-graphviz g.node,
+.blk-graphviz g.edge { cursor: default; }
+
+/* ---------- plantuml (server-rendered image) ---------- */
+.blk-plantuml {
+  overflow: auto;
+  max-height: 1200px;
+  text-align: center;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+}
+.blk-plantuml .blk-plantuml-img {
+  max-width: 100%;
+  height: auto;
+}

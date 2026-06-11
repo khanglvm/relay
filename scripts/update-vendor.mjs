@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * update-vendor.mjs
- * Zero-dep Node script that vendors chart.js and mermaid into vendor/
+ * Zero-dep Node script that vendors chart.js, mermaid, and @viz-js/viz into vendor/
  *
  * Usage: node scripts/update-vendor.mjs
  */
@@ -52,10 +52,10 @@ log(`Temp dir: ${tmpDir}`);
 
 try {
   mkdirSync(VENDOR_DIR, { recursive: true });
-  // Install chart.js and mermaid into temp dir
-  log('\nInstalling chart.js@4 and mermaid@11 …');
+  // Install chart.js, mermaid, and @viz-js/viz into temp dir
+  log('\nInstalling chart.js@4, mermaid@11, and @viz-js/viz …');
   execSync(
-    'npm install chart.js@4 mermaid@11 --no-save --prefix ' + tmpDir,
+    'npm install chart.js@4 mermaid@11 @viz-js/viz --no-save --prefix ' + tmpDir,
     { stdio: 'inherit', cwd: tmpDir }
   );
 
@@ -100,18 +100,42 @@ try {
   assertNonEmpty(mermaidDest, 200_000); // mermaid bundle is ~2 MB
   log(`mermaid   ${mermaidVersion}  →  vendor/mermaid.min.js  (${bytes(mermaidSize)})`);
 
+  // ── @viz-js/viz ─────────────────────────────────────────────────────────
+  // viz-global.js is the UMD/IIFE standalone bundle that assigns the module's
+  // named exports (instance, graphvizVersion, formats, engines) onto
+  // globalThis.Viz via the pattern:
+  //   v((A = "undefined"!=typeof globalThis ? globalThis : A||self).Viz = {})
+  // So after loading via <script src>, window.Viz.instance() is available.
+  const vizDistDir = join(nmDir, '@viz-js', 'viz', 'dist');
+  const vizSrc = join(vizDistDir, 'viz-global.js');
+  if (!existsSync(vizSrc)) {
+    const distContents = execSync(`ls "${vizDistDir}" 2>&1 || true`).toString().trim();
+    throw new Error(
+      `Could not find viz-global.js in ${vizDistDir}.\n` +
+      `Contents: ${distContents}`
+    );
+  }
+  const vizDest = join(VENDOR_DIR, 'viz-standalone.js');
+  copyFileSync(vizSrc, vizDest);
+  const vizVersion = readVersion(join(nmDir, '@viz-js', 'viz'));
+  const vizSize = statSync(vizDest).size;
+  assertNonEmpty(vizDest, 500_000); // viz-global.js includes WASM payload, ~1.3 MB
+  log(`@viz-js/viz  ${vizVersion}  →  vendor/viz-standalone.js  (${bytes(vizSize)})`);
+
   // ── VERSIONS.json ────────────────────────────────────────────────────────
   const versionsData = {
     'chart.js': chartVersion,
     'mermaid': mermaidVersion,
+    '@viz-js/viz': vizVersion,
     'updatedAt': new Date().toISOString(),
   };
   writeFileSync(join(VENDOR_DIR, 'VERSIONS.json'), JSON.stringify(versionsData, null, 2) + '\n');
   log('\nWrote vendor/VERSIONS.json');
 
   log('\n✓ Vendor update complete.');
-  log(`  chart.js  ${chartVersion}  ${bytes(chartSize)}`);
-  log(`  mermaid   ${mermaidVersion}  ${bytes(mermaidSize)}`);
+  log(`  chart.js     ${chartVersion}  ${bytes(chartSize)}`);
+  log(`  mermaid      ${mermaidVersion}  ${bytes(mermaidSize)}`);
+  log(`  @viz-js/viz  ${vizVersion}  ${bytes(vizSize)}`);
 
 } finally {
   // Always clean up temp dir

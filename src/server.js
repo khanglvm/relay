@@ -1,6 +1,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { loadBoard, saveBoard, saveRunning, removeRunning, loadPref, savePref } from './store.js';
 import { openUrl } from './open.js';
@@ -46,7 +47,7 @@ function vendorPresent(file) {
   }
 }
 
-function buildPage(record) {
+function buildPage(record, rev) {
   const html = fs.readFileSync(path.join(UI_DIR, 'index.html'), 'utf8');
   const css = readUi('style.css');
   const blocksCss = readUi('blocks.css');
@@ -69,6 +70,7 @@ function buildPage(record) {
   const vendor = {
     chart: specNeeds(spec, 'chart') && vendorPresent('chart.umd.js'),
     mermaid: specNeeds(spec, 'mermaid') && vendorPresent('mermaid.min.js'),
+    viz: specNeeds(spec, 'graphviz') && vendorPresent('viz-standalone.js'),
   };
   // Prefill from the LIVE draft at request time (drafts autosave in real time),
   // so a mid-fill page reload restores everything the user already entered.
@@ -80,7 +82,7 @@ function buildPage(record) {
         annotations: record.draft.annotations || [],
       }
     : null;
-  const boot = { boardId: record.id, spec: clientSpec, prefill, pref: loadPref(), vendor };
+  const boot = { boardId: record.id, spec: clientSpec, prefill, pref: loadPref(), vendor, rev };
   const json = JSON.stringify(boot).replace(/</g, '\\u003c');
   return html
     .split('__TITLE__').join(escapeHtml(spec.title))
@@ -93,8 +95,26 @@ function buildPage(record) {
     .split('__BOOT_JSON__').join(json);
 }
 
+// Validates + sanitizes one annotation's threaded replies. Keeps only
+// well-formed {author, text, createdAt} entries; caps at 50; coerces author.
+function sanitizeReplies(value) {
+  if (!Array.isArray(value)) return [];
+  const out = [];
+  for (const r of value) {
+    if (out.length >= 50) break;
+    if (r === null || typeof r !== 'object' || Array.isArray(r)) continue;
+    if (typeof r.text !== 'string' || r.text.length > 5000) continue;
+    const author = r.author === 'agent' ? 'agent' : 'user';
+    const createdAt = typeof r.createdAt === 'string' ? r.createdAt : new Date().toISOString();
+    out.push({ author, text: r.text, createdAt });
+  }
+  return out;
+}
+
 // Validates + sanitizes an incoming annotations array (from draft/submit).
 // Drops anything that isn't a well-formed annotation object; caps at 500.
+// Each annotation may carry an optional author ('user'|'agent', default
+// 'user') and a threaded replies array (validated + capped at 50).
 function sanitizeAnnotations(value) {
   if (!Array.isArray(value)) return [];
   const out = [];
@@ -103,7 +123,9 @@ function sanitizeAnnotations(value) {
     if (a === null || typeof a !== 'object' || Array.isArray(a)) continue;
     if (typeof a.text !== 'string' || a.text.length > 5000) continue;
     if (a.target === null || typeof a.target !== 'object' || Array.isArray(a.target)) continue;
-    out.push(a);
+    const clean = { ...a, author: a.author === 'agent' ? 'agent' : 'user' };
+    if (a.replies !== undefined) clean.replies = sanitizeReplies(a.replies);
+    out.push(clean);
   }
   return out;
 }
@@ -220,6 +242,10 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
   }
 
   const startedAt = Date.now();
+  // Mutation token: only `rly update` (which reads the running-file record)
+  // can authenticate to POST /api/update. Never embedded in the page/boot.
+  const token = crypto.randomBytes(16).toString('hex');
+  let rev = 1;
   let status = 'open';
   let finished = false;
   let resolveDone;
@@ -233,11 +259,23 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
     const theme = reqUrl.searchParams.get('theme') === 'dark' ? 'dark' : 'light';
     try {
       if (req.method === 'GET' && pathname === '/') {
-        sendHtml(res, buildPage(record));
+        sendHtml(res, buildPage(record, rev));
       } else if (req.method === 'GET' && pathname === '/api/board') {
-        sendJson(res, 200, { id: record.id, spec, draft: record.draft, result: record.result });
+        sendJson(res, 200, { id: record.id, spec: record.spec, draft: record.draft, result: record.result });
       } else if (req.method === 'GET' && pathname === '/api/status') {
-        sendJson(res, 200, { status });
+        sendJson(res, 200, { status, rev });
+      } else if (req.method === 'POST' && pathname === '/api/update') {
+        if (req.headers['x-relay-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
+        const body = JSON.parse((await readBody(req)) || '{}');
+        const next = body.spec;
+        if (next === null || typeof next !== 'object' || Array.isArray(next) ||
+            !Array.isArray(next.questions) || !Array.isArray(next.blocks)) {
+          return sendJson(res, 400, { error: 'spec must be an object with questions[] and blocks[] arrays' });
+        }
+        record.spec = next;
+        rev++;
+        saveBoard(record);
+        sendJson(res, 200, { ok: true, rev });
       } else if (req.method === 'GET' && pathname === '/kit.js') {
         if (!sendFromDir(res, UI_DIR, 'kit.js', 'application/javascript; charset=utf-8')) {
           sendJs(res, ''); // kit.js authored concurrently — empty fallback keeps iframes working
@@ -249,16 +287,16 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         }
       } else if (req.method === 'GET' && pathname.startsWith('/html/b/')) {
         const blockId = decodeURIComponent(pathname.slice('/html/b/'.length));
-        const block = findHtmlBlock(spec, blockId);
+        const block = findHtmlBlock(record.spec, blockId);
         if (!block) return sendJson(res, 404, { error: `no html block "${blockId}"` });
         sendHtml(res, wrapFragment(block.html || '', theme));
       } else if (req.method === 'GET' && pathname === '/html/board') {
         // Legacy alias → the board's first html block.
-        const block = firstBoardHtml(spec);
+        const block = firstBoardHtml(record.spec);
         sendHtml(res, wrapFragment((block && block.html) || '', theme));
       } else if (req.method === 'GET' && pathname.startsWith('/html/q/')) {
         const qid = decodeURIComponent(pathname.slice('/html/q/'.length));
-        const q = spec.questions.find((q) => q.id === qid);
+        const q = record.spec.questions.find((q) => q.id === qid);
         if (!q) return sendJson(res, 404, { error: `no question "${qid}"` });
         const block = firstQuestionHtml(q);
         sendHtml(res, wrapFragment((block && block.html) || '', theme));
@@ -281,10 +319,10 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         if (status !== 'open') return sendJson(res, 409, { error: 'board already finished' });
         const body = JSON.parse((await readBody(req)) || '{}');
         const answers = body.answers && typeof body.answers === 'object' ? body.answers : {};
-        const skipped = spec.questions.filter((q) => !(q.id in answers)).map((q) => q.id);
+        const skipped = record.spec.questions.filter((q) => !(q.id in answers)).map((q) => q.id);
         sendJson(res, 200, { ok: true });
         finish({
-          status: spec.questions.length ? 'submitted' : 'acknowledged',
+          status: record.spec.questions.length ? 'submitted' : 'acknowledged',
           answers,
           skipped,
           comment: typeof body.comment === 'string' ? body.comment : '',
@@ -311,6 +349,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
     port: actualPort,
     url,
     title: spec.title,
+    token,
     startedAt: new Date().toISOString(),
   });
 

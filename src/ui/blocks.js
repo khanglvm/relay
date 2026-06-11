@@ -371,6 +371,20 @@
     return mermaidPromise;
   }
 
+  let vizPromise = null;
+  function loadViz() {
+    if (window.Viz) return Promise.resolve(window.Viz);
+    if (vizPromise) return vizPromise;
+    vizPromise = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = '/vendor/viz-standalone.js';
+      s.onload = () => (window.Viz ? resolve(window.Viz) : reject(new Error('Graphviz failed to load')));
+      s.onerror = () => reject(new Error('Graphviz failed to load'));
+      document.head.appendChild(s);
+    });
+    return vizPromise;
+  }
+
   // ---------- chart ----------
   function clampHeight(h, def) {
     const n = Number(h);
@@ -648,6 +662,120 @@
     );
   }
 
+  // ---------- graphviz (offline, vendored Viz.js -> SVG) ----------
+  // Same sizing rule as mermaid: never upscale past the diagram's natural
+  // width; shrink on narrow screens. Authors set their own colors so there is
+  // no theme re-render.
+  function sizeDiagramSvg(svgEl) {
+    if (!svgEl) return;
+    svgEl.removeAttribute('height');
+    svgEl.removeAttribute('width');
+    const vb = svgEl.viewBox && svgEl.viewBox.baseVal;
+    if (vb && vb.width > 0) {
+      svgEl.style.width = '100%';
+      svgEl.style.maxWidth = Math.ceil(vb.width) + 'px';
+      svgEl.style.height = 'auto';
+    } else {
+      svgEl.style.maxWidth = '100%';
+    }
+  }
+
+  function renderGraphviz(block, ctx, blockId) {
+    const container = el('div', { class: 'blk-graphviz' });
+    loadViz()
+      .then((Viz) => Viz.instance())
+      .then((viz) => {
+        const svgEl = viz.renderSVGElement(block.dot || '');
+        sizeDiagramSvg(svgEl);
+        container.replaceChildren(svgEl);
+        if (!ctx.annotate) return;
+        const parts = svgEl.querySelectorAll('g.node, g.edge');
+        parts.forEach((g) => {
+          const titleEl = g.querySelector('title');
+          const nodeId = (g.id || (titleEl && titleEl.textContent) || '').trim();
+          // Label text lives in <text> elements; g.textContent would also
+          // include the <title> child and duplicate the label.
+          const labels = Array.from(g.querySelectorAll('text')).map((t) => t.textContent.trim()).filter(Boolean);
+          const text = (labels.join(' ') || (titleEl && titleEl.textContent) || '').trim().slice(0, 120);
+          ctx.annotate.register(g, {
+            blockId,
+            questionId: ctx.questionId,
+            target: {
+              kind: 'graphviz-node',
+              nodeId,
+              text,
+            },
+          });
+        });
+      })
+      .catch((err) => {
+        container.replaceChildren(
+          el('div', { class: 'blk-error' }, 'Graphviz error: ' + (err && err.message ? err.message : String(err)))
+        );
+      });
+    return container;
+  }
+
+  // ---------- plantuml (server-rendered; client deflate-raw + base64 variant) ----------
+  const PLANTUML_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_';
+
+  // PlantUML's base64 variant: 3 bytes -> 4 chars using PLANTUML_ALPHABET.
+  function encode64(bytes) {
+    let out = '';
+    for (let i = 0; i < bytes.length; i += 3) {
+      const b1 = bytes[i];
+      const b2 = i + 1 < bytes.length ? bytes[i + 1] : 0;
+      const b3 = i + 2 < bytes.length ? bytes[i + 2] : 0;
+      out += PLANTUML_ALPHABET[b1 >> 2];
+      out += PLANTUML_ALPHABET[((b1 & 0x3) << 4) | (b2 >> 4)];
+      if (i + 1 < bytes.length) out += PLANTUML_ALPHABET[((b2 & 0xf) << 2) | (b3 >> 6)];
+      if (i + 2 < bytes.length) out += PLANTUML_ALPHABET[b3 & 0x3f];
+    }
+    return out;
+  }
+
+  async function encodePlantUml(code) {
+    if (typeof CompressionStream === 'undefined') {
+      throw new Error('CompressionStream unavailable');
+    }
+    const bytes = new TextEncoder().encode(String(code));
+    const blob = new Blob([bytes]);
+    const compressed = await new Response(
+      blob.stream().pipeThrough(new CompressionStream('deflate-raw'))
+    ).arrayBuffer();
+    return encode64(new Uint8Array(compressed));
+  }
+
+  function renderPlantuml(block, ctx, blockId) {
+    const container = el('div', { class: 'blk-plantuml' });
+    const fail = () =>
+      container.replaceChildren(
+        el('div', { class: 'blk-error' }, 'PlantUML needs network access and a modern browser')
+      );
+    encodePlantUml(block.code || '')
+      .then((encoded) => {
+        const server = block.server || 'https://www.plantuml.com/plantuml';
+        const img = el('img', {
+          class: 'blk-plantuml-img',
+          src: server + '/svg/' + encoded,
+          alt: 'PlantUML diagram',
+          loading: 'lazy',
+        });
+        if (block.height) img.style.height = clampHeight(block.height, 360) + 'px';
+        img.addEventListener('error', fail);
+        container.replaceChildren(img);
+        if (ctx.annotate) {
+          ctx.annotate.register(img, {
+            blockId,
+            questionId: ctx.questionId,
+            target: { kind: 'image', label: 'PlantUML diagram' },
+          });
+        }
+      })
+      .catch(fail);
+    return container;
+  }
+
   // ---------- html (sandboxed iframe) ----------
   function renderHtml(block, ctx, blockId) {
     const height = clampHeight(block.height, 360);
@@ -688,6 +816,14 @@
         break;
       case 'mermaid':
         inner = renderMermaid(block, ctx, blockId);
+        wrapper.append(inner);
+        break;
+      case 'graphviz':
+        inner = renderGraphviz(block, ctx, blockId);
+        wrapper.append(inner);
+        break;
+      case 'plantuml':
+        inner = renderPlantuml(block, ctx, blockId);
         wrapper.append(inner);
         break;
       case 'html':

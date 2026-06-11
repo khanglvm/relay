@@ -149,6 +149,16 @@ per question (`"blocks": [...]` on a question object). Heights clamp to
 // Mermaid diagram — vendored, lazy-loaded; natural height, max 1200 px + scroll
 { "type": "mermaid", "code": "graph TD; A-->B; B-->C", "height": 400 }
 
+// Graphviz diagram — vendored viz-standalone.js (Graphviz-WASM), fully offline
+// Nodes (g.node) and edges (g.edge) are individually annotatable
+{ "type": "graphviz", "dot": "digraph { a -> b -> c }", "height": 300 }
+
+// PlantUML diagram — rendered via a PlantUML server (default: plantuml.com)
+// Source is deflate-encoded client-side; only an img URL is sent to the server.
+// Use "server" for a self-hosted instance to avoid leaking sensitive diagrams.
+{ "type": "plantuml", "code": "@startuml\nA -> B: request\n@enduml", "height": 340 }
+{ "type": "plantuml", "code": "...", "server": "https://plantuml.example.com", "height": 300 }
+
 // Chart — shorthand (lazy-loads vendored Chart.js; default height 320)
 {
   "type": "chart",
@@ -202,6 +212,8 @@ per question (`"blocks": [...]` on a question object). Heights clamp to
 | Block | Best for |
 |---|---|
 | `mermaid` | flows, state machines, architecture overviews, sequence diagrams |
+| `graphviz` | precise dependency graphs, call graphs, state machines when Mermaid's auto-layout falls short; individually annotatable nodes and edges |
+| `plantuml` | UML diagrams (sequence, class, component) via server rendering; great for detailed interface contracts |
 | `chart` | numbers, trends, comparisons, metrics |
 | `table` | structured comparisons, option matrices, data grids |
 | `markdown` | prose context, background, instructions, section headings |
@@ -262,26 +274,52 @@ intro. Annotations are autosaved with the draft and returned in the final result
     "id": "a1",
     "questionId": "q-id or null for board-level",
     "blockId": "b2",
-    "target": { ... },
-    "text": "user comment text",
-    "createdAt": "2026-06-11T10:23:00.000Z"
+    "target": { "kind": "chart-element", "datasetIndex": 0, "index": 1, "label": "Feb", "value": 19 },
+    "text": "Feb spike was from the onboarding push — not repeatable.",
+    "author": "user",
+    "createdAt": "2026-06-11T10:23:00.000Z",
+    "replies": [
+      { "author": "agent", "text": "Confirmed — excluded from the trend line.", "createdAt": "2026-06-11T11:00:00.000Z" }
+    ]
   }
 ]
 ```
 
-### All 5 target kinds
+`author` is `"user"` (default, when absent) or `"agent"`. `replies` is an array of
+`{author, text, createdAt}` objects, capped at 50 per annotation.
+
+### All target kinds
 
 | kind | Fields | Triggered by |
 |---|---|---|
 | `chart-element` | `datasetIndex`, `index`, `label`, `value` | clicking a bar, point, or pie slice |
 | `mermaid-node` | `nodeId`, `text` | clicking a diagram node |
+| `graphviz-node` | `nodeId`, `text` | clicking a Graphviz node or edge |
 | `table-cell` | `row` (0-based), `col` (column key), `value` | clicking a table cell |
 | `text` | `quote`, `prefix` (≤30 chars before), `suffix` (≤30 after) | selecting text in a markdown block |
 | `html-element` | `label`, `detail?` | clicking a `relayKit.commentable()` element |
+| `image` | `label` | clicking the PlantUML diagram image |
 
 Read annotations as first-class feedback — they often carry the sharpest insight
 (e.g. a user circling the one data point that concerns them, or quoting the exact
 sentence they disagree with).
+
+### Threaded replies — `rly reopen --replies`
+
+After reading `result.annotations`, an agent can reply to specific comments and
+reopen the board as a conversation:
+
+```sh
+rly reopen <id> --replies replies.json
+```
+
+`replies.json` is an array of `{"annotationId": "a1", "text": "..."}` objects.
+The server seeds the draft from the saved result, appends each reply with
+`author: "agent"` and `createdAt: now`, then serves the board prefilled. Unknown
+annotation IDs cause a `CliError` (exit 4) listing valid IDs.
+
+The UI shows agent and user replies as a thread under each comment — agent replies
+use an accent chip, user replies use a muted chip.
 
 ## Managing boards
 
@@ -290,6 +328,8 @@ rly list [--json]        # running boards (id, url, pid)
 rly open [id]            # re-open the browser tab of a running board
 rly reopen <id>          # serve a SAVED board again, prefilled with its saved
                          #   answers/draft; user can edit and resubmit
+rly reopen <id> --replies replies.json
+                         # reopen with agent replies (see Threaded replies above)
 rly reuse <id>           # re-run a past board as a NEW board (blank answers)
 rly spec <id>            # print a saved spec — edit it, then `rly ask --file`
 rly history [--json]     # saved boards with statuses
@@ -299,6 +339,26 @@ rly rm <id> | --all      # delete saved board(s)
 
 Multiple boards can run at once (each gets its own port on 127.0.0.1).
 Storage lives in `~/.relay` (override with `RLY_HOME`).
+
+## Live board mutation — `rly update`
+
+Push a new spec to an already-open board without stopping it:
+
+```sh
+rly update <boardId> --file new-spec.json   # replace the full spec
+rly update <boardId> --title "New title"    # patch just the title
+rly update <boardId> --intro "New intro"    # patch just the intro
+rly update <boardId> -q "!Priority::single::p0,p1,p2"  # append a question
+```
+
+The page **reloads** for the user and prefills their previous answers from the
+autosaved draft — answers for question IDs that no longer exist are silently
+ignored. A small toast "Board updated by the agent" appears for 4 seconds.
+
+Stdout: `{"status":"updated","boardId":"…","rev":2,"url":"…"}`.
+
+**Caution:** the page reloads for the user. Batch your changes into one `rly update`
+call rather than calling it repeatedly in a loop.
 
 ## Tips for agents
 
@@ -313,5 +373,11 @@ Storage lives in `~/.relay` (override with `RLY_HOME`).
   leave inline comments — they won't discover it otherwise.
 - Check `result.annotations` before generating your next output; a comment on a
   specific data point or a quoted sentence often overrides the checkbox answer.
+- Use `rly reopen <id> --replies replies.json` to answer the user's element
+  comments and reopen the board as a conversation thread.
+- Use `rly update <id>` to push spec changes to a running board — the page
+  reloads and answers survive via draft autosave. Batch updates; do not spam.
+- For sensitive PlantUML diagrams, set `"server": "https://your-server"` to avoid
+  sending source to the public plantuml.com server.
 - Bundled universal skill (Claude Code, Codex, any SKILL.md-aware agent):
   `rly skill install` — or `npx skills add khanglvm/relay`.

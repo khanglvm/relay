@@ -6,6 +6,10 @@
   const QS = spec.questions || [];
   const app = document.getElementById('app');
   const banner = document.getElementById('banner');
+  // Live-update baseline: the server's rev at page-build time. The heartbeat
+  // compares /api/status.rev to this and reloads the board when it advances
+  // (an agent ran `rly update`).
+  const bootRev = typeof boot.rev === 'number' ? boot.rev : null;
 
   // ---------- helpers ----------
   function el(tag, attrs = {}, ...children) {
@@ -20,6 +24,14 @@
       if (c !== null && c !== undefined) n.append(c.nodeType ? c : document.createTextNode(c));
     }
     return n;
+  }
+
+  // Small, self-dismissing toast pinned to the top-center of the viewport.
+  // Used to flag a live `rly update` after the reload (accent-soft bg).
+  function showToast(message) {
+    const toast = el('div', { class: 'toast' }, message);
+    document.body.append(toast);
+    setTimeout(() => toast.remove(), 4000);
   }
 
   // ---------- theme (auto -> light -> dark) ----------
@@ -413,6 +425,16 @@
   });
   applyTheme();
 
+  // Just reloaded after a live `rly update`? Flag set before reload below.
+  try {
+    if (sessionStorage.getItem('relay-updated') === '1') {
+      sessionStorage.removeItem('relay-updated');
+      showToast('Board updated by the agent');
+    }
+  } catch {
+    // sessionStorage may be unavailable (privacy mode) — non-fatal
+  }
+
   app.append(el('header', { class: 'qb-header' }, el('h1', {}, spec.title), themeBtn));
   if (spec.intro) {
     const intro = el('p', { class: 'intro' }, spec.intro);
@@ -584,11 +606,33 @@
 
   // ---------- heartbeat ----------
   let misses = 0;
+  let reloading = false;
   let hb = setInterval(async () => {
     try {
       const r = await fetch('/api/status', { cache: 'no-store' });
       if (!r.ok) throw new Error('bad status');
       misses = 0;
+      // Live update: the agent ran `rly update`, advancing the server rev.
+      // Flush whatever the user has typed so far (the reload re-prefills from
+      // the live draft — answers for now-removed question ids are ignored),
+      // then reload to render the new spec. Guarded so it fires once.
+      const body = await r.json().catch(() => null);
+      if (body && typeof body.rev === 'number' && bootRev !== null && body.rev !== bootRev && !submitted && !reloading) {
+        reloading = true;
+        stopHeartbeat();
+        clearTimeout(saveTimer);
+        try {
+          await saveDraft();
+        } catch {
+          // a failed final save shouldn't block the reload to the new spec
+        }
+        try {
+          sessionStorage.setItem('relay-updated', '1');
+        } catch {
+          // sessionStorage may be unavailable — the reload still applies the update
+        }
+        location.reload();
+      }
     } catch {
       if (++misses >= 2 && !submitted) {
         banner.textContent = 'This board is closed — the server has stopped. Answers up to your last edit were autosaved.';

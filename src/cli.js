@@ -8,6 +8,7 @@ import { normalizeSpec, questionFromInline, SPEC_SCHEMA } from './spec.js';
 import {
   createBoard,
   loadBoard,
+  saveBoard,
   deleteBoard,
   listBoards,
   listRunning,
@@ -26,7 +27,7 @@ const VERSION = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, 'package.json'), 
 
 const VALUED_FLAGS = new Set([
   'file', 'html', 'html-file', 'title', 'intro', 'timeout', 'port',
-  'submit-label', 'height', 'limit', 'target', 'id',
+  'submit-label', 'height', 'limit', 'target', 'id', 'replies',
 ]);
 
 function camel(key) {
@@ -183,8 +184,58 @@ async function cmdAsk(args, mode) {
   return runOrDetach(record, args);
 }
 
+// Seeds the draft from the last result (as runBoard would on reopen) and
+// appends agent replies to the matching annotations, so an agent can ANSWER
+// the user's element comments and re-open the board as a conversation.
+// Persists the record with the result archived so runBoard doesn't re-seed.
+function seedAgentReplies(record, replies) {
+  if (!Array.isArray(replies)) throw new CliError('--replies file must be a JSON array of {annotationId, text}.', 4);
+  // Mirror runBoard's reopen draft-seeding from the prior result.
+  if (record.result) {
+    if (record.result.answers) {
+      record.draft = {
+        answers: record.result.answers,
+        comment: record.result.comment || '',
+        notes: record.result.notes || {},
+        annotations: record.result.annotations || [],
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    record.pastResults = [...(record.pastResults || []), record.result].slice(-10);
+    record.result = null;
+  }
+  const annotations = (record.draft && Array.isArray(record.draft.annotations)) ? record.draft.annotations : [];
+  const validIds = annotations.map((a) => a && a.id).filter(Boolean);
+  const now = new Date().toISOString();
+  replies.forEach((r, i) => {
+    if (r === null || typeof r !== 'object' || Array.isArray(r)) {
+      throw new CliError(`--replies[${i}]: must be an object {annotationId, text}.`, 4);
+    }
+    const annotationId = typeof r.annotationId === 'string' ? r.annotationId : '';
+    const text = typeof r.text === 'string' ? r.text : '';
+    if (!annotationId) throw new CliError(`--replies[${i}]: missing "annotationId".`, 4);
+    if (!text.trim()) throw new CliError(`--replies[${i}]: missing "text".`, 4);
+    const ann = annotations.find((a) => a && a.id === annotationId);
+    if (!ann) {
+      throw new CliError(
+        `--replies[${i}]: unknown annotationId "${annotationId}". Valid ids: ${validIds.length ? validIds.join(', ') : '(none)'}.`,
+        4
+      );
+    }
+    if (!Array.isArray(ann.replies)) ann.replies = [];
+    ann.replies.push({ author: 'agent', text, createdAt: now });
+  });
+  if (!record.draft) record.draft = { answers: {}, comment: '', notes: {}, annotations, updatedAt: now };
+  else record.draft.annotations = annotations;
+  saveBoard(record);
+}
+
 async function cmdReopen(args) {
   const record = mustLoad(args._[0]);
+  if (args.replies !== undefined) {
+    const replies = parseJson(readFileOrThrow(args.replies), args.replies);
+    seedAgentReplies(record, replies);
+  }
   const running = loadRunning(record.id);
   if (running && isAlive(running.pid)) {
     openUrl(running.url);
@@ -202,6 +253,64 @@ async function cmdReuse(args) {
   }
   const record = createBoard(src.spec);
   return runOrDetach(record, args);
+}
+
+// Live-mutates a running board: rebuild the spec (full replace via --file, or
+// patch the current spec via --title/--intro/-q), then POST it (already
+// normalized) to the board's /api/update with the per-board mutation token.
+async function cmdUpdate(args) {
+  const id = args._[0];
+  if (!id) throw new CliError('usage: rly update <board-id> (--file new-spec.json | --title T | --intro I | -q "...")');
+  const record = loadBoard(id);
+  if (!record) throw new CliError(`board "${id}" not found. See \`rly history\`.`, 5);
+  const running = loadRunning(id);
+  if (!running || !isAlive(running.pid)) {
+    throw new CliError(`board "${id}" is not running — \`rly reopen ${id}\` to serve it, then update.`, 5);
+  }
+
+  let spec;
+  if (args.file) {
+    const raw =
+      args.file === '-'
+        ? parseJson(await readStdin(), 'stdin')
+        : parseJson(readFileOrThrow(args.file), args.file);
+    spec = normalizeSpec(raw);
+  } else if (args.title || args.intro || args.q.length) {
+    // Patch the CURRENT spec, then re-normalize so it's a clean normalized spec.
+    const raw = { ...record.spec };
+    if (args.title) raw.title = args.title;
+    if (args.intro) raw.intro = args.intro;
+    if (args.q.length) {
+      raw.questions = [...(raw.questions || []), ...args.q.map((s, i) => questionFromInline(s, i))];
+    }
+    spec = normalizeSpec(raw);
+  } else {
+    throw new CliError('update needs --file <spec.json>, --title, --intro, or -q "...".', 4);
+  }
+
+  let res;
+  try {
+    res = await fetch(new URL('/api/update', running.url), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-relay-token': running.token || '' },
+      body: JSON.stringify({ spec }),
+    });
+  } catch (err) {
+    throw new CliError(`could not reach board "${id}" at ${running.url}: ${String((err && err.message) || err)}`, 5);
+  }
+  if (res.status === 403) throw new CliError(`board "${id}" rejected the update token (stale running file?).`, 5);
+  if (!res.ok) {
+    let detail = '';
+    try {
+      detail = (await res.json()).error || '';
+    } catch {
+      // non-JSON body
+    }
+    throw new CliError(`board "${id}" rejected the update${detail ? `: ${detail}` : ''}.`, 4);
+  }
+  const body = await res.json();
+  printJson({ status: 'updated', boardId: id, rev: body.rev, url: running.url });
+  return 0;
 }
 
 async function cmdWait(args) {
@@ -539,8 +648,10 @@ USAGE
   rly result <id>                     result/status now (includes live autosaved draft while open)
   rly list [--json]                   running boards
   rly open [id]                       re-open the browser tab of a running board
-  rly reopen <id>                     serve a saved board again, prefilled with its saved answers
+  rly reopen <id> [--replies f.json]  serve a saved board again, prefilled with saved answers
+                                      (--replies [{annotationId,text}] = agent answers to element comments)
   rly reuse <id> [--dump]             re-run a past board as a new board (--dump prints its spec)
+  rly update <id> --file spec.json    live-mutate a RUNNING board (or --title/--intro/-q); page reloads
   rly stop <id> | --all               stop running board(s) (status: cancelled, draft preserved)
   rly history [--limit n] [--json]    saved boards
   rly spec <id>                       print a saved board's spec JSON (edit, then ask --file again)
@@ -590,6 +701,8 @@ export async function main(argv) {
         return await cmdReopen(parseArgs(rest));
       case 'reuse':
         return await cmdReuse(parseArgs(rest));
+      case 'update':
+        return await cmdUpdate(parseArgs(rest));
       case 'wait':
         return await cmdWait(parseArgs(rest));
       case 'result':

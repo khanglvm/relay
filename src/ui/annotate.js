@@ -40,6 +40,10 @@
       }
       case 'mermaid-node':
         return 'Diagram · ' + truncate(t.text || t.nodeId || 'node', 50);
+      case 'graphviz-node':
+        return 'Graph · ' + truncate(t.text || t.nodeId || 'node', 50);
+      case 'image':
+        return truncate(t.label || 'Image', 50);
       case 'table-cell': {
         let s = `Table · row ${(Number(t.row) || 0) + 1} · ${t.col}`;
         if (t.value !== undefined && t.value !== null && t.value !== '') s += ` — “${truncate(t.value, 30)}”`;
@@ -57,6 +61,25 @@
   // Target equality for badge re-binding = stringify equality within a block.
   const sameTarget = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const sameBlock = (a, b) => (a ?? null) === (b ?? null);
+
+  // Author chip: "you" (muted) for user comments, "agent" (accent) for agent.
+  function chip(author) {
+    const agent = author === 'agent';
+    return el('span', { class: 'ann-chip' + (agent ? ' ann-chip-agent' : '') }, agent ? 'agent' : 'you');
+  }
+
+  // Short HH:MM timestamp (empty string when the date is unparsable).
+  function fmtTime(iso) {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const p = (n) => String(n).padStart(2, '0');
+    return p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  function timeEl(iso) {
+    const t = fmtTime(iso);
+    return t ? el('span', { class: 'ann-time' }, t) : null;
+  }
 
   // ---------- state ----------
   let annotations = [];        // contract annotation objects
@@ -221,7 +244,10 @@
     const pop = dom.pop;
     pop.replaceChildren(el('div', { class: 'ann-pop-label' }, humanize(info.target)));
 
-    // Existing comments on this exact target, each with a delete button.
+    // Existing comments on this exact target, rendered as threads: author
+    // chip + time + delete, the comment text, its replies indented below,
+    // and a compact reply input per thread. Deleting a comment deletes its
+    // whole thread.
     const existingWrap = el('div', { class: 'ann-pop-existing' });
     const renderExisting = () => {
       existingWrap.replaceChildren();
@@ -231,7 +257,37 @@
           removeAnnotation(a.id);
           renderExisting();
         });
-        existingWrap.append(el('div', { class: 'ann-pop-item' }, el('span', { class: 'ann-pop-text' }, a.text), del));
+        const thread = el('div', { class: 'ann-thread' },
+          el('div', { class: 'ann-thread-head' }, chip(a.author), timeEl(a.createdAt), del),
+          el('div', { class: 'ann-pop-text' }, a.text)
+        );
+        if (Array.isArray(a.replies) && a.replies.length) {
+          const list = el('div', { class: 'ann-replies' });
+          for (const r of a.replies) {
+            list.append(el('div', { class: 'ann-reply' },
+              el('div', { class: 'ann-reply-head' }, chip(r.author), timeEl(r.createdAt)),
+              el('div', { class: 'ann-reply-text' }, r.text)
+            ));
+          }
+          thread.append(list);
+        }
+        const input = el('input', { class: 'ann-reply-input', type: 'text', placeholder: 'Reply…', 'aria-label': 'Reply' });
+        const btn = el('button', { class: 'ann-reply-btn', type: 'button' }, 'Reply');
+        const submitReply = () => {
+          const text = input.value.trim();
+          if (!text) return;
+          addReply(a.id, text);
+          renderExisting();
+        };
+        btn.addEventListener('click', submitReply);
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
+            e.preventDefault();
+            submitReply();
+          }
+        });
+        thread.append(el('div', { class: 'ann-reply-form' }, input, btn));
+        existingWrap.append(thread);
       }
     };
     renderExisting();
@@ -277,6 +333,23 @@
       blockId: info.blockId !== undefined ? info.blockId : null,
       target: info.target,
       text,
+      createdAt: new Date().toISOString(),
+      author: 'user',
+      replies: [],
+    });
+    changed();
+  }
+
+  // Append a user reply to a top-level annotation's thread (cap 50, like the
+  // server). Empty text is ignored by callers.
+  function addReply(id, text) {
+    const a = annotations.find((x) => x.id === id);
+    if (!a) return;
+    if (!Array.isArray(a.replies)) a.replies = [];
+    if (a.replies.length >= 50) return;
+    a.replies.push({
+      author: 'user',
+      text: String(text).slice(0, 5000),
       createdAt: new Date().toISOString(),
     });
     changed();
@@ -367,10 +440,18 @@
         e.stopPropagation();
         removeAnnotation(a.id);
       });
+      // Thread meta: reply count, plus an "agent" chip when the latest entry
+      // in the thread (last reply, or the comment itself) is agent-authored.
+      const replyCount = Array.isArray(a.replies) ? a.replies.length : 0;
+      const latest = replyCount ? a.replies[replyCount - 1] : a;
+      const meta = [];
+      if (replyCount) meta.push(el('span', { class: 'ann-sum-replies' }, `${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}`));
+      if (latest.author === 'agent') meta.push(chip('agent'));
       const row = el('div', { class: 'ann-sum-row' },
         el('div', { class: 'ann-sum-main' },
           el('div', { class: 'ann-sum-target' }, humanize(a.target)),
-          el('div', { class: 'ann-sum-text' }, a.text)
+          el('div', { class: 'ann-sum-text' }, a.text),
+          meta.length ? el('div', { class: 'ann-sum-meta' }, meta) : null
         ),
         del
       );
@@ -393,7 +474,22 @@
   // ---------- public API ----------
   function init(opts = {}) {
     ensureDom();
-    annotations = Array.isArray(opts.initial) ? opts.initial.map((a) => ({ ...a })) : [];
+    // Normalize threads: missing author -> 'user', missing replies -> [].
+    annotations = Array.isArray(opts.initial)
+      ? opts.initial.map((a) => ({
+          ...a,
+          author: a.author === 'agent' ? 'agent' : 'user',
+          replies: Array.isArray(a.replies)
+            ? a.replies
+                .filter((r) => r && typeof r === 'object' && typeof r.text === 'string')
+                .map((r) => ({
+                  author: r.author === 'agent' ? 'agent' : 'user',
+                  text: r.text,
+                  createdAt: typeof r.createdAt === 'string' ? r.createdAt : '',
+                }))
+            : [],
+        }))
+      : [];
     onChange = typeof opts.onChange === 'function' ? opts.onChange : null;
     idCounter = 0;
     for (const a of annotations) {

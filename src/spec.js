@@ -25,7 +25,7 @@ const HTML_HEIGHT = { min: 100, max: 2400, boardDefault: 400, questionDefault: 3
 
 // Block heights clamp to the same window; defaults vary per block type.
 const BLOCK_HEIGHT = { min: 100, max: 2400 };
-export const BLOCK_TYPES = ['markdown', 'mermaid', 'chart', 'table', 'code', 'html'];
+export const BLOCK_TYPES = ['markdown', 'mermaid', 'graphviz', 'plantuml', 'chart', 'table', 'code', 'html'];
 const CHART_KINDS = ['bar', 'line', 'pie', 'doughnut', 'radar', 'scatter'];
 
 const asStr = (v) => (typeof v === 'string' ? v : v == null ? '' : String(v));
@@ -89,6 +89,29 @@ function normalizeBlock(rawBlock, id, cwd, where) {
     const code = asStr(rawBlock.code);
     if (!code.trim()) throw new CliError(`${where}: mermaid block needs a non-empty "code" string.`);
     const block = { id, type: 'mermaid', code };
+    if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
+    return block;
+  }
+
+  if (type === 'graphviz') {
+    const dot = asStr(rawBlock.dot);
+    if (!dot.trim()) throw new CliError(`${where}: graphviz block needs a non-empty "dot" string.`);
+    const block = { id, type: 'graphviz', dot };
+    if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
+    return block;
+  }
+
+  if (type === 'plantuml') {
+    const code = asStr(rawBlock.code);
+    if (!code.trim()) throw new CliError(`${where}: plantuml block needs a non-empty "code" string.`);
+    const block = { id, type: 'plantuml', code };
+    if (rawBlock.server !== undefined && rawBlock.server !== null && rawBlock.server !== '') {
+      const server = asStr(rawBlock.server).trim();
+      if (!/^https?:\/\/\S+$/i.test(server)) {
+        throw new CliError(`${where}: plantuml "server" must be an http(s) URL string.`);
+      }
+      block.server = server;
+    }
     if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
     return block;
   }
@@ -343,7 +366,9 @@ const BLOCK_SCHEMA = {
     properties: {
       type: { type: 'string', enum: BLOCK_TYPES },
       md: { type: 'string', description: 'markdown: built-in mini renderer (no external library). Text selections are commentable.' },
-      code: { type: 'string', description: 'mermaid: diagram source (e.g. "graph TD; A-->B"); code: the source to display.' },
+      code: { type: 'string', description: 'mermaid: diagram source (e.g. "graph TD; A-->B"); plantuml: the @startuml…@enduml source; code: the source to display.' },
+      dot: { type: 'string', description: 'graphviz: DOT source (e.g. "digraph { a -> b }"). Rendered offline via vendored Viz.js; nodes and edges are individually commentable.' },
+      server: { type: 'string', description: 'plantuml: PlantUML server base URL (http(s)). Defaults to https://www.plantuml.com/plantuml. Diagrams render via this server (needs network).' },
       lang: { type: 'string', description: 'code block: language hint for display.' },
       config: { type: 'object', description: 'chart: a full Chart.js config object.' },
       kind: { type: 'string', enum: CHART_KINDS, description: 'chart shorthand: chart kind (alternative to "config").' },
@@ -363,7 +388,7 @@ const BLOCK_SCHEMA = {
       sortable: { type: 'boolean', description: 'table: enable click-to-sort headers.' },
       html: { type: 'string', description: 'html: custom markup rendered in a sandboxed iframe.' },
       htmlFile: { type: 'string', description: 'html: path to an HTML file (alternative to "html").' },
-      height: { type: 'integer', minimum: BLOCK_HEIGHT.min, maximum: BLOCK_HEIGHT.max, description: 'Block height in px. Defaults: chart 320, html 360; markdown/table/code flow naturally; mermaid natural (max 1200, scrolls).' },
+      height: { type: 'integer', minimum: BLOCK_HEIGHT.min, maximum: BLOCK_HEIGHT.max, description: 'Block height in px. Defaults: chart 320, html 360; markdown/table/code flow naturally; mermaid/graphviz/plantuml natural (max 1200, scrolls).' },
     },
   },
 };
