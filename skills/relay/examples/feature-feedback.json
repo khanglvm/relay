@@ -1,6 +1,6 @@
 {
   "title": "Auth feature — decisions needed",
-  "intro": "I'm about to implement authentication. Three decisions before I start:",
+  "intro": "I'm about to implement authentication. Three decisions before I start. Hover chart points or select text to leave comments.",
   "questions": [
     {
       "id": "provider",

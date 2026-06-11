@@ -1,9 +1,14 @@
-# quest-board (`qbd`) — agent guide
+# relay (`rly`) — agent guide
 
-Purpose: ask the human structured questions in a browser tab and/or show them a
-custom-HTML visualization (prototype, diagram, mockup), then **wait for them to
-click Submit** and read the answers as JSON from stdout. No "type 'done' in the
-terminal", no hand-rolled HTML+server.
+Purpose: ask the human structured questions in a browser tab and/or show them
+rich content blocks (markdown, charts, diagrams, tables, code, custom HTML),
+then **wait for them to click Submit** and read the answers as JSON from stdout.
+No "type 'done' in the terminal", no hand-rolled HTML+server.
+
+**Tell the user** at the start of your intro text that they can hover chart
+points, diagram nodes, and table cells to leave comments, and select text in
+markdown blocks to annotate — their comments come back in `result.annotations`
+alongside their answers. Treat annotations as first-class feedback.
 
 Everything machine-relevant is on **stdout as JSON**; human-facing logs go to
 stderr. Exit codes: `0` submitted/acknowledged · `2` timeout · `3` cancelled ·
@@ -15,16 +20,16 @@ stderr. Exit codes: `0` submitted/acknowledged · `2` timeout · `3` cancelled �
 prints the result JSON:
 
 ```sh
-qbd ask --file spec.json --timeout 1800
+rly ask --file spec.json --timeout 1800
 ```
 
 **2. Detached (recommended when your shell tool has an execution time limit).**
 Returns immediately with the board URL; collect later:
 
 ```sh
-qbd ask --file spec.json --detach     # → {"status":"open","boardId":"b-…","url":"…"}
-qbd wait b-xxxxx --timeout 3500       # blocks until submit, prints result JSON
-qbd result b-xxxxx                    # non-blocking peek; while open it includes
+rly ask --file spec.json --detach     # → {"status":"open","boardId":"b-…","url":"…"}
+rly wait b-xxxxx --timeout 3500       # blocks until submit, prints result JSON
+rly result b-xxxxx                    # non-blocking peek; while open it includes
                                       # the live autosaved draft of the user's answers
 ```
 
@@ -38,14 +43,14 @@ From a JSON spec file (`--file spec.json`), stdin (`--file -`), or quick
 inline questions:
 
 ```sh
-qbd ask -q "Deploy to prod now?::yesno" -q "!Environment::single::dev,staging,prod"
-#          label::type::comma,separated,options          leading "!" = required
+rly ask -q "Deploy to prod now?::yesno" -q "!Environment::single::dev,staging,prod"
+#         label::type::comma,separated,options          leading "!" = required
 ```
 
 Visualization-only (no questions; submit button reads "Acknowledge"):
 
 ```sh
-qbd show --html-file prototype.html --title "Dashboard concept" --height 600
+rly show --html-file prototype.html --title "Dashboard concept" --height 600
 ```
 
 ## Board spec (JSON)
@@ -54,8 +59,9 @@ qbd show --html-file prototype.html --title "Dashboard concept" --height 600
 {
   "title": "Feature direction",
   "intro": "Pick what we build next. Lines are preserved.",
-  "html": "<h1>…</h1>",            // optional board-level visualization (or "htmlFile": "viz.html")
-  "htmlHeight": 400,                // iframe height px (100–2400)
+  "blocks": [
+    { "type": "markdown", "md": "## Background\nContext here." }
+  ],
   "allowPartial": true,             // default true: user may submit with gaps -> "skipped"
   "note": true,                     // default true: optional free-text box -> result "comment"
   "autoClose": true,                // default true: tab tries to close itself after submit
@@ -76,23 +82,23 @@ qbd show --html-file prototype.html --title "Dashboard concept" --height 600
     { "id": "confidence", "type": "scale", "label": "Confidence?", "min": 1, "max": 5,
       "minLabel": "low", "maxLabel": "high" },
     { "id": "layout", "type": "single", "label": "Which layout?", "options": ["left", "right"],
-      "html": "<div style='display:flex;gap:8px'>…two mockups…</div>", "htmlHeight": 300 }
+      "blocks": [{ "type": "markdown", "md": "Compare the two options above." }] }
   ]
 }
 ```
 
-`qbd schema` prints the full JSON Schema.
+`rly schema` prints the full JSON Schema.
 
 ### Question types → answer shapes
 
-| type       | answer value in result            |
-|------------|-----------------------------------|
+| type       | answer value in result              |
+|------------|-------------------------------------|
 | `single`   | `"value"` (Other → its text verbatim) |
-| `multi`    | `["a","b"]` (Other text appended) |
-| `yesno`    | `"yes"` \| `"no"`                 |
-| `text`     | `"string"`                        |
-| `textarea` | `"string"`                        |
-| `scale`    | number (`min`…`max`, default 1–5) |
+| `multi`    | `["a","b"]` (Other text appended)   |
+| `yesno`    | `"yes"` \| `"no"`                   |
+| `text`     | `"string"`                          |
+| `textarea` | `"string"`                          |
+| `scale`    | number (`min`…`max`, default 1–5)   |
 
 Aliases accepted: radio/choice/select→single, checkbox→multi,
 boolean/bool/yn→yesno, input→text, longtext→textarea, rating/likert→scale.
@@ -107,6 +113,16 @@ boolean/bool/yn→yesno, input→text, longtext→textarea, rating/likert→scal
   "skipped": ["name"],
   "comment": "free-text note from the user",
   "notes": { "scope": "docs can wait until the API settles" },
+  "annotations": [
+    {
+      "id": "a1",
+      "questionId": null,
+      "blockId": "b2",
+      "target": { "kind": "chart-element", "datasetIndex": 0, "index": 1, "label": "Feb", "value": 19 },
+      "text": "Feb spike was from the onboarding push — not repeatable.",
+      "createdAt": "2026-06-11T10:23:00.000Z"
+    }
+  ],
   "finishedAt": "2026-06-11T03:00:00.000Z",
   "durationMs": 42000
 }
@@ -114,11 +130,94 @@ boolean/bool/yn→yesno, input→text, longtext→textarea, rating/likert→scal
 
 Unanswered questions are absent from `answers` and listed in `skipped`.
 Questions with `"note": true` show a small optional free-text field; non-empty
-notes come back in `notes` keyed by question id (use it where users may want
-to qualify a choice). On `timeout`/`cancelled`, a `draft` field carries the
-autosaved partial answers.
+notes come back in `notes` keyed by question id. On `timeout`/`cancelled`, a
+`draft` field carries the autosaved partial answers and any annotations written
+so far.
 
-## Custom HTML visualization — sizing contract
+## Blocks
+
+Blocks can appear at the board level (`"blocks": [...]` on the root object) or
+per question (`"blocks": [...]` on a question object). Heights clamp to
+100–2400 px.
+
+### All block shapes
+
+```jsonc
+// Markdown — built-in mini renderer, no library
+{ "type": "markdown", "md": "## Heading\nAny **CommonMark** prose." }
+
+// Mermaid diagram — vendored, lazy-loaded; natural height, max 1200 px + scroll
+{ "type": "mermaid", "code": "graph TD; A-->B; B-->C", "height": 400 }
+
+// Chart — shorthand (lazy-loads vendored Chart.js; default height 320)
+{
+  "type": "chart",
+  "kind": "bar",             // bar | line | pie | doughnut | radar | scatter
+  "title": "Velocity",
+  "labels": ["Jan", "Feb", "Mar"],
+  "series": [
+    { "label": "Shipped", "data": [12, 19, 14], "color": "#4d8a66" },
+    { "label": "Planned", "data": [15, 15, 15] }
+  ],
+  "height": 320
+}
+
+// Chart — full Chart.js v4 config
+{
+  "type": "chart",
+  "config": {
+    "type": "bar",
+    "data": { "labels": ["A", "B"], "datasets": [{ "label": "x", "data": [1, 2] }] },
+    "options": { "plugins": { "legend": { "display": false } } }
+  },
+  "height": 280
+}
+
+// Table — sortable, annotatable cells
+{
+  "type": "table",
+  "columns": [
+    { "key": "name", "label": "Name" },
+    { "key": "status", "label": "Status", "align": "center" },
+    { "key": "score",  "label": "Score",  "align": "right" }
+  ],
+  "rows": [
+    { "name": "Alpha", "status": "done", "score": 92 },
+    { "name": "Beta",  "status": "wip",  "score": 71 }
+  ],
+  "sortable": true
+}
+// columns may also be plain string array; rows may be parallel arrays [[val,val],...]
+
+// Code — styled pre/code block
+{ "type": "code", "lang": "js", "code": "const x = 1 + 2;" }
+
+// HTML — sandboxed iframe; default height 360
+{ "type": "html", "html": "<h1>Hello</h1>", "height": 360 }
+{ "type": "html", "htmlFile": "viz.html",   "height": 400 }
+```
+
+### When to use which block
+
+| Block | Best for |
+|---|---|
+| `mermaid` | flows, state machines, architecture overviews, sequence diagrams |
+| `chart` | numbers, trends, comparisons, metrics |
+| `table` | structured comparisons, option matrices, data grids |
+| `markdown` | prose context, background, instructions, section headings |
+| `code` | code snippets, config examples, command output |
+| `html` | anything else — pixel-perfect mockups, custom widgets, embeds |
+
+### Height rules
+
+- `markdown`, `code`: natural flow (no fixed height).
+- `mermaid`: natural flow, max-height 1200 px with internal scroll. Override with `"height"`.
+- `chart`: default 320 px. Override with `"height"`.
+- `html`: default 360 px. Override with `"height"`.
+- `table`: natural flow.
+- All heights clamp to 100–2400 px.
+
+## Custom HTML sizing contract
 
 - Rendered in a **sandboxed iframe** (`allow-scripts allow-forms allow-popups
   allow-modals`, **no** same-origin/parent access). Ship a self-contained HTML
@@ -126,40 +225,93 @@ autosaved partial answers.
   inline is better.
 - **Width: always 100% of the content column — up to ~820 px on desktop, as
   narrow as ~300 px on phones. Design responsively; don't assume fixed width.**
-- **Height: fixed per block via `htmlHeight` (px, 100–2400). Default 400 for the
-  board block, 360 for per-question blocks.** Content taller than that scrolls
-  inside the iframe.
+- **Height: fixed per block via `height` (px, 100–2400). Default 360.**
+  Content taller than that scrolls inside the iframe.
 - **Fragments** (no `<html>` tag) are auto-wrapped in a minimal document whose
-  background/text match the user's current theme — easiest path. **Full
-  documents** are served verbatim (white canvas by default); they receive a
-  `?theme=light|dark` query param (re-loaded on theme toggle) if they want to
-  match the theme themselves.
+  background/text match the user's current theme. **Full documents** are served
+  verbatim and receive a `?theme=light|dark` query param on theme toggle.
+
+### kit.js — make iframe elements annotatable
+
+Load `/kit.js` inside your custom HTML iframe to let users comment on specific
+elements:
+
+```html
+<script src="/kit.js"></script>
+<script>
+  relayKit.commentable(document.getElementById('chart'), 'Revenue chart', 'Q1 2026');
+  relayKit.commentable(document.getElementById('hero-cta'), 'CTA button');
+</script>
+```
+
+`relayKit.commentable(el, label, detail?)` — outlines `el` on hover; a click
+opens the annotation popover in the parent page anchored to the element.
+Annotations come back in `result.annotations` with `target.kind = "html-element"`,
+`target.label`, and (if provided) `target.detail`.
+
+## Annotations
+
+Users can comment on any annotatable element. Tell them about it in your board
+intro. Annotations are autosaved with the draft and returned in the final result.
+
+### result.annotations shape
+
+```json
+"annotations": [
+  {
+    "id": "a1",
+    "questionId": "q-id or null for board-level",
+    "blockId": "b2",
+    "target": { ... },
+    "text": "user comment text",
+    "createdAt": "2026-06-11T10:23:00.000Z"
+  }
+]
+```
+
+### All 5 target kinds
+
+| kind | Fields | Triggered by |
+|---|---|---|
+| `chart-element` | `datasetIndex`, `index`, `label`, `value` | clicking a bar, point, or pie slice |
+| `mermaid-node` | `nodeId`, `text` | clicking a diagram node |
+| `table-cell` | `row` (0-based), `col` (column key), `value` | clicking a table cell |
+| `text` | `quote`, `prefix` (≤30 chars before), `suffix` (≤30 after) | selecting text in a markdown block |
+| `html-element` | `label`, `detail?` | clicking a `relayKit.commentable()` element |
+
+Read annotations as first-class feedback — they often carry the sharpest insight
+(e.g. a user circling the one data point that concerns them, or quoting the exact
+sentence they disagree with).
 
 ## Managing boards
 
 ```sh
-qbd list [--json]        # running boards (id, url, pid)
-qbd open [id]            # re-open the browser tab of a running board
-qbd reopen <id>          # serve a SAVED board again, prefilled with its saved
+rly list [--json]        # running boards (id, url, pid)
+rly open [id]            # re-open the browser tab of a running board
+rly reopen <id>          # serve a SAVED board again, prefilled with its saved
                          #   answers/draft; user can edit and resubmit
-qbd reuse <id>           # re-run a past board as a NEW board (blank answers)
-qbd spec <id>            # print a saved spec — edit it, then `qbd ask --file`
-qbd history [--json]     # saved boards with statuses
-qbd stop <id> | --all    # stop running board(s) → status "cancelled", draft kept
-qbd rm <id> | --all      # delete saved board(s)
+rly reuse <id>           # re-run a past board as a NEW board (blank answers)
+rly spec <id>            # print a saved spec — edit it, then `rly ask --file`
+rly history [--json]     # saved boards with statuses
+rly stop <id> | --all    # stop running board(s) → status "cancelled", draft kept
+rly rm <id> | --all      # delete saved board(s)
 ```
 
 Multiple boards can run at once (each gets its own port on 127.0.0.1).
-Storage lives in `~/.quest-board` (override with `QUEST_BOARD_HOME`).
+Storage lives in `~/.relay` (override with `RLY_HOME`).
 
 ## Tips for agents
 
-- Prefer `--detach` + `qbd wait` if your shell tool kills long commands.
+- Prefer `--detach` + `rly wait` if your shell tool kills long commands.
 - Don't pass `--no-open` for real users — the browser tab opening *is* the
   notification. Use it only in tests.
 - Quote JSON carefully; prefer writing a spec file or piping via `--file -`.
 - Use stable `id`s on questions so your follow-up logic reads clean keys.
-- `qbd result <id>` while a board is open returns the live draft — useful to
+- `rly result <id>` while a board is open returns the live draft — useful to
   check whether the user has started answering.
+- In the board `intro`, tell users they can hover chart points / select text to
+  leave inline comments — they won't discover it otherwise.
+- Check `result.annotations` before generating your next output; a comment on a
+  specific data point or a quoted sentence often overrides the checkbox answer.
 - Bundled universal skill (Claude Code, Codex, any SKILL.md-aware agent):
-  `qbd skill install` — or `npx skills add khanglvm/quest-board`.
+  `rly skill install` — or `npx skills add khanglvm/relay`.

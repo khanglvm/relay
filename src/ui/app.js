@@ -49,13 +49,28 @@
         // ignore malformed src
       }
     }
+    // Re-theme native blocks (mermaid re-render, chart grid/tick restyle).
+    if (window.RelayBlocks && typeof RelayBlocks.onThemeChange === 'function') {
+      try {
+        RelayBlocks.onThemeChange(effectiveTheme());
+      } catch {
+        // blocks may not be rendered yet
+      }
+    }
   }
   let themeBtn = null;
 
   // ---------- state ----------
   // state.answers holds raw control state; state.other holds the "Other"
   // free-text per question; getValue() derives the final answer value.
-  const state = { answers: {}, other: {}, notes: {}, comment: '' };
+  // state.annotations holds element-level comments (managed by RelayAnnotate).
+  const state = {
+    answers: {},
+    other: {},
+    notes: {},
+    comment: '',
+    annotations: (boot.prefill && boot.prefill.annotations) || [],
+  };
   let submitted = false;
 
   function seedFromPrefill(prefill) {
@@ -120,7 +135,7 @@
       const n = typeof state.notes[q.id] === 'string' ? state.notes[q.id].trim() : '';
       if (n) notes[q.id] = n;
     }
-    return { answers, comment: (state.comment || '').trim(), notes };
+    return { answers, comment: (state.comment || '').trim(), notes, annotations: state.annotations };
   }
 
   // ---------- real-time autosave ----------
@@ -145,6 +160,47 @@
     } catch {
       if (seq === saveSeq && saveEl && !submitted) saveEl.textContent = 'draft save failed';
     }
+  }
+
+  // ---------- annotations ----------
+  // RelayAnnotate owns the live annotation list; mirror it into state on every
+  // change so payload()/autosave/submit carry it exactly like answers.
+  const Annotate = typeof window.RelayAnnotate !== 'undefined' ? window.RelayAnnotate : null;
+  if (Annotate) {
+    Annotate.init({
+      initial: state.annotations,
+      onChange: (list) => {
+        state.annotations = list;
+        scheduleSave();
+      },
+    });
+  }
+
+  // ctx for RelayBlocks.render — theme()/htmlSrc per the shared contract.
+  function blockCtx(questionId) {
+    return {
+      theme: effectiveTheme,
+      htmlSrc: (blockId) => '/html/b/' + encodeURIComponent(blockId) + '?theme=' + effectiveTheme(),
+      questionId: questionId == null ? null : questionId,
+      annotate: Annotate,
+    };
+  }
+
+  // Renders blocks async without blocking the page; on rejection (or a missing
+  // RelayBlocks) shows a muted "failed to render" card in place.
+  function renderBlocks(container, blocks, questionId) {
+    if (!Array.isArray(blocks) || !blocks.length) return;
+    const target = el('div', { class: 'blocks' });
+    container.append(target);
+    if (typeof window.RelayBlocks === 'undefined' || !window.RelayBlocks) {
+      target.append(el('div', { class: 'blk' }, el('div', { class: 'blk-error' }, 'block failed to render')));
+      return;
+    }
+    Promise.resolve()
+      .then(() => window.RelayBlocks.render(target, blocks, blockCtx(questionId)))
+      .catch(() => {
+        target.append(el('div', { class: 'blk' }, el('div', { class: 'blk-error' }, 'block failed to render')));
+      });
   }
 
   // ---------- controls ----------
@@ -343,16 +399,6 @@
     return input;
   }
 
-  function vizFrame(src, height) {
-    return el('iframe', {
-      class: 'viz',
-      src: `${src}?theme=${effectiveTheme()}`,
-      height: String(height),
-      sandbox: 'allow-scripts allow-forms allow-popups allow-modals',
-      loading: 'lazy',
-    });
-  }
-
   // ---------- render ----------
   themeBtn = el('button', { class: 'theme-btn', type: 'button' }, '');
   themeBtn.addEventListener('click', () => {
@@ -368,17 +414,23 @@
   applyTheme();
 
   app.append(el('header', { class: 'qb-header' }, el('h1', {}, spec.title), themeBtn));
-  if (spec.intro) app.append(el('p', { class: 'intro' }, spec.intro));
-  if (spec.hasHtml) app.append(vizFrame('/html/board', spec.htmlHeight));
+  if (spec.intro) {
+    const intro = el('p', { class: 'intro' }, spec.intro);
+    app.append(intro);
+    Annotate?.enableTextSelection(intro, { blockId: null, questionId: null });
+  }
+  // Board-level blocks render above the questions (async; never blocks submit).
+  renderBlocks(app, spec.blocks || [], null);
 
   QS.forEach((q, idx) => {
     const required = q.required || !spec.allowPartial;
     const card = el('div', { class: 'card' },
       el('div', { class: 'qnum' }, `Q${idx + 1}`),
       el('p', { class: 'qlabel' }, q.label, required ? el('span', { class: 'req' }, ' *') : null),
-      q.description ? el('p', { class: 'qdesc' }, q.description) : null,
-      q.hasHtml ? vizFrame(`/html/q/${encodeURIComponent(q.id)}`, q.htmlHeight) : null
+      q.description ? el('p', { class: 'qdesc' }, q.description) : null
     );
+    // Per-question blocks render between the description and the control.
+    renderBlocks(card, q.blocks || [], q.id);
     const control = el('div', { class: 'control' });
     if (q.type === 'single') control.append(controlSingle(q));
     else if (q.type === 'multi') control.append(controlMulti(q));
@@ -412,6 +464,13 @@
       el('p', { class: 'qdesc' }, 'Free-text note returned to the agent along with your answers.'),
       el('div', { class: 'control' }, note)
     ));
+  }
+
+  // Annotations summary (editable list) sits directly above the submit bar.
+  if (Annotate) {
+    const summary = el('div', { class: 'ann-summary-wrap' });
+    app.append(summary);
+    Annotate.renderSummary(summary);
   }
 
   const submitBtn = el('button', { class: 'submit', type: 'button' }, spec.submitLabel);
@@ -490,6 +549,37 @@
         cards[firstOpen.id].scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 350);
     }
+  }
+
+  // ---------- iframe annotate bridge ----------
+  // Custom-HTML iframes (via /kit.js relayKit.commentable) post
+  // {relay:'annotate-request', label, detail?}. Match the source to the
+  // iframe, read its block/question ids, and open the annotate popover anchored
+  // to that iframe.
+  if (Annotate) {
+    window.addEventListener('message', (e) => {
+      const msg = e.data;
+      if (!msg || typeof msg !== 'object' || msg.relay !== 'annotate-request') return;
+      let frame = null;
+      for (const f of document.querySelectorAll('iframe.viz')) {
+        if (f.contentWindow === e.source) { frame = f; break; }
+      }
+      if (!frame) return;
+      const blockId = frame.getAttribute('data-block-id') || null;
+      const questionId = frame.getAttribute('data-question-id') || null;
+      Annotate.openExternal(
+        {
+          blockId,
+          questionId: questionId || null,
+          target: {
+            kind: 'html-element',
+            label: typeof msg.label === 'string' ? msg.label : 'Element',
+            detail: typeof msg.detail === 'string' ? msg.detail : undefined,
+          },
+        },
+        frame
+      );
+    });
   }
 
   // ---------- heartbeat ----------

@@ -1,0 +1,170 @@
+/* blocks.css — styling for RelayBlocks output (markdown, table, code, chart,
+   mermaid, html). Uses ONLY the theme tokens defined in style.css. */
+
+.blk { margin: 14px 0 0; }
+.blk:first-child { margin-top: 0; }
+
+/* ---------- shared error card ---------- */
+.blk-error {
+  color: var(--muted);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 0.88rem;
+  font-family: var(--sans);
+}
+
+/* ---------- markdown typography ---------- */
+.blk-markdown .md { color: var(--fg); }
+.blk-markdown .md > :first-child { margin-top: 0; }
+.blk-markdown .md > :last-child { margin-bottom: 0; }
+.blk-markdown .md h1,
+.blk-markdown .md h2,
+.blk-markdown .md h3 {
+  font-family: var(--serif);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  margin: 18px 0 8px;
+  text-wrap: balance;
+}
+.blk-markdown .md h1 { font-size: 1.45rem; }
+.blk-markdown .md h2 { font-size: 1.2rem; }
+.blk-markdown .md h3 { font-size: 1.05rem; }
+.blk-markdown .md p { margin: 10px 0; }
+.blk-markdown .md a { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 150ms var(--ease); }
+.blk-markdown .md a:hover { border-bottom-color: var(--accent); }
+.blk-markdown .md strong { font-weight: 600; }
+.blk-markdown .md em { font-style: italic; }
+.blk-markdown .md ul,
+.blk-markdown .md ol { margin: 10px 0; padding-left: 1.4em; }
+.blk-markdown .md li { margin: 4px 0; }
+.blk-markdown .md blockquote {
+  margin: 12px 0;
+  padding: 4px 14px;
+  border-left: 3px solid var(--accent);
+  color: var(--fg-2);
+}
+.blk-markdown .md hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 18px 0;
+}
+.blk-markdown .md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.86em;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+.blk-markdown .md pre.md-pre {
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  margin: 12px 0;
+}
+.blk-markdown .md pre.md-pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+/* ---------- code block ---------- */
+.blk-pre {
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  margin: 0;
+}
+.blk-pre code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--fg);
+  white-space: pre;
+}
+/* subtle tinter colors via theme vars only */
+.blk-pre .tok-kw,
+.blk-markdown .md .tok-kw { color: var(--accent); }
+.blk-pre .tok-str,
+.blk-markdown .md .tok-str { color: var(--ok); }
+.blk-pre .tok-com,
+.blk-markdown .md .tok-com { color: var(--muted); font-style: italic; }
+.blk-pre .tok-num,
+.blk-markdown .md .tok-num { color: var(--fg-2); }
+
+/* ---------- table ---------- */
+.blk-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+  color: var(--fg);
+}
+.blk-table th {
+  text-align: left;
+  color: var(--muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 500;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-strong);
+  white-space: nowrap;
+}
+.blk-table th.sortable { cursor: pointer; user-select: none; transition: color 150ms var(--ease); }
+.blk-table th.sortable:hover { color: var(--accent); }
+.blk-table th .sort-arrow { color: var(--accent); font-weight: 600; }
+.blk-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.blk-table tbody tr { transition: background 120ms var(--ease); }
+.blk-table tbody tr:hover { background: var(--bg-sunken); }
+.blk-table tbody tr:last-child td { border-bottom: 0; }
+
+/* ---------- chart ---------- */
+.blk-chart {
+  position: relative;
+  width: 100%;
+  height: 320px;
+}
+.blk-chart canvas { display: block; }
+.blk-chart-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 0.7rem;
+  line-height: 18px;
+  text-align: center;
+  font-weight: 600;
+  font-family: var(--sans);
+  box-shadow: var(--shadow-card);
+}
+
+/* ---------- mermaid ---------- */
+.blk-mermaid {
+  overflow: auto;
+  max-height: 1200px;
+  text-align: center;
+}
+.blk-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+.blk-mermaid .node,
+.blk-mermaid .edgeLabel { cursor: default; }

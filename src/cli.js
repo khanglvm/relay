@@ -21,7 +21,7 @@ import { openUrl } from './open.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = path.join(__dirname, '..');
-const BIN = path.join(PKG_ROOT, 'bin', 'qbd.js');
+const BIN = path.join(PKG_ROOT, 'bin', 'rly.js');
 const VERSION = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, 'package.json'), 'utf8')).version;
 
 const VALUED_FLAGS = new Set([
@@ -93,9 +93,9 @@ function readStdin() {
 }
 
 function mustLoad(id) {
-  if (!id) throw new CliError('missing <board-id>. See `qbd history` for saved boards.');
+  if (!id) throw new CliError('missing <board-id>. See `rly history` for saved boards.');
   const record = loadBoard(id);
-  if (!record) throw new CliError(`board "${id}" not found. See \`qbd history\`.`, 5);
+  if (!record) throw new CliError(`board "${id}" not found. See \`rly history\`.`, 5);
   return record;
 }
 
@@ -125,8 +125,8 @@ async function resolveSpecInput(args, mode) {
   if (!suppliedSpec && !hasContent) {
     throw new CliError(
       mode === 'show'
-        ? 'show needs --html-file <file>, --html "<markup>", or --file <spec.json>. Run `qbd agent` for examples.'
-        : 'ask needs a spec: --file <spec.json>, --file - (stdin), or -q "label::type::opt1,opt2". Run `qbd agent` for examples.'
+        ? 'show needs --html-file <file>, --html "<markup>", or --file <spec.json>. Run `rly agent` for examples.'
+        : 'ask needs a spec: --file <spec.json>, --file - (stdin), or -q "label::type::opt1,opt2". Run `rly agent` for examples.'
     );
   }
   return raw;
@@ -165,7 +165,7 @@ async function runOrDetach(record, args) {
       boardId: record.id,
       url: info.url,
       port: info.port,
-      hint: `block for the answers with: qbd wait ${record.id}`,
+      hint: `block for the answers with: rly wait ${record.id}`,
     });
     return 0;
   }
@@ -206,7 +206,7 @@ async function cmdReuse(args) {
 
 async function cmdWait(args) {
   const id = args._[0];
-  if (!id) throw new CliError('usage: qbd wait <board-id> [--timeout <sec>]');
+  if (!id) throw new CliError('usage: rly wait <board-id> [--timeout <sec>]');
   const timeoutSec = args.timeout !== undefined ? Math.max(1, Number.parseInt(args.timeout, 10) || 1) : 3600;
   const deadline = Date.now() + timeoutSec * 1000;
   mustLoad(id);
@@ -237,7 +237,7 @@ async function cmdWait(args) {
   printJson({
     status: 'wait-timeout',
     boardId: id,
-    hint: `board is still open — run \`qbd wait ${id}\` again, or \`qbd result ${id}\` to peek at the live draft`,
+    hint: `board is still open — run \`rly wait ${id}\` again, or \`rly result ${id}\` to peek at the live draft`,
   });
   return 2;
 }
@@ -279,11 +279,11 @@ function cmdOpen(args) {
   const running = listRunning();
   if (!id) {
     if (running.length === 1) id = running[0].id;
-    else if (running.length === 0) throw new CliError('no boards running. Use `qbd reopen <id>` to serve a saved one.', 5);
+    else if (running.length === 0) throw new CliError('no boards running. Use `rly reopen <id>` to serve a saved one.', 5);
     else throw new CliError(`multiple boards running — pick one: ${running.map((r) => r.id).join(', ')}`);
   }
   const info = running.find((r) => r.id === id);
-  if (!info) throw new CliError(`board "${id}" is not running. Use \`qbd reopen ${id}\` to serve it again (with saved answers).`, 5);
+  if (!info) throw new CliError(`board "${id}" is not running. Use \`rly reopen ${id}\` to serve it again (with saved answers).`, 5);
   openUrl(info.url);
   printJson({ status: 'open', boardId: id, url: info.url });
   return 0;
@@ -299,7 +299,7 @@ async function cmdStop(args) {
     }
   } else {
     const id = args._[0];
-    if (!id) throw new CliError('usage: qbd stop <board-id> | qbd stop --all');
+    if (!id) throw new CliError('usage: rly stop <board-id> | rly stop --all');
     const info = loadRunning(id);
     if (!info || !isAlive(info.pid)) {
       removeRunning(id);
@@ -338,7 +338,7 @@ function cmdHistory(args) {
         title: r.title,
         status: runningIds.has(r.id) ? 'open' : r.result?.status ?? 'unfinished',
         questions: r.spec.questions.length,
-        hasHtml: Boolean(r.spec.html),
+        blocks: (r.spec.blocks || []).length,
         hasDraft: Boolean(r.draft),
         answers: r.result?.answers ?? null,
       }))
@@ -351,9 +351,10 @@ function cmdHistory(args) {
   }
   for (const r of records) {
     const status = runningIds.has(r.id) ? 'open' : r.result?.status ?? 'unfinished';
-    console.log(`${r.id}  ${r.createdAt}  [${status}]  "${r.title}"  ${r.spec.questions.length}q${r.spec.html ? '+html' : ''}`);
+    const nBlocks = (r.spec.blocks || []).length;
+    console.log(`${r.id}  ${r.createdAt}  [${status}]  "${r.title}"  ${r.spec.questions.length}q${nBlocks ? `+${nBlocks}b` : ''}`);
   }
-  console.log(`\nReuse: \`qbd reuse <id>\` · spec: \`qbd spec <id>\` · reopen w/ answers: \`qbd reopen <id>\` · delete: \`qbd rm <id>\``);
+  console.log(`\nReuse: \`rly reuse <id>\` · spec: \`rly spec <id>\` · reopen w/ answers: \`rly reopen <id>\` · delete: \`rly rm <id>\``);
   return 0;
 }
 
@@ -375,19 +376,26 @@ function cmdRm(args) {
     return 0;
   }
   const id = args._[0];
-  if (!id) throw new CliError('usage: qbd rm <board-id> | qbd rm --all');
-  if (runningIds.has(id)) throw new CliError(`board "${id}" is running — \`qbd stop ${id}\` first.`);
+  if (!id) throw new CliError('usage: rly rm <board-id> | rly rm --all');
+  if (runningIds.has(id)) throw new CliError(`board "${id}" is running — \`rly stop ${id}\` first.`);
   if (!deleteBoard(id)) throw new CliError(`board "${id}" not found.`, 5);
   printJson({ removed: id });
   return 0;
 }
 
-const SKILL_SRC = path.join(PKG_ROOT, 'skills', 'quest-board');
+const SKILL_SRC = path.join(PKG_ROOT, 'skills', 'relay');
 
 const KNOWN_SKILL_DIRS = () => ({
-  claude: path.join(os.homedir(), '.claude', 'skills', 'quest-board'),
-  codex: path.join(os.homedir(), '.codex', 'skills', 'quest-board'),
+  claude: path.join(os.homedir(), '.claude', 'skills', 'relay'),
+  codex: path.join(os.homedir(), '.codex', 'skills', 'relay'),
 });
+
+// Pre-rename skill dirs (quest-board). `skill install` removes these so a
+// stale copy doesn't shadow the renamed one.
+const LEGACY_SKILL_DIRS = () => [
+  path.join(os.homedir(), '.claude', 'skills', 'quest-board'),
+  path.join(os.homedir(), '.codex', 'skills', 'quest-board'),
+];
 
 // One-time stderr nudge so agents that only have the CLI discover the skill.
 function firstRunHint() {
@@ -399,7 +407,7 @@ function firstRunHint() {
     const installed = Object.values(KNOWN_SKILL_DIRS()).some((p) => fs.existsSync(path.join(p, 'SKILL.md')));
     if (!installed) {
       process.stderr.write(
-        'tip (AI agents): qbd bundles a universal skill — install it with `qbd skill install`; full guide: `qbd agent`\n'
+        'tip (AI agents): rly bundles a universal skill — install it with `rly skill install`; full guide: `rly agent`\n'
       );
     }
   } catch {
@@ -414,13 +422,13 @@ function skillFreshnessWarning() {
       if (!fs.existsSync(path.join(dir, 'SKILL.md'))) continue;
       let installedVersion = null;
       try {
-        installedVersion = fs.readFileSync(path.join(dir, '.qbd-version'), 'utf8').trim();
+        installedVersion = fs.readFileSync(path.join(dir, '.rly-version'), 'utf8').trim();
       } catch {
-        // pre-0.1.2 install without a version marker
+        // pre-rename install without a version marker
       }
       if (installedVersion !== VERSION) {
         process.stderr.write(
-          `note: the quest-board skill installed for ${agent} is from qbd ${installedVersion ?? '<0.1.2'}, you run ${VERSION} — refresh with \`qbd skill install\`\n`
+          `note: the relay skill installed for ${agent} is from rly ${installedVersion ?? '<0.2.0'}, you run ${VERSION} — refresh with \`rly skill install\`\n`
         );
       }
     }
@@ -432,8 +440,8 @@ function skillFreshnessWarning() {
 function skillTargets(target) {
   const home = os.homedir();
   const known = {
-    claude: path.join(home, '.claude', 'skills', 'quest-board'),
-    codex: path.join(home, '.codex', 'skills', 'quest-board'),
+    claude: path.join(home, '.claude', 'skills', 'relay'),
+    codex: path.join(home, '.codex', 'skills', 'relay'),
   };
   if (!target || target === true || target === 'auto') {
     const found = Object.values(known).filter((p) => fs.existsSync(path.dirname(path.dirname(p))));
@@ -444,14 +452,31 @@ function skillTargets(target) {
   }
   if (target === 'both') return Object.values(known);
   if (known[target]) return [known[target]];
-  return [path.join(path.resolve(target), 'quest-board')];
+  return [path.join(path.resolve(target), 'relay')];
+}
+
+// Removes stale pre-rename quest-board skill dirs so the renamed skill is the
+// only one an agent sees. Returns the dirs actually removed.
+function removeLegacySkills() {
+  const removed = [];
+  for (const dir of LEGACY_SKILL_DIRS()) {
+    try {
+      if (fs.existsSync(dir)) {
+        fs.rmSync(dir, { recursive: true, force: true });
+        removed.push(dir);
+      }
+    } catch {
+      // best effort — a leftover dir we couldn't remove shouldn't fail install
+    }
+  }
+  return removed;
 }
 
 function cmdSkill(rest) {
   const sub = rest[0];
   if (sub === 'path') {
     console.log(SKILL_SRC);
-    process.stderr.write('(bundled skill source — copy into your agent with `qbd skill install`)\n');
+    process.stderr.write('(bundled skill source — copy into your agent with `rly skill install`)\n');
     return 0;
   }
   if (sub === 'install') {
@@ -461,21 +486,23 @@ function cmdSkill(rest) {
     for (const t of targets) {
       fs.mkdirSync(path.dirname(t), { recursive: true });
       fs.cpSync(SKILL_SRC, t, { recursive: true });
-      fs.writeFileSync(path.join(t, '.qbd-version'), VERSION);
+      fs.writeFileSync(path.join(t, '.rly-version'), VERSION);
       installed.push(t);
     }
-    printJson({ installed, note: 'most agents pick new skills up immediately; if yours does not, re-list skills or restart the session' });
+    const removedLegacy = removeLegacySkills();
+    printJson({ installed, removedLegacy, note: 'most agents pick new skills up immediately; if yours does not, re-list skills or restart the session' });
     return 0;
   }
-  console.log(`quest-board ships a universal agent skill (Claude Code, Codex, and any SKILL.md-aware agent).
+  console.log(`relay ships a universal agent skill (Claude Code, Codex, and any SKILL.md-aware agent).
 
   bundled at:  ${SKILL_SRC}
-  install it:  qbd skill install            # auto-detects ~/.claude and ~/.codex
-               qbd skill install --target claude|codex|both|<dir>
-  from repo:   npx skills add khanglvm/quest-board
+  install it:  rly skill install            # auto-detects ~/.claude and ~/.codex
+               rly skill install --target claude|codex|both|<dir>
+  from repo:   npx skills add khanglvm/relay
 
-The skill teaches your agent the board spec format, the blocking vs --detach
-patterns, and HTML visualization sizing. Full guide: \`qbd agent\`.`);
+The skill teaches your agent the board spec format (questions + rich blocks +
+annotations), the blocking vs --detach patterns, and visualization sizing.
+Full guide: \`rly agent\`.`);
   return 0;
 }
 
@@ -499,28 +526,28 @@ async function cmdServeInternal(args) {
 }
 
 function printHelp() {
-  console.log(`qbd ${VERSION} — quest-board: browser question boards & HTML visualization for AI agents
+  console.log(`rly ${VERSION} — relay: browser question boards, rich blocks & annotations for AI agents
 
 USAGE
-  qbd ask --file spec.json            create board, open browser, BLOCK until submit, print answers JSON
-  qbd ask --file - < spec.json        spec from stdin
-  qbd ask -q "Deploy?::yesno" -q "!Env::single::dev,staging,prod"
+  rly ask --file spec.json            create board, open browser, BLOCK until submit, print answers JSON
+  rly ask --file - < spec.json        spec from stdin
+  rly ask -q "Deploy?::yesno" -q "!Env::single::dev,staging,prod"
                                       quick inline questions ("!" = required, label::type::options)
-  qbd ask ... --detach                no blocking: prints {boardId,url} now; collect via \`qbd wait <id>\`
-  qbd show --html-file viz.html       visualization-only board (submit button = acknowledge)
-  qbd wait <id> [--timeout 3600]      block until board finishes, print result JSON
-  qbd result <id>                     result/status now (includes live autosaved draft while open)
-  qbd list [--json]                   running boards
-  qbd open [id]                       re-open the browser tab of a running board
-  qbd reopen <id>                     serve a saved board again, prefilled with its saved answers
-  qbd reuse <id> [--dump]             re-run a past board as a new board (--dump prints its spec)
-  qbd stop <id> | --all               stop running board(s) (status: cancelled, draft preserved)
-  qbd history [--limit n] [--json]    saved boards
-  qbd spec <id>                       print a saved board's spec JSON (edit, then ask --file again)
-  qbd rm <id> | --all                 delete saved board(s)
-  qbd schema                          JSON Schema of the board spec
-  qbd agent                           FULL GUIDE for AI agents (spec format, sizing, patterns)
-  qbd skill [install|path]            bundled universal agent skill (Claude Code, Codex, …)
+  rly ask ... --detach                no blocking: prints {boardId,url} now; collect via \`rly wait <id>\`
+  rly show --html-file viz.html       visualization-only board (submit button = acknowledge)
+  rly wait <id> [--timeout 3600]      block until board finishes, print result JSON
+  rly result <id>                     result/status now (includes live autosaved draft while open)
+  rly list [--json]                   running boards
+  rly open [id]                       re-open the browser tab of a running board
+  rly reopen <id>                     serve a saved board again, prefilled with its saved answers
+  rly reuse <id> [--dump]             re-run a past board as a new board (--dump prints its spec)
+  rly stop <id> | --all               stop running board(s) (status: cancelled, draft preserved)
+  rly history [--limit n] [--json]    saved boards
+  rly spec <id>                       print a saved board's spec JSON (edit, then ask --file again)
+  rly rm <id> | --all                 delete saved board(s)
+  rly schema                          JSON Schema of the board spec
+  rly agent                           FULL GUIDE for AI agents (spec format, blocks, sizing, patterns)
+  rly skill [install|path]            bundled universal agent skill (Claude Code, Codex, …)
 
 COMMON FLAGS
   --title <s> --intro <s> --html-file <f> --height <px> --submit-label <s>
@@ -528,12 +555,12 @@ COMMON FLAGS
 
 EXIT CODES   0 submitted/acknowledged · 2 timeout · 3 cancelled · 4 usage · 5 not found
 
-NOTES        answers autosave in real time (drafts survive timeout/cancel);
+NOTES        answers & annotations autosave in real time (drafts survive timeout/cancel);
              submitting auto-closes the tab and unblocks the CLI.
 
-AI AGENTS    run \`qbd agent\` for the complete machine-oriented guide.
-             a universal skill is bundled — install with \`qbd skill install\`
-             (or from the repo: npx skills add khanglvm/quest-board)`);
+AI AGENTS    run \`rly agent\` for the complete machine-oriented guide.
+             a universal skill is bundled — install with \`rly skill install\`
+             (or from the repo: npx skills add khanglvm/relay)`);
   return 0;
 }
 
@@ -589,12 +616,12 @@ export async function main(argv) {
       case '__serve':
         return await cmdServeInternal(parseArgs(rest));
       default:
-        throw new CliError(`unknown command "${cmd}". Run \`qbd help\`.`);
+        throw new CliError(`unknown command "${cmd}". Run \`rly help\`.`);
     }
   } catch (err) {
     if (err instanceof CliError) {
-      process.stderr.write(`qbd: ${err.message}\n`);
-      if (err.code === 4) process.stderr.write('run `qbd agent` for the agent-oriented guide\n');
+      process.stderr.write(`rly: ${err.message}\n`);
+      if (err.code === 4) process.stderr.write('run `rly agent` for the agent-oriented guide\n');
       return err.code;
     }
     throw err;

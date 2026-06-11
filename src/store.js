@@ -3,8 +3,8 @@ import path from 'node:path';
 import os from 'node:os';
 
 // All state lives under one dir so multiple boards/instances never collide.
-// QUEST_BOARD_HOME override exists for tests and sandboxed agents.
-export const HOME = process.env.QUEST_BOARD_HOME || path.join(os.homedir(), '.quest-board');
+// RLY_HOME override exists for tests and sandboxed agents.
+export const HOME = process.env.RLY_HOME || path.join(os.homedir(), '.relay');
 export const BOARDS_DIR = path.join(HOME, 'boards');
 export const RUNNING_DIR = path.join(HOME, 'running');
 

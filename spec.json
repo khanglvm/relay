@@ -1,0 +1,10 @@
+{
+  "title": "Fix check",
+  "blocks": [
+    {"type":"table","columns":["Name","Score"],"rows":[["Alpha",92],["Beta",71]],"sortable":true},
+    {"type":"code","lang":"js","code":"// greet the user\nfunction greet(name) {\n  const msg = `hello ${name}`; // template\n  return msg + ' #42';\n}"},
+    {"type":"mermaid","code":"graph TD; A[Plan]-->B[Build]; B-->C[Ship]"},
+    {"type":"chart","kind":"bar","labels":["Jan","Feb"],"series":[{"label":"Rev","data":[3,7]}]}
+  ],
+  "questions": [{"id":"ok","type":"yesno","label":"Looks right?"}]
+}

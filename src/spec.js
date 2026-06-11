@@ -23,6 +23,11 @@ const ALIASES = {
 
 const HTML_HEIGHT = { min: 100, max: 2400, boardDefault: 400, questionDefault: 360 };
 
+// Block heights clamp to the same window; defaults vary per block type.
+const BLOCK_HEIGHT = { min: 100, max: 2400 };
+export const BLOCK_TYPES = ['markdown', 'mermaid', 'chart', 'table', 'code', 'html'];
+const CHART_KINDS = ['bar', 'line', 'pie', 'doughnut', 'radar', 'scatter'];
+
 const asStr = (v) => (typeof v === 'string' ? v : v == null ? '' : String(v));
 
 function clampInt(v, min, max, def) {
@@ -44,15 +49,193 @@ function readHtml(obj, cwd, where) {
   return '';
 }
 
+// Reads an html-block body from either an inline string or a file path.
+function readBlockHtml(block, cwd, where) {
+  if (typeof block.html === 'string' && block.html) return block.html;
+  if (typeof block.htmlFile === 'string' && block.htmlFile.trim()) {
+    const p = path.resolve(cwd, block.htmlFile);
+    try {
+      return fs.readFileSync(p, 'utf8');
+    } catch {
+      throw new CliError(`${where}: cannot read htmlFile "${block.htmlFile}" (resolved: ${p})`);
+    }
+  }
+  return '';
+}
+
+// Normalizes one block object. `id` is the already-assigned block id.
+// Returns the normalized block (with a guaranteed string `type` + `id`).
+function normalizeBlock(rawBlock, id, cwd, where) {
+  if (rawBlock === null || typeof rawBlock !== 'object' || Array.isArray(rawBlock)) {
+    throw new CliError(`${where}: must be an object with a "type".`);
+  }
+  let type = asStr(rawBlock.type).trim().toLowerCase();
+  if (!type) throw new CliError(`${where}: missing "type". Valid: ${BLOCK_TYPES.join(', ')}.`);
+  if (!BLOCK_TYPES.includes(type)) {
+    throw new CliError(`${where}: unknown block type "${rawBlock.type}". Valid: ${BLOCK_TYPES.join(', ')}.`);
+  }
+
+  const hasHeight = rawBlock.height !== undefined && rawBlock.height !== null && rawBlock.height !== '';
+
+  if (type === 'markdown') {
+    const md = asStr(rawBlock.md);
+    if (!md.trim()) throw new CliError(`${where}: markdown block needs a non-empty "md" string.`);
+    const block = { id, type: 'markdown', md };
+    if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
+    return block;
+  }
+
+  if (type === 'mermaid') {
+    const code = asStr(rawBlock.code);
+    if (!code.trim()) throw new CliError(`${where}: mermaid block needs a non-empty "code" string.`);
+    const block = { id, type: 'mermaid', code };
+    if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
+    return block;
+  }
+
+  if (type === 'code') {
+    const code = asStr(rawBlock.code);
+    if (!code) throw new CliError(`${where}: code block needs a "code" string.`);
+    const block = { id, type: 'code', code };
+    if (rawBlock.lang !== undefined) block.lang = asStr(rawBlock.lang);
+    if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
+    return block;
+  }
+
+  if (type === 'chart') {
+    const hasConfig = rawBlock.config && typeof rawBlock.config === 'object' && !Array.isArray(rawBlock.config);
+    const hasShorthand =
+      typeof rawBlock.kind === 'string' ||
+      Array.isArray(rawBlock.labels) ||
+      Array.isArray(rawBlock.series);
+    if (!hasConfig && !hasShorthand) {
+      throw new CliError(`${where}: chart needs "config" (full Chart.js config) or "kind"+"labels"+"series".`);
+    }
+    const block = { id, type: 'chart' };
+    block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, 320);
+    if (hasConfig) {
+      block.config = rawBlock.config;
+      return block;
+    }
+    // Shorthand form: validate kind/labels/series.
+    const kind = asStr(rawBlock.kind).trim().toLowerCase();
+    if (!kind) throw new CliError(`${where}: chart shorthand needs a "kind" (${CHART_KINDS.join('|')}).`);
+    if (!CHART_KINDS.includes(kind)) {
+      throw new CliError(`${where}: unknown chart kind "${rawBlock.kind}". Valid: ${CHART_KINDS.join(', ')}.`);
+    }
+    if (!Array.isArray(rawBlock.labels)) {
+      throw new CliError(`${where}: chart shorthand needs a "labels" array.`);
+    }
+    if (!Array.isArray(rawBlock.series) || rawBlock.series.length < 1) {
+      throw new CliError(`${where}: chart shorthand needs a non-empty "series" array of {label, data[]}.`);
+    }
+    block.kind = kind;
+    block.labels = rawBlock.labels.map((l) => asStr(l));
+    block.series = rawBlock.series.map((s, k) => {
+      if (s === null || typeof s !== 'object' || Array.isArray(s)) {
+        throw new CliError(`${where}.series[${k}]: must be an object {label, data[]}.`);
+      }
+      if (!Array.isArray(s.data)) {
+        throw new CliError(`${where}.series[${k}]: needs a "data" array.`);
+      }
+      const out = { label: asStr(s.label), data: s.data };
+      if (s.color !== undefined) out.color = asStr(s.color);
+      return out;
+    });
+    if (rawBlock.title !== undefined) block.title = asStr(rawBlock.title);
+    return block;
+  }
+
+  if (type === 'table') {
+    if (!Array.isArray(rawBlock.columns) || rawBlock.columns.length < 1) {
+      throw new CliError(`${where}: table needs a non-empty "columns" array (strings or {key,label,align?}).`);
+    }
+    if (!Array.isArray(rawBlock.rows)) {
+      throw new CliError(`${where}: table needs a "rows" array.`);
+    }
+    const columns = rawBlock.columns.map((c, k) => {
+      if (typeof c === 'string' || typeof c === 'number') {
+        const key = String(c);
+        return { key, label: key };
+      }
+      if (c && typeof c === 'object' && !Array.isArray(c)) {
+        const key = asStr(c.key ?? c.label).trim();
+        if (!key) throw new CliError(`${where}.columns[${k}]: needs "key" or "label".`);
+        const col = { key, label: asStr(c.label ?? c.key) || key };
+        if (c.align !== undefined) col.align = asStr(c.align);
+        return col;
+      }
+      throw new CliError(`${where}.columns[${k}]: must be a string or {key, label, align?}.`);
+    });
+    // Normalize array rows into objects keyed by column key, so the client
+    // (and table-cell annotation values) always index rows the same way.
+    const rows = rawBlock.rows.map((r, ri) => {
+      if (Array.isArray(r)) {
+        const obj = {};
+        columns.forEach((col, ci) => {
+          obj[col.key] = r[ci];
+        });
+        return obj;
+      }
+      if (r && typeof r === 'object') return r;
+      throw new CliError(`${where}.rows[${ri}]: must be an array or an object.`);
+    });
+    const block = { id, type: 'table', columns, rows };
+    if (rawBlock.sortable === true) block.sortable = true;
+    if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
+    return block;
+  }
+
+  // type === 'html'
+  const html = readBlockHtml(rawBlock, cwd, where);
+  if (!html) {
+    throw new CliError(`${where}: html block needs an "html" string or readable "htmlFile".`);
+  }
+  return {
+    id,
+    type: 'html',
+    html,
+    height: clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, 360),
+  };
+}
+
+// Builds the normalized block list for a scope (board or question).
+// Legacy html/htmlFile become a PREPENDED html block; ids are assigned in
+// final order with `prefix` ('' for board → b1,b2…; '<qid>-' for questions).
+function buildBlocks(rawObj, cwd, where, prefix) {
+  const blocks = [];
+  let n = 0;
+  const nextId = () => `${prefix}b${++n}`;
+
+  // Legacy html/htmlFile → a single prepended html block. htmlHeight applies.
+  const legacyHtml = readHtml(rawObj, cwd, where);
+  if (legacyHtml) {
+    const def = prefix ? HTML_HEIGHT.questionDefault : HTML_HEIGHT.boardDefault;
+    blocks.push({
+      id: nextId(),
+      type: 'html',
+      html: legacyHtml,
+      height: clampInt(rawObj.htmlHeight, HTML_HEIGHT.min, HTML_HEIGHT.max, def),
+    });
+  }
+
+  if (rawObj.blocks !== undefined && rawObj.blocks !== null) {
+    if (!Array.isArray(rawObj.blocks)) throw new CliError(`${where}.blocks: must be an array.`);
+    rawObj.blocks.forEach((b, i) => {
+      blocks.push(normalizeBlock(b, nextId(), cwd, `${where}.blocks[${i}]`));
+    });
+  }
+  return blocks;
+}
+
 export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new CliError('Spec must be a JSON object. Run `qbd agent` for the schema and examples.');
+    throw new CliError('Spec must be a JSON object. Run `rly agent` for the schema and examples.');
   }
   const spec = {
-    title: asStr(raw.title).trim() || 'Quest Board',
+    title: asStr(raw.title).trim() || 'Relay',
     intro: asStr(raw.intro),
-    html: readHtml(raw, cwd, 'board'),
-    htmlHeight: clampInt(raw.htmlHeight, HTML_HEIGHT.min, HTML_HEIGHT.max, HTML_HEIGHT.boardDefault),
+    blocks: buildBlocks(raw, cwd, 'board', ''),
     allowPartial: raw.allowPartial !== false,
     note: raw.note !== false,
     autoClose: raw.autoClose !== false,
@@ -89,8 +272,7 @@ export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
       description: asStr(rq.description),
       required: rq.required === true,
       note: rq.note === true,
-      html: readHtml(rq, cwd, where),
-      htmlHeight: clampInt(rq.htmlHeight, HTML_HEIGHT.min, HTML_HEIGHT.max, HTML_HEIGHT.questionDefault),
+      blocks: buildBlocks(rq, cwd, where, `${id}-`),
       placeholder: asStr(rq.placeholder),
     };
 
@@ -127,14 +309,14 @@ export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
     spec.questions.push(q);
   });
 
-  if (!spec.questions.length && !spec.html) {
-    throw new CliError('Spec needs "questions" and/or "html"/"htmlFile" — nothing to show.');
+  if (!spec.questions.length && !spec.blocks.length) {
+    throw new CliError('Spec needs "questions" and/or "blocks"/"html" — nothing to show.');
   }
   spec.submitLabel = asStr(raw.submitLabel).trim() || (spec.questions.length ? 'Submit' : 'Acknowledge');
   return spec;
 }
 
-// Inline question syntax for `qbd ask -q`:  "[!]label::type::opt1,opt2"
+// Inline question syntax for `rly ask -q`:  "[!]label::type::opt1,opt2"
 // Leading "!" marks the question required. type defaults to "text".
 export function questionFromInline(s, i) {
   let body = asStr(s).trim();
@@ -151,16 +333,54 @@ export function questionFromInline(s, i) {
   return q;
 }
 
+const BLOCK_SCHEMA = {
+  type: 'array',
+  description:
+    'Rich content blocks rendered in order. Board-level blocks show above the questions; per-question blocks show above the control. Each is annotatable (element-level comments returned in result.annotations).',
+  items: {
+    type: 'object',
+    required: ['type'],
+    properties: {
+      type: { type: 'string', enum: BLOCK_TYPES },
+      md: { type: 'string', description: 'markdown: built-in mini renderer (no external library). Text selections are commentable.' },
+      code: { type: 'string', description: 'mermaid: diagram source (e.g. "graph TD; A-->B"); code: the source to display.' },
+      lang: { type: 'string', description: 'code block: language hint for display.' },
+      config: { type: 'object', description: 'chart: a full Chart.js config object.' },
+      kind: { type: 'string', enum: CHART_KINDS, description: 'chart shorthand: chart kind (alternative to "config").' },
+      labels: { type: 'array', description: 'chart shorthand: x-axis / category labels.' },
+      series: {
+        type: 'array',
+        description: 'chart shorthand: [{label, data:[...], color?}]. Chart data points are individually commentable.',
+        items: { type: 'object', properties: { label: { type: 'string' }, data: { type: 'array' }, color: { type: 'string' } } },
+      },
+      title: { type: 'string', description: 'chart shorthand: chart title.' },
+      columns: {
+        type: 'array',
+        description: 'table: strings, or {key, label, align?}. Cells are commentable.',
+        items: { anyOf: [{ type: 'string' }, { type: 'object' }] },
+      },
+      rows: { type: 'array', description: 'table: array of arrays (positional) or array of objects (keyed by column key).' },
+      sortable: { type: 'boolean', description: 'table: enable click-to-sort headers.' },
+      html: { type: 'string', description: 'html: custom markup rendered in a sandboxed iframe.' },
+      htmlFile: { type: 'string', description: 'html: path to an HTML file (alternative to "html").' },
+      height: { type: 'integer', minimum: BLOCK_HEIGHT.min, maximum: BLOCK_HEIGHT.max, description: 'Block height in px. Defaults: chart 320, html 360; markdown/table/code flow naturally; mermaid natural (max 1200, scrolls).' },
+    },
+  },
+};
+
 export const SPEC_SCHEMA = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
-  title: 'quest-board board spec',
+  title: 'relay board spec',
   type: 'object',
+  description:
+    'A relay board. Renders an optional intro, board-level blocks, then questions (each with optional per-question blocks), then a submit button. The result JSON contains "answers", "comment", per-question "notes", and "annotations" (element-level comments the user attached to any block — see the annotation shape below).',
   properties: {
-    title: { type: 'string', description: 'Board title (default "Quest Board")' },
+    title: { type: 'string', description: 'Board title (default "Relay")' },
     intro: { type: 'string', description: 'Intro text shown under the title. Newlines preserved.' },
-    html: { type: 'string', description: 'Board-level custom HTML, rendered in a sandboxed iframe above the questions.' },
-    htmlFile: { type: 'string', description: 'Path to an HTML file (alternative to "html"). Resolved against the CWD.' },
-    htmlHeight: { type: 'integer', minimum: 100, maximum: 2400, default: 400, description: 'iframe height in px. Width is always 100% of the content column (~820px max, ~300px min on phones).' },
+    blocks: BLOCK_SCHEMA,
+    html: { type: 'string', description: 'Legacy: board-level custom HTML. Normalized into a single html block PREPENDED to "blocks".' },
+    htmlFile: { type: 'string', description: 'Legacy: path to an HTML file (alternative to "html"). Resolved against the CWD. Normalized into a prepended html block.' },
+    htmlHeight: { type: 'integer', minimum: HTML_HEIGHT.min, maximum: HTML_HEIGHT.max, default: HTML_HEIGHT.boardDefault, description: 'Legacy: iframe height for the html/htmlFile block.' },
     allowPartial: { type: 'boolean', default: true, description: 'When true, users may submit with unanswered questions (returned in "skipped").' },
     note: { type: 'boolean', default: true, description: 'Show an optional free-text note box ("Anything else?") returned as "comment".' },
     autoClose: { type: 'boolean', default: true, description: 'Try to close the browser tab automatically after submit.' },
@@ -197,12 +417,19 @@ export const SPEC_SCHEMA = {
           max: { type: 'integer', default: 5, maximum: 10, description: 'scale only' },
           minLabel: { type: 'string', description: 'scale only' },
           maxLabel: { type: 'string', description: 'scale only' },
-          html: { type: 'string', description: 'Per-question custom HTML (sandboxed iframe above the control).' },
-          htmlFile: { type: 'string' },
-          htmlHeight: { type: 'integer', minimum: 100, maximum: 2400, default: 360 },
+          blocks: BLOCK_SCHEMA,
+          html: { type: 'string', description: 'Legacy: per-question custom HTML. Normalized into an html block prepended to this question\'s "blocks".' },
+          htmlFile: { type: 'string', description: 'Legacy: path to an HTML file (alternative to "html").' },
+          htmlHeight: { type: 'integer', minimum: HTML_HEIGHT.min, maximum: HTML_HEIGHT.max, default: HTML_HEIGHT.questionDefault, description: 'Legacy: iframe height for the html/htmlFile block.' },
         },
       },
     },
+    annotations: {
+      type: 'array',
+      readOnly: true,
+      description:
+        'Returned in the result (not part of the input spec). Element-level comments the user attached to blocks. Each: {id, questionId|null, blockId|null, target:{kind:"chart-element"|"mermaid-node"|"table-cell"|"text"|"html-element", …}, text, createdAt}.',
+    },
   },
-  anyOf: [{ required: ['questions'] }, { required: ['html'] }, { required: ['htmlFile'] }],
+  anyOf: [{ required: ['questions'] }, { required: ['blocks'] }, { required: ['html'] }, { required: ['htmlFile'] }],
 };

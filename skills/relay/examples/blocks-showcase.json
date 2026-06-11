@@ -1,0 +1,118 @@
+{
+  "title": "Q2 engineering review",
+  "intro": "Below you'll find the sprint metrics, architecture overview, and a data table. Hover chart bars, click diagram nodes, or click table cells to leave inline comments — they come back with your answers. Select any text in a markdown section to annotate it too.",
+  "blocks": [
+    {
+      "type": "markdown",
+      "md": "## Sprint velocity\nThe chart below shows shipped vs planned story points for each sprint this quarter. Click any bar to comment on a specific sprint."
+    },
+    {
+      "type": "chart",
+      "kind": "bar",
+      "title": "Q2 velocity — shipped vs planned",
+      "labels": ["S1", "S2", "S3", "S4", "S5", "S6"],
+      "series": [
+        { "label": "Shipped", "data": [34, 41, 29, 47, 38, 52], "color": "#4d8a66" },
+        { "label": "Planned", "data": [40, 40, 40, 40, 40, 40], "color": "#c2674b" }
+      ],
+      "height": 320
+    },
+    {
+      "type": "markdown",
+      "md": "## System architecture\nThe diagram below shows the current service topology. Click any node to comment on it."
+    },
+    {
+      "type": "mermaid",
+      "code": "graph LR\n  Client-->|HTTPS|Gateway\n  Gateway-->AuthService\n  Gateway-->APIService\n  APIService-->DB[(Postgres)]\n  APIService-->Cache[(Redis)]\n  APIService-->Queue[[Job queue]]\n  Queue-->Worker\n  Worker-->DB",
+      "height": 300
+    },
+    {
+      "type": "markdown",
+      "md": "## Service health snapshot\nCurrent status as of the last deployment. Click any cell to comment."
+    },
+    {
+      "type": "table",
+      "columns": [
+        { "key": "service",  "label": "Service" },
+        { "key": "status",   "label": "Status",      "align": "center" },
+        { "key": "p99ms",    "label": "p99 (ms)",     "align": "right" },
+        { "key": "errRate",  "label": "Error rate",   "align": "right" },
+        { "key": "owner",    "label": "Owner" }
+      ],
+      "rows": [
+        { "service": "Gateway",     "status": "healthy",  "p99ms": 42,  "errRate": "0.1%", "owner": "platform" },
+        { "service": "AuthService", "status": "healthy",  "p99ms": 98,  "errRate": "0.0%", "owner": "identity" },
+        { "service": "APIService",  "status": "degraded", "p99ms": 620, "errRate": "2.4%", "owner": "core" },
+        { "service": "Worker",      "status": "healthy",  "p99ms": 310, "errRate": "0.3%", "owner": "core" }
+      ],
+      "sortable": true
+    },
+    {
+      "type": "markdown",
+      "md": "## Config reference\nDeployment config in use this quarter:"
+    },
+    {
+      "type": "code",
+      "lang": "yaml",
+      "code": "api_service:\n  replicas: 4\n  memory_limit: 512Mi\n  cpu_limit: 500m\n  db_pool_size: 20\n  cache_ttl_s: 300"
+    }
+  ],
+  "questions": [
+    {
+      "id": "biggest_concern",
+      "type": "single",
+      "label": "Which area needs the most attention next quarter?",
+      "required": true,
+      "options": [
+        { "value": "api_perf",    "label": "API Service performance", "description": "p99 and error rate are high" },
+        { "value": "velocity",    "label": "Sprint predictability",   "description": "variance between sprints" },
+        { "value": "arch",        "label": "Architecture complexity", "description": "service sprawl, dependency depth" },
+        { "value": "on_call",     "label": "On-call burden",         "description": "toil from degraded services" }
+      ],
+      "other": true,
+      "note": true
+    },
+    {
+      "id": "api_degraded_cause",
+      "type": "single",
+      "label": "What is most likely causing the APIService degradation?",
+      "options": [
+        { "value": "db_pool",   "label": "DB connection pool exhaustion" },
+        { "value": "cache_miss","label": "Cache miss storm" },
+        { "value": "upstream",  "label": "Upstream traffic spike" },
+        { "value": "unknown",   "label": "Unknown — needs investigation" }
+      ],
+      "other": true
+    },
+    {
+      "id": "ship_reliability_work",
+      "type": "yesno",
+      "label": "Should we dedicate at least one sprint to reliability before adding features?"
+    },
+    {
+      "id": "velocity_target",
+      "type": "scale",
+      "label": "How ambitious should Q3's velocity target be?",
+      "min": 1,
+      "max": 5,
+      "minLabel": "conservative (≤40 pts)",
+      "maxLabel": "aggressive (60+ pts)",
+      "blocks": [
+        {
+          "type": "markdown",
+          "md": "Current average: **40 pts/sprint**. Improving reliability tooling could raise the ceiling, but also costs sprint capacity up front."
+        }
+      ]
+    },
+    {
+      "id": "other_notes",
+      "type": "textarea",
+      "label": "Anything else I should factor in for Q3 planning?",
+      "placeholder": "team changes, external deadlines, tech debt priorities…"
+    }
+  ],
+  "note": true,
+  "allowPartial": false,
+  "autoClose": true,
+  "submitLabel": "Submit review"
+}
