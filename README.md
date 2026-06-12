@@ -16,26 +16,6 @@ note, Submit — and the agent picks up your answers and keeps going:
 
 ![Full flow: Claude Code opens a relay board, the user answers, comments and submits, the agent continues](https://raw.githubusercontent.com/khanglvm/relay/main/docs/assets/demo.gif)
 
-**Visual answer options** — every choice carries its own chart/image/diagram, so you pick by looking:
-
-![Visual answer options: clicking between two options that each carry their own chart](https://raw.githubusercontent.com/khanglvm/relay/main/docs/assets/feature-options.gif)
-
-**Comment on anything** — click a chart bar, diagram node, table cell, or sentence; comments return to the agent with the answers:
-
-![Clicking a chart bar and leaving an inline comment](https://raw.githubusercontent.com/khanglvm/relay/main/docs/assets/feature-annotate.gif)
-
-**Full-screen any visual** — one button above every chart, diagram, table, image, and prototype:
-
-![Expanding a diagram into the full-screen overlay](https://raw.githubusercontent.com/khanglvm/relay/main/docs/assets/feature-fullscreen.gif)
-
-| Light theme | Dark theme |
-|---|---|
-| ![relay board light theme](https://raw.githubusercontent.com/khanglvm/relay/main/docs/assets/board-light.png) | ![relay board dark theme](https://raw.githubusercontent.com/khanglvm/relay/main/docs/assets/board-dark.png) |
-
-| Annotation popover | Mobile |
-|---|---|
-| ![Annotation comment on a chart bar](https://raw.githubusercontent.com/khanglvm/relay/main/docs/assets/annotations.png) | ![Mobile view at 375px](https://raw.githubusercontent.com/khanglvm/relay/main/docs/assets/mobile.png) |
-
 ## Quick start
 
 ```sh
