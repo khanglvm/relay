@@ -25,19 +25,37 @@ function readUi(name) {
 }
 
 // Strips block bodies for the client payload: html blocks ship only metadata
-// (their bodies are served via /html/b/<id>), everything else ships as-is.
+// (their bodies are served via /html/b/<id>), embedded images ship only
+// metadata (bytes served via /img/b/<id>), everything else ships as-is.
 function clientBlock(b) {
   if (b && b.type === 'html') {
     return { id: b.id, type: 'html', height: b.height, hasHtml: Boolean(b.html) };
   }
+  if (b && b.type === 'image' && typeof b.src === 'string' && b.src.startsWith('data:')) {
+    return { id: b.id, type: 'image', alt: b.alt, height: b.height, hasData: true };
+  }
   return b;
+}
+
+// One question for the client payload: strip block bodies at the question
+// level AND inside each option's blocks.
+function clientQuestion(q) {
+  const out = { ...q, blocks: (q.blocks || []).map(clientBlock) };
+  if (Array.isArray(q.options)) {
+    out.options = q.options.map((o) =>
+      o && Array.isArray(o.blocks) && o.blocks.length ? { ...o, blocks: o.blocks.map(clientBlock) } : o
+    );
+  }
+  return out;
 }
 
 // True when any block in the spec needs a given vendored library.
 function specNeeds(spec, type) {
   const has = (blocks) => Array.isArray(blocks) && blocks.some((b) => b && b.type === type);
   if (has(spec.blocks)) return true;
-  return spec.questions.some((q) => has(q.blocks));
+  return spec.questions.some(
+    (q) => has(q.blocks) || (Array.isArray(q.options) && q.options.some((o) => o && has(o.blocks)))
+  );
 }
 
 function vendorPresent(file) {
@@ -62,7 +80,7 @@ function buildPage(record, rev) {
   const clientSpec = {
     ...spec,
     blocks: (spec.blocks || []).map(clientBlock),
-    questions: spec.questions.map((q) => ({ ...q, blocks: (q.blocks || []).map(clientBlock) })),
+    questions: spec.questions.map(clientQuestion),
   };
   // Tell the client which vendored libraries to lazy-load — true only when a
   // block needs it AND the vendored asset is actually present.
@@ -150,16 +168,24 @@ function sanitizeBlockEdits(value) {
   return out;
 }
 
-// Resolves an html block body by id from the board or any question scope.
-function findHtmlBlock(spec, blockId) {
-  const scan = (blocks) => (Array.isArray(blocks) ? blocks.find((b) => b && b.id === blockId && b.type === 'html') : undefined);
+// Resolves a block by id + type from the board, any question, or any option.
+function findBlock(spec, blockId, type) {
+  const scan = (blocks) => (Array.isArray(blocks) ? blocks.find((b) => b && b.id === blockId && b.type === type) : undefined);
   const board = scan(spec.blocks);
   if (board) return board;
   for (const q of spec.questions) {
     const hit = scan(q.blocks);
     if (hit) return hit;
+    for (const o of Array.isArray(q.options) ? q.options : []) {
+      const opt = o && scan(o.blocks);
+      if (opt) return opt;
+    }
   }
   return undefined;
+}
+
+function findHtmlBlock(spec, blockId) {
+  return findBlock(spec, blockId, 'html');
 }
 
 // The board's first html block (legacy /html/board alias).
@@ -379,6 +405,14 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         const block = findHtmlBlock(record.spec, blockId);
         if (!block) return sendJson(res, 404, { error: `no html block "${blockId}"` });
         sendHtml(res, wrapFragment(block.html || '', theme));
+      } else if (req.method === 'GET' && pathname.startsWith('/img/b/')) {
+        // Embedded image bytes (image blocks authored from local files).
+        const blockId = decodeURIComponent(pathname.slice('/img/b/'.length));
+        const block = findBlock(record.spec, blockId, 'image');
+        const m = block && typeof block.src === 'string' ? block.src.match(/^data:([^;,]+);base64,(.*)$/s) : null;
+        if (!m) return sendJson(res, 404, { error: `no embedded image block "${blockId}"` });
+        res.writeHead(200, { 'content-type': m[1], 'cache-control': 'no-store' });
+        res.end(Buffer.from(m[2], 'base64'));
       } else if (req.method === 'GET' && pathname === '/html/board') {
         // Legacy alias → the board's first html block.
         const block = firstBoardHtml(record.spec);

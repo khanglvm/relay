@@ -735,8 +735,29 @@ function removeLegacySkills() {
   return removed;
 }
 
+// Short instruction block for an agent's main instruction file (CLAUDE.md,
+// AGENTS.md, …). A skill is only a tier-1 hint that agents can ignore; these
+// rules, appended to the instructions the agent always reads, enforce usage.
+// Printed to stdout so `rly skill rules >> CLAUDE.md` is the whole install.
+const SKILL_RULES = `## relay — ask & show in the browser, not the terminal
+
+- Need the user's decisions, feedback, requirements, or approval (anything
+  beyond one trivial yes/no)? Do NOT ask in plain terminal text. Build a board
+  spec and run: \`rly ask --file spec.json --detach\`, then \`rly wait <boardId>\`.
+- Presenting a plan, structure, architecture, data, or a prototype? Show a
+  relay board with mermaid/graphviz/chart/table/image/html blocks — never
+  ASCII diagrams or walls of prose.
+- When answer choices are visual (designs, layouts, variants), give each
+  option its own visual (\`options[].blocks\`) so the user picks by looking.
+- Read the result JSON from stdout; treat \`comment\` and \`annotations\` as
+  first-class feedback. Full guide: \`rly agent\`.`;
+
 function cmdSkill(rest) {
   const sub = rest[0];
+  if (sub === 'rules') {
+    console.log(SKILL_RULES);
+    return 0;
+  }
   if (sub === 'path') {
     console.log(SKILL_SRC);
     process.stderr.write('(bundled skill source — copy into your agent with `rly skill install`)\n');
@@ -759,9 +780,11 @@ function cmdSkill(rest) {
   console.log(`relay ships a universal agent skill (Claude Code, Codex, and any SKILL.md-aware agent).
 
   bundled at:  ${SKILL_SRC}
-  install it:  rly skill install            # auto-detects ~/.claude and ~/.codex
+  install it:  rly skill install            # auto-detects ~/.claude, ~/.codex, ~/.agents
                rly skill install --target claude|codex|both|<dir>
   from repo:   npx skills add khanglvm/relay
+  enforce it:  rly skill rules >> CLAUDE.md # or AGENTS.md — short always-read rules,
+                                            # because a skill alone is an ignorable hint
 
 The skill teaches your agent the board spec format (questions + rich blocks +
 annotations), the blocking vs --detach patterns, and visualization sizing.
@@ -816,7 +839,8 @@ USAGE
   rly rm <id> | --all                 delete saved board(s)
   rly schema                          JSON Schema of the board spec
   rly agent                           FULL GUIDE for AI agents (spec format, blocks, sizing, patterns)
-  rly skill [install|path]            bundled universal agent skill (Claude Code, Codex, …)
+  rly skill [install|rules|path]      bundled universal agent skill (Claude Code, Codex, …)
+                                      \`rly skill rules >> CLAUDE.md\` adds always-read usage rules
 
 COMMON FLAGS
   --title <s> --intro <s> --html-file <f> --height <px> --submit-label <s>

@@ -82,7 +82,14 @@ rly show --html-file prototype.html --title "Dashboard concept" --height 600
     { "id": "confidence", "type": "scale", "label": "Confidence?", "min": 1, "max": 5,
       "minLabel": "low", "maxLabel": "high" },
     { "id": "layout", "type": "single", "label": "Which layout?", "options": ["left", "right"],
-      "blocks": [{ "type": "markdown", "md": "Compare the two options above." }] }
+      "blocks": [{ "type": "markdown", "md": "Compare the two options above." }] },
+    { "id": "variant", "type": "single", "label": "Which design variant?",
+      "options": [                                      // blocks INSIDE an option = visual choice
+        { "value": "hero", "label": "Hero", "blocks": [
+          { "type": "image", "src": "hero-mock.png", "height": 180 } ] },
+        { "value": "split", "label": "Split", "blocks": [
+          { "type": "html", "html": "<div style='display:flex'>…</div>", "height": 180 } ] }
+      ] }
   ]
 }
 ```
@@ -136,15 +143,45 @@ so far.
 
 ## Blocks
 
-Every visual block (mermaid / graphviz / plantuml / chart / html) automatically
-gets viewer controls: zoom in/out (or cmd/ctrl+wheel), 1:1, fit-to-width, and a
-full-screen overlay (Esc closes). Don't shrink large diagrams to make them fit
-— the user can always expand and zoom; annotations keep working at any zoom
-and inside full-screen.
+Every visual block (mermaid / graphviz / plantuml / chart / table / html /
+image) automatically gets a full-screen button (4-corner expand icon, Esc
+closes); diagrams and images also zoom with cmd/ctrl+wheel. Don't shrink large
+diagrams to make them fit — the user can always expand and zoom; annotations
+keep working at any zoom and inside full-screen.
 
-Blocks can appear at the board level (`"blocks": [...]` on the root object) or
-per question (`"blocks": [...]` on a question object). Heights clamp to
-100–2400 px.
+Blocks can appear at the board level (`"blocks": [...]` on the root object),
+per question (`"blocks": [...]` on a question object), or per OPTION of a
+single/multi question (`"blocks": [...]` on an option object). Heights clamp
+to 100–2400 px.
+
+### Option-level visuals — show each choice
+
+When a question's options are inherently visual — design variants, layouts,
+screenshots, palette/chart-style alternatives, competing architectures — give
+EACH option a compact block so the user picks by looking instead of reading a
+description and guessing:
+
+```jsonc
+{ "id": "scheme", "type": "single", "label": "Color scheme?",
+  "options": [
+    { "value": "warm", "label": "Warm", "description": "terracotta accent",
+      "blocks": [{ "type": "html", "html": "<div style='background:#C2674B;height:100%'></div>", "height": 140 }] },
+    { "value": "cool", "label": "Cool", "description": "slate accent",
+      "blocks": [{ "type": "image", "src": "cool-preview.png", "height": 140 }] }
+  ] }
+```
+
+Rules of thumb:
+
+- Any block type works inside an option (image, html, chart, mermaid,
+  graphviz, plantuml, table, code, markdown).
+- Keep option visuals **compact** — `"height"` ~140–260. They render inside the
+  option card, under the label/description.
+- Interacting with the visual (zoom, annotate, chart hover) never toggles the
+  option; the label row is what selects. Option visuals stay fully annotatable.
+- Use this whenever the choice has visual/example context; skip it for plainly
+  textual options. It beats one big side-by-side comparison block because the
+  selected visual is unambiguous.
 
 ### All block shapes
 
@@ -211,6 +248,11 @@ per question (`"blocks": [...]` on a question object). Heights clamp to
 // HTML — sandboxed iframe; default height 360
 { "type": "html", "html": "<h1>Hello</h1>", "height": 360 }
 { "type": "html", "htmlFile": "viz.html",   "height": 400 }
+
+// Image — local file path (embedded at spec time, works offline), http(s) URL,
+// or data URI. "height" caps the displayed height; zoom/full-screen included.
+{ "type": "image", "src": "screenshots/variant-a.png", "alt": "Variant A", "height": 220 }
+{ "type": "image", "src": "https://example.com/mock.png" }
 ```
 
 ### When to use which block
@@ -224,6 +266,7 @@ per question (`"blocks": [...]` on a question object). Heights clamp to
 | `table` | structured comparisons, option matrices, data grids |
 | `markdown` | prose context, background, instructions, section headings |
 | `code` | code snippets, config examples, command output |
+| `image` | screenshots, mockup exports, photos — local files embed and work offline |
 | `html` | anything else — pixel-perfect mockups, custom widgets, embeds |
 
 ### Height rules
@@ -232,8 +275,11 @@ per question (`"blocks": [...]` on a question object). Heights clamp to
 - `mermaid`: natural flow, max-height 1200 px with internal scroll. Override with `"height"`.
 - `chart`: default 320 px. Override with `"height"`.
 - `html`: default 360 px. Override with `"height"`.
+- `image`: natural size (never upscaled), max-height 1200 px with scroll. `"height"` caps it.
 - `table`: natural flow.
 - All heights clamp to 100–2400 px.
+- Inside OPTION cards, always set a compact `"height"` (~140–260) on
+  chart/html/image blocks — the per-scope defaults are tuned for full-width use.
 
 ## Custom HTML sizing contract
 
@@ -304,7 +350,7 @@ intro. Annotations are autosaved with the draft and returned in the final result
 | `table-cell` | `row` (0-based), `col` (column key), `value` | clicking a table cell |
 | `text` | `quote`, `prefix` (≤30 chars before), `suffix` (≤30 after) | selecting text in a markdown block |
 | `html-element` | `label`, `detail?` | clicking a `relayKit.commentable()` element |
-| `image` | `label` | clicking the PlantUML diagram image |
+| `image` | `label` | clicking a PlantUML diagram or an image block |
 
 Read annotations as first-class feedback — they often carry the sharpest insight
 (e.g. a user circling the one data point that concerns them, or quoting the exact

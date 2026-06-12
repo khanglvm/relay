@@ -144,6 +144,23 @@ h1 {
 .opt .od { color: var(--muted); font-size: 0.85rem; }
 .opt .otherbox { margin-top: 6px; }
 
+/* options carrying visual blocks: the wrapper card is the selectable unit;
+   the inner label stays clickable, the blocks below it don't toggle */
+.optwrap {
+  border: 1px solid var(--border); border-radius: 10px;
+  margin: 8px 0;
+  transition: border-color 150ms var(--ease), background 150ms var(--ease);
+}
+.optwrap:hover { border-color: var(--accent); }
+.optwrap.sel { border-color: var(--accent); background: var(--accent-soft); }
+.optwrap > .opt { border: none; margin: 0; background: none; }
+.optwrap > .blocks { padding: 0 14px 12px 40px; }
+.optwrap .blk { margin-top: 10px; }
+.optwrap .blk:first-child { margin-top: 0; }
+@media (max-width: 600px) {
+  .optwrap > .blocks { padding-left: 14px; }
+}
+
 .seg { display: flex; gap: 8px; flex-wrap: wrap; }
 .seg button, .scale button {
   background: var(--card); color: var(--fg);

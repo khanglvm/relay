@@ -286,7 +286,20 @@
     for (const lab of group.querySelectorAll('label.opt')) {
       const input = lab.querySelector('input');
       lab.classList.toggle('sel', input.checked);
+      // options with visuals: the bordered card is the wrapper, not the label
+      const wrap = lab.closest('.optwrap');
+      if (wrap) wrap.classList.toggle('sel', input.checked);
     }
+  }
+
+  // Options may carry their own blocks (visual examples of the choice). The
+  // blocks render in a wrapper card OUTSIDE the <label> so interacting with a
+  // chart/diagram/image doesn't toggle the option.
+  function withOptionBlocks(labelEl, o, questionId) {
+    if (!Array.isArray(o.blocks) || !o.blocks.length) return labelEl;
+    const wrap = el('div', { class: 'optwrap' + (labelEl.classList.contains('sel') ? ' sel' : '') }, labelEl);
+    renderBlocks(wrap, o.blocks, questionId);
+    return wrap;
   }
 
   function controlSingle(q) {
@@ -327,12 +340,16 @@
         syncSingle();
       });
       group.append(
-        el('label', { class: 'opt' + (input.checked ? ' sel' : '') },
-          input,
-          el('div', {},
-            el('div', { class: 'ol' }, o.label),
-            o.description ? el('div', { class: 'od' }, o.description) : null
-          )
+        withOptionBlocks(
+          el('label', { class: 'opt' + (input.checked ? ' sel' : '') },
+            input,
+            el('div', {},
+              el('div', { class: 'ol' }, o.label),
+              o.description ? el('div', { class: 'od' }, o.description) : null
+            )
+          ),
+          o,
+          q.id
         )
       );
     }
@@ -391,12 +408,16 @@
       input.checked = selected.has(o.value);
       input.addEventListener('change', readChecked);
       group.append(
-        el('label', { class: 'opt' + (input.checked ? ' sel' : '') },
-          input,
-          el('div', {},
-            el('div', { class: 'ol' }, o.label),
-            o.description ? el('div', { class: 'od' }, o.description) : null
-          )
+        withOptionBlocks(
+          el('label', { class: 'opt' + (input.checked ? ' sel' : '') },
+            input,
+            el('div', {},
+              el('div', { class: 'ol' }, o.label),
+              o.description ? el('div', { class: 'od' }, o.description) : null
+            )
+          ),
+          o,
+          q.id
         )
       );
     }

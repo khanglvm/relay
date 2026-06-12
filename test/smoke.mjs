@@ -812,6 +812,81 @@ console.log('17. skill frontmatter portability');
   const inner = line.slice(1, -1);
   ok(!inner.includes('"'), 'description has no unescaped inner double quotes');
   ok(inner.length <= 1024, `description within the 1024-char agent-skills cap (${inner.length})`);
+
+  // `rly skill rules` prints the always-read instruction block for CLAUDE.md /
+  // AGENTS.md (the enforcement layer above the ignorable skill hint).
+  const rules = await run(['skill', 'rules']);
+  ok(rules.code === 0 && rules.stdout.startsWith('## relay'), 'rly skill rules prints a markdown rules block');
+  ok(/rly ask --file spec\.json --detach/.test(rules.stdout) && /options\[\]\.blocks/.test(rules.stdout), 'rules cover the detach pattern and visual options');
+}
+
+// ---------- 18. option-level blocks + image block ----------
+console.log('18. option blocks & image block');
+{
+  // 1x1 red-pixel PNG, written to disk to exercise the local-file embed path.
+  const pngB64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const pngPath = path.join(HOME, 'opt.png');
+  fs.writeFileSync(pngPath, Buffer.from(pngB64, 'base64'));
+  const OPT_SPEC = {
+    title: 'Visual options',
+    blocks: [{ type: 'image', src: 'https://example.com/remote.png', alt: 'remote' }],
+    questions: [
+      {
+        id: 'pick', type: 'single', label: 'Pick a variant',
+        options: [
+          { value: 'a', label: 'A', blocks: [
+            { type: 'image', src: pngPath, alt: 'variant A', height: 140 },
+            { type: 'html', html: '<b>opt html</b>', height: 140 },
+          ] },
+          { value: 'b', label: 'B', blocks: [
+            { type: 'chart', kind: 'bar', labels: ['x'], series: [{ label: 's', data: [1] }], height: 140 },
+          ] },
+          'c',
+        ],
+      },
+    ],
+  };
+  const optSpecPath = path.join(HOME, 'opt-spec.json');
+  fs.writeFileSync(optSpecPath, JSON.stringify(OPT_SPEC));
+
+  const { url, exited } = await spawnBlocking(['ask', '--file', optSpecPath, '--no-open', '--timeout', '60']);
+  const board = await (await fetch(new URL('/api/board', url))).json();
+  const opts = board.spec.questions[0].options;
+  ok(opts[0].blocks.map((b) => b.id).join(',') === 'pick-o1-b1,pick-o1-b2', 'option block ids are <qid>-o<n>-b<m>');
+  ok(opts[0].blocks[0].type === 'image' && opts[0].blocks[0].src.startsWith('data:image/png;base64,'), 'local image file embedded as data URI');
+  ok(opts[1].blocks[0].type === 'chart' && opts[1].blocks[0].height === 140, 'option chart block normalized');
+  ok(opts[2].value === 'c' && !('blocks' in opts[2]), 'plain string option stays block-free');
+  ok(board.spec.blocks[0].src === 'https://example.com/remote.png', 'remote image src passes through unembedded');
+
+  // Page payload: bodies stripped, metadata + vendor flags kept.
+  const page = await (await fetch(url)).text();
+  ok(!page.includes('opt html'), 'option html body is NOT inline in the page');
+  ok(!page.includes(pngB64), 'embedded image bytes are NOT inline in the page');
+  ok(page.includes('"hasData":true'), 'embedded image block ships hasData flag');
+  if (fs.existsSync(path.join(ROOT, 'vendor', 'chart.umd.js'))) {
+    ok(/"vendor":\{"chart":true/.test(page), 'option-level chart block triggers the chart vendor flag');
+  }
+
+  // Serving endpoints reach option scope.
+  const oh = await (await fetch(new URL('/html/b/pick-o1-b2', url))).text();
+  ok(oh.includes('<b>opt html</b>'), 'option html block served at /html/b/<id>');
+  const ir = await fetch(new URL('/img/b/pick-o1-b1', url));
+  ok(ir.status === 200 && (ir.headers.get('content-type') || '').includes('image/png'), '/img/b/<id> serves the embedded image with its mime');
+  ok(Buffer.from(await ir.arrayBuffer()).equals(Buffer.from(pngB64, 'base64')), 'embedded image bytes round-trip exactly');
+  ok((await fetch(new URL('/img/b/nope', url))).status === 404, '/img/b/<unknown> → 404');
+
+  await post(url, '/api/submit', { answers: { pick: 'a' } });
+  await exited;
+
+  // Validation errors.
+  const noSrc = await run(['ask', '--file', '-'], { input: JSON.stringify({ title: 'x', blocks: [{ type: 'image' }] }) });
+  ok(noSrc.code === 4 && /image block needs a "src"/.test(noSrc.stderr), 'image without src → exit 4');
+  const badExt = await run(['ask', '--file', '-'], { input: JSON.stringify({ title: 'x', blocks: [{ type: 'image', src: 'x.tiff' }] }) });
+  ok(badExt.code === 4 && /unsupported image extension/.test(badExt.stderr), 'unsupported image extension → exit 4');
+  const badOptBlock = await run(['ask', '--file', '-'], {
+    input: JSON.stringify({ title: 'x', questions: [{ id: 'q', type: 'single', label: 'q', options: [{ value: 'a', blocks: [{ type: 'nope' }] }] }] }),
+  });
+  ok(badOptBlock.code === 4 && /options\[0\]\.blocks\[0\]/.test(badOptBlock.stderr), 'invalid option block error references options[<j>].blocks[<i>]');
 }
 
 console.log(`\nAll ${passed} assertions passed. (storage: ${HOME})`);

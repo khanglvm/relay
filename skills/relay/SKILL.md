@@ -23,6 +23,7 @@ Schema).** The essentials are below.
 | One trivial confirmation ("proceed?") | native tool |
 | 2+ questions, or options that need descriptions | **rly** |
 | Choice is easier to make visually (layouts, designs, diagrams) | **rly** (blocks per question) |
+| Each OPTION has its own visual (design variants, screenshots, charts) | **rly** (blocks per option) |
 | Show metrics / trends / data comparisons | **rly** (chart + table blocks) |
 | Present a prototype / demo an idea | **rly show** — never hand-roll an HTML file + server |
 | Gather requirements / plan approval / feedback round | **rly** |
@@ -102,7 +103,8 @@ rly ask -q "Deploy now?::yesno" -q "!Env::single::dev,staging,prod"   # "!" = re
 
 ## Blocks cheat-sheet
 
-Add `"blocks": [...]` to the root or to any question.
+Add `"blocks": [...]` to the root, to any question, or to any OPTION of a
+single/multi question.
 
 ```jsonc
 { "type": "markdown", "md": "## Section\n**prose**" }
@@ -117,7 +119,32 @@ Add `"blocks": [...]` to the root or to any question.
 { "type": "code",     "lang": "js",  "code": "const x = 1;" }
 { "type": "html",     "html": "<p>hi</p>",           "height": 360 }
 { "type": "html",     "htmlFile": "viz.html",         "height": 400 }
+{ "type": "image",    "src": "screenshot.png" }       // local file, URL, or data URI
+{ "type": "image",    "src": "https://…/mock.png", "alt": "Mockup B", "height": 220 }
 ```
+
+### Visual options — show each choice, don't describe it
+
+When the options themselves are visual (design variants, layouts, color
+schemes, chart styles, architecture alternatives, screenshots), put a compact
+block INSIDE each option so the user compares by looking, not by reading and
+guessing:
+
+```jsonc
+{ "id": "layout", "type": "single", "label": "Which landing layout?",
+  "options": [
+    { "value": "hero",  "label": "Hero",  "description": "big banner",
+      "blocks": [{ "type": "image", "src": "hero.png", "height": 180 }] },
+    { "value": "split", "label": "Split", "description": "text + visual",
+      "blocks": [{ "type": "html", "html": "<div style='display:flex'>…</div>", "height": 180 }] }
+  ] }
+```
+
+Any block type works per option. Keep option visuals compact (`height`
+~140–260) — they sit inside the option card. Clicking a visual never toggles
+the option (and stays annotatable); the label row selects. Use per-option
+blocks whenever a question's choices have visual/example context; skip them
+for plainly textual options.
 
 Chart.js, Mermaid, and Graphviz are **vendored and lazy-loaded** — the base board
 stays dependency-free. PlantUML uses the public plantuml.com server by default;
@@ -172,8 +199,8 @@ one `textarea` for concerns.
 (options with `description`s + `"other": true`), `multi` for scope, `scale` for
 urgency, `textarea` for constraints.
 
-**A/B design review** — `single` question with a `blocks` array containing an
-`html` block showing both options side by side; options `["A", "B"]`; `scale`
+**A/B design review** — `single` question where EACH option carries its own
+`html`/`image` block rendering that variant (see Visual options above); `scale`
 for confidence; `textarea` for what's missing from both.
 
 **Metrics review** — board-level `chart` block (bar or line) showing the key

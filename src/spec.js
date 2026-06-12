@@ -25,8 +25,16 @@ const HTML_HEIGHT = { min: 100, max: 2400, boardDefault: 400, questionDefault: 3
 
 // Block heights clamp to the same window; defaults vary per block type.
 const BLOCK_HEIGHT = { min: 100, max: 2400 };
-export const BLOCK_TYPES = ['markdown', 'mermaid', 'graphviz', 'plantuml', 'chart', 'table', 'code', 'html'];
+export const BLOCK_TYPES = ['markdown', 'mermaid', 'graphviz', 'plantuml', 'chart', 'table', 'code', 'html', 'image'];
 const CHART_KINDS = ['bar', 'line', 'pie', 'doughnut', 'radar', 'scatter'];
+
+// image blocks: local files are embedded as data URIs at spec time (the page
+// then loads them via /img/b/<id>), so boards stay self-contained offline.
+const IMAGE_MIMES = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+  webp: 'image/webp', svg: 'image/svg+xml', avif: 'image/avif', bmp: 'image/bmp',
+};
+const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 
 const asStr = (v) => (typeof v === 'string' ? v : v == null ? '' : String(v));
 
@@ -210,6 +218,35 @@ function normalizeBlock(rawBlock, id, cwd, where) {
     return block;
   }
 
+  if (type === 'image') {
+    const src = asStr(rawBlock.src ?? rawBlock.file ?? rawBlock.url).trim();
+    if (!src) throw new CliError(`${where}: image block needs a "src" (http(s)/data URL or local file path).`);
+    const block = { id, type: 'image' };
+    if (rawBlock.alt !== undefined) block.alt = asStr(rawBlock.alt);
+    if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
+    if (/^(https?:|data:)/i.test(src)) {
+      block.src = src;
+      return block;
+    }
+    const p = path.resolve(cwd, src);
+    const ext = path.extname(p).slice(1).toLowerCase();
+    const mime = IMAGE_MIMES[ext];
+    if (!mime) {
+      throw new CliError(`${where}: unsupported image extension ".${ext}" — use ${Object.keys(IMAGE_MIMES).join('/')}, or an http(s)/data URL.`);
+    }
+    let buf;
+    try {
+      buf = fs.readFileSync(p);
+    } catch {
+      throw new CliError(`${where}: cannot read image "${src}" (resolved: ${p})`);
+    }
+    if (buf.length > IMAGE_MAX_BYTES) {
+      throw new CliError(`${where}: image "${src}" is ${(buf.length / 1024 / 1024).toFixed(1)}MB — max ${IMAGE_MAX_BYTES / 1024 / 1024}MB.`);
+    }
+    block.src = `data:${mime};base64,${buf.toString('base64')}`;
+    return block;
+  }
+
   // type === 'html'
   const html = readBlockHtml(rawBlock, cwd, where);
   if (!html) {
@@ -312,9 +349,14 @@ export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
           if (!value) throw new CliError(`${where}.options[${j}]: needs "value" or "label".`);
           const out = { value, label: olabel || value };
           if (o.description) out.description = asStr(o.description);
+          // Per-option visuals: any block type, rendered inside the option card
+          // (ids <qid>-o<n>-b<m>). Lets a choice show its example instead of
+          // making the user read-and-guess.
+          const oblocks = buildBlocks(o, cwd, `${where}.options[${j}]`, `${id}-o${j + 1}-`);
+          if (oblocks.length) out.blocks = oblocks;
           return out;
         }
-        throw new CliError(`${where}.options[${j}]: must be a string or {value, label, description?}.`);
+        throw new CliError(`${where}.options[${j}]: must be a string or {value, label, description?, blocks?}.`);
       });
       if (q.options.length < 1) {
         throw new CliError(`${where}: type "${type}" needs at least 1 option.`);
@@ -390,7 +432,9 @@ const BLOCK_SCHEMA = {
       sortable: { type: 'boolean', description: 'table: enable click-to-sort headers.' },
       html: { type: 'string', description: 'html: custom markup rendered in a sandboxed iframe.' },
       htmlFile: { type: 'string', description: 'html: path to an HTML file (alternative to "html").' },
-      height: { type: 'integer', minimum: BLOCK_HEIGHT.min, maximum: BLOCK_HEIGHT.max, description: 'Block height in px. Defaults: chart 320, html 360; markdown/table/code flow naturally; mermaid/graphviz/plantuml natural (max 1200, scrolls).' },
+      src: { type: 'string', description: 'image: http(s)/data URL, or a local file path (png/jpg/gif/webp/svg/avif/bmp — embedded at spec time, served offline).' },
+      alt: { type: 'string', description: 'image: alt text / annotation label.' },
+      height: { type: 'integer', minimum: BLOCK_HEIGHT.min, maximum: BLOCK_HEIGHT.max, description: 'Block height in px. Defaults: chart 320, html 360; markdown/table/code flow naturally; mermaid/graphviz/plantuml/image natural (max 1200, scrolls).' },
     },
   },
 };
@@ -425,13 +469,18 @@ export const SPEC_SCHEMA = {
           required: { type: 'boolean', default: false },
           options: {
             type: 'array',
-            description: 'For single/multi. Strings, or {value, label, description}.',
+            description: 'For single/multi. Strings, or {value, label, description, blocks?}. An option\'s "blocks" render INSIDE that option card — use them to show each choice (image/chart/mermaid/html…) instead of describing it in words.',
             items: {
               anyOf: [
                 { type: 'string' },
                 {
                   type: 'object',
-                  properties: { value: { type: 'string' }, label: { type: 'string' }, description: { type: 'string' } },
+                  properties: {
+                    value: { type: 'string' },
+                    label: { type: 'string' },
+                    description: { type: 'string' },
+                    blocks: { ...BLOCK_SCHEMA, description: 'Visuals for THIS option, rendered inside its card. Same block types as everywhere else. Keep them compact (height ~140–260).' },
+                  },
                 },
               ],
             },

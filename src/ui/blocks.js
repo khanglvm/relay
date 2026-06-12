@@ -339,7 +339,11 @@
       }
     }
     rebuild();
-    return table;
+    // Tables are visual too: wrap so they get the full-screen viewer like
+    // every other visual block (wide tables squeeze in the column).
+    const wrap = el('div', { class: 'blk-tablewrap' }, table);
+    attachViewer(wrap, { zoomEl: null });
+    return wrap;
   }
 
   // ---------- lazy vendor loaders (cached promises) ----------
@@ -908,6 +912,43 @@
     return container;
   }
 
+  // ---------- image ----------
+  // src is a remote URL, or absent for embedded local files (served by the
+  // board server at /img/b/<id>). Same sizing rule as diagrams: never upscale
+  // past natural width; zoom/full-screen viewer attached once loaded.
+  function renderImage(block, ctx, blockId) {
+    const container = el('div', { class: 'blk-imagewrap' });
+    const src = typeof block.src === 'string' && block.src
+      ? block.src
+      : '/img/b/' + encodeURIComponent(blockId);
+    const img = el('img', {
+      class: 'blk-img',
+      src,
+      alt: block.alt || 'image',
+      loading: 'lazy',
+    });
+    if (block.height) img.style.maxHeight = clampHeight(block.height, 360) + 'px';
+    img.addEventListener('error', () => {
+      container.replaceChildren(el('div', { class: 'blk-error' }, 'Image failed to load'));
+    });
+    container.append(img);
+    const attachImgViewer = () =>
+      attachViewer(container, {
+        zoomEl: img,
+        natural: () => (img.naturalWidth > 0 ? { w: img.naturalWidth, h: img.naturalHeight } : null),
+      });
+    if (img.complete && img.naturalWidth > 0) attachImgViewer();
+    else img.addEventListener('load', attachImgViewer, { once: true });
+    if (ctx.annotate) {
+      ctx.annotate.register(img, {
+        blockId,
+        questionId: ctx.questionId,
+        target: { kind: 'image', label: block.alt || 'Image' },
+      });
+    }
+    return container;
+  }
+
   // ---------- viewer controls (zoom / fit / full-screen) ----------
   // Large diagrams get squeezed to the column width; these controls let the
   // user zoom (buttons or cmd/ctrl+wheel) and expand any visual block into a
@@ -916,12 +957,19 @@
   // <body>, which native fullscreen would hide).
   let fullOpen = null; // container currently expanded
 
+  // 4-corner expand icon. The toolbar deliberately holds ONLY the full-screen
+  // button (user feedback: the zoom button row was noise) — zooming stays
+  // available via cmd/ctrl+wheel on zoomable blocks.
+  const ICON_EXPAND =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M3 9V3h6M10 10 3 3M15 3h6v6M14 10l7-7M9 21H3v-6M10 14l-7 7M21 15v6h-6M14 14l7 7"/></svg>';
+
   function exitFull() {
     if (!fullOpen) return;
     fullOpen.classList.remove('blk-full');
     document.body.classList.remove('blk-full-open');
     const btn = fullOpen.querySelector('.blk-tools .tool-full');
-    if (btn) btn.textContent = '⛶';
+    if (btn) btn.innerHTML = ICON_EXPAND;
     fullOpen = null;
     window.dispatchEvent(new Event('resize'));
   }
@@ -970,13 +1018,7 @@
 
     const tools = el('div', { class: 'blk-tools' });
     if (zoomable) {
-      tools.append(
-        el('button', { type: 'button', title: 'Zoom out', onclick: () => setZoom(currentZ() / 1.25) }, '−'),
-        pct,
-        el('button', { type: 'button', title: 'Zoom in', onclick: () => setZoom(currentZ() * 1.25) }, '+'),
-        el('button', { type: 'button', title: 'Actual size', onclick: () => setZoom(1) }, '1:1'),
-        el('button', { type: 'button', title: 'Fit to width', onclick: () => setZoom(null) }, 'fit')
-      );
+      // zoom lives on cmd/ctrl+wheel only — the toolbar is full-screen-only
       container.addEventListener(
         'wheel',
         (e) => {
@@ -987,7 +1029,8 @@
         { passive: false }
       );
     }
-    const fullBtn = el('button', { class: 'tool-full', type: 'button', title: 'Full screen (Esc closes)' }, '⛶');
+    const fullBtn = el('button', { class: 'tool-full', type: 'button', title: 'Full screen (Esc closes; cmd/ctrl+wheel zooms)' });
+    fullBtn.innerHTML = ICON_EXPAND;
     fullBtn.addEventListener('click', () => {
       if (fullOpen === container) {
         exitFull();
@@ -1068,6 +1111,10 @@
         break;
       case 'html':
         inner = renderHtml(block, ctx, blockId);
+        wrapper.append(inner);
+        break;
+      case 'image':
+        inner = renderImage(block, ctx, blockId);
         wrapper.append(inner);
         break;
       default:

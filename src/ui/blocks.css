@@ -140,7 +140,7 @@
 .blk-chart canvas { display: block; }
 .blk-chart-badge {
   position: absolute;
-  top: 6px;
+  top: 40px; /* below the viewer bar strip */
   right: 6px;
   min-width: 18px;
   height: 18px;
@@ -266,26 +266,43 @@
   height: auto;
 }
 
-/* ---------- viewer controls (zoom / fit / full-screen) ---------- */
-.blk-viewer { position: relative; }
+/* ---------- image ---------- */
+.blk-imagewrap {
+  overflow: auto;
+  max-height: 1200px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  padding: 6px;
+}
+.blk-imagewrap .blk-img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  object-fit: contain;
+  object-position: left top;
+}
+
+/* ---------- viewer controls (full-screen) ---------- */
+/* The full-screen button lives in a reserved strip ABOVE the visual (user
+   feedback: never overlay the content). padding-top reserves the strip;
+   the bar is a full-width transparent row with the button at the right. */
+.blk-viewer { position: relative; padding-top: 34px; }
 .blk-tools {
-  position: absolute; top: 6px; right: 6px;
-  display: flex; gap: 2px; align-items: center;
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: 8px; padding: 2px 4px;
-  opacity: 0.35; transition: opacity 150ms var(--ease);
+  position: absolute; top: 4px; left: 4px; right: 4px; height: 26px;
+  display: flex; gap: 2px; align-items: center; justify-content: flex-end;
   z-index: 5;
 }
-.blk-viewer:hover .blk-tools, .blk-full .blk-tools { opacity: 1; }
 .blk-tools button {
-  background: none; border: none; color: var(--fg-2);
+  background: var(--card); border: 1px solid var(--border); color: var(--fg-2);
   font: inherit; font-size: 0.8rem; line-height: 1;
-  padding: 4px 6px; border-radius: 6px; cursor: pointer;
+  padding: 5px 7px; border-radius: 7px; cursor: pointer;
+  transition: color 150ms var(--ease), border-color 150ms var(--ease);
 }
-.blk-tools button:hover { background: var(--bg-sunken); color: var(--accent); }
+.blk-tools button:hover { color: var(--accent); border-color: var(--accent); }
+.blk-tools .tool-full svg { display: block; }
 .blk-tools .tool-pct { color: var(--muted); font-size: 0.72rem; min-width: 30px; text-align: center; }
-/* charts keep their annotation-count badge top-right; tools go top-left there */
-.blk-chart .blk-tools { right: auto; left: 6px; }
 
 /* full-screen = fixed overlay (NOT native fullscreen: annotation pins/badges/
    popover live on <body> and must stay visible above the expanded block) */
