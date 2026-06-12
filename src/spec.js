@@ -89,6 +89,7 @@ function normalizeBlock(rawBlock, id, cwd, where) {
     const code = asStr(rawBlock.code);
     if (!code.trim()) throw new CliError(`${where}: mermaid block needs a non-empty "code" string.`);
     const block = { id, type: 'mermaid', code };
+    if (rawBlock.editable === true) block.editable = true;
     if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
     return block;
   }
@@ -367,6 +368,7 @@ const BLOCK_SCHEMA = {
       type: { type: 'string', enum: BLOCK_TYPES },
       md: { type: 'string', description: 'markdown: built-in mini renderer (no external library). Text selections are commentable.' },
       code: { type: 'string', description: 'mermaid: diagram source (e.g. "graph TD; A-->B"); plantuml: the @startuml…@enduml source; code: the source to display.' },
+      editable: { type: 'boolean', description: 'mermaid: when true, render an "Edit diagram" toggle so the user can edit the diagram source live. The edited source is returned in result.blockEdits[<blockId>].' },
       dot: { type: 'string', description: 'graphviz: DOT source (e.g. "digraph { a -> b }"). Rendered offline via vendored Viz.js; nodes and edges are individually commentable.' },
       server: { type: 'string', description: 'plantuml: PlantUML server base URL (http(s)). Defaults to https://www.plantuml.com/plantuml. Diagrams render via this server (needs network).' },
       lang: { type: 'string', description: 'code block: language hint for display.' },
@@ -398,7 +400,7 @@ export const SPEC_SCHEMA = {
   title: 'relay board spec',
   type: 'object',
   description:
-    'A relay board. Renders an optional intro, board-level blocks, then questions (each with optional per-question blocks), then a submit button. The result JSON contains "answers", "comment", per-question "notes", and "annotations" (element-level comments the user attached to any block — see the annotation shape below).',
+    'A relay board. Renders an optional intro, board-level blocks, then questions (each with optional per-question blocks), then a submit button. The result JSON contains "answers", "comment", per-question "notes", "annotations" (element-level comments the user attached to any block — see the annotation shape below), and "blockEdits" (a map blockId→edited source for any editable mermaid block the user changed, null when none).',
   properties: {
     title: { type: 'string', description: 'Board title (default "Relay")' },
     intro: { type: 'string', description: 'Intro text shown under the title. Newlines preserved.' },
@@ -454,6 +456,12 @@ export const SPEC_SCHEMA = {
       readOnly: true,
       description:
         'Returned in the result (not part of the input spec). Element-level comments the user attached to blocks. Each: {id, questionId|null, blockId|null, target:{kind:"chart-element"|"mermaid-node"|"table-cell"|"text"|"html-element", …}, text, createdAt}.',
+    },
+    blockEdits: {
+      type: 'object',
+      readOnly: true,
+      description:
+        'Returned in the result (not part of the input spec). A map blockId→edited mermaid source for any editable mermaid block the user changed. null when the user made no edits. Read result.blockEdits[<blockId>] for the user\'s edited diagram source.',
     },
   },
   anyOf: [{ required: ['questions'] }, { required: ['blocks'] }, { required: ['html'] }, { required: ['htmlFile'] }],

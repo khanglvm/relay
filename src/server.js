@@ -2,6 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { loadBoard, saveBoard, saveRunning, removeRunning, loadPref, savePref } from './store.js';
 import { openUrl } from './open.js';
@@ -80,6 +81,7 @@ function buildPage(record, rev) {
         comment: record.draft.comment || '',
         notes: record.draft.notes || {},
         annotations: record.draft.annotations || [],
+        blockEdits: record.draft.blockEdits || {},
       }
     : null;
   const boot = { boardId: record.id, spec: clientSpec, prefill, pref: loadPref(), vendor, rev };
@@ -126,6 +128,24 @@ function sanitizeAnnotations(value) {
     const clean = { ...a, author: a.author === 'agent' ? 'agent' : 'user' };
     if (a.replies !== undefined) clean.replies = sanitizeReplies(a.replies);
     out.push(clean);
+  }
+  return out;
+}
+
+// Validates + sanitizes an incoming blockEdits map (from draft/submit).
+// Keeps only string-keyed entries with string values <= 20000 chars; caps at
+// 50 entries; drops invalid entries. Returns {} when nothing valid is present.
+function sanitizeBlockEdits(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out = {};
+  let n = 0;
+  for (const key of Object.keys(value)) {
+    if (n >= 50) break;
+    if (typeof key !== 'string') continue;
+    const v = value[key];
+    if (typeof v !== 'string' || v.length > 20000) continue;
+    out[key] = v;
+    n++;
   }
   return out;
 }
@@ -214,6 +234,47 @@ function readBody(req, limit = 5 * 1024 * 1024) {
   });
 }
 
+// Push-wake: run the agent's own local shell command after a board finishes.
+// The full result JSON is written to the command's stdin; RLY_BOARD_ID /
+// RLY_STATUS / RLY_URL are exported. Failures are swallowed (best effort) —
+// only a stderr note when not quiet. A 30s kill timer prevents a hung command
+// from keeping the process alive.
+function runOnResult(cmd, result, { quiet = false } = {}) {
+  if (typeof cmd !== 'string' || !cmd.trim()) return;
+  try {
+    const child = spawn('/bin/sh', ['-c', cmd], {
+      env: {
+        ...process.env,
+        RLY_BOARD_ID: result.boardId || '',
+        RLY_STATUS: result.status || '',
+        RLY_URL: result.url || '',
+      },
+      stdio: ['pipe', 'ignore', 'ignore'],
+    });
+    child.on('error', () => {
+      if (!quiet) process.stderr.write(`[relay] --on-result command failed to spawn\n`);
+    });
+    try {
+      child.stdin.write(JSON.stringify(result));
+      child.stdin.end();
+    } catch {
+      // best effort — stdin may already be gone
+    }
+    const killTimer = setTimeout(() => {
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        // already gone
+      }
+    }, 30000);
+    killTimer.unref();
+    child.on('close', () => clearTimeout(killTimer));
+    child.unref();
+  } catch {
+    if (!quiet) process.stderr.write(`[relay] --on-result command failed to run\n`);
+  }
+}
+
 // Serves one board on 127.0.0.1 and resolves `done` when it finishes
 // (submitted / acknowledged / timeout / cancelled). The result is also
 // persisted into the board record so `rly wait` / `rly result` can read it
@@ -233,6 +294,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         comment: record.result.comment || '',
         notes: record.result.notes || {},
         annotations: record.result.annotations || [],
+        blockEdits: record.result.blockEdits || {},
         updatedAt: new Date().toISOString(),
       };
     }
@@ -248,6 +310,8 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
   let rev = 1;
   let status = 'open';
   let finished = false;
+  // Latest client presence ping (null until the first ping arrives).
+  let presence = null;
   let resolveDone;
   const done = new Promise((r) => {
     resolveDone = r;
@@ -264,6 +328,31 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         sendJson(res, 200, { id: record.id, spec: record.spec, draft: record.draft, result: record.result });
       } else if (req.method === 'GET' && pathname === '/api/status') {
         sendJson(res, 200, { status, rev });
+      } else if (req.method === 'POST' && pathname === '/api/ping') {
+        const body = JSON.parse((await readBody(req)) || '{}');
+        // Validate body shape: visible/focused booleans, idleMs finite >= 0.
+        if (
+          typeof body.visible === 'boolean' &&
+          typeof body.focused === 'boolean' &&
+          Number.isFinite(body.idleMs) &&
+          body.idleMs >= 0
+        ) {
+          presence = { atMs: Date.now(), visible: body.visible, focused: body.focused, idleMs: body.idleMs };
+        }
+        sendJson(res, 200, { ok: true });
+      } else if (req.method === 'GET' && pathname === '/api/presence') {
+        if (!presence) {
+          sendJson(res, 200, { open: true, seen: false });
+        } else {
+          sendJson(res, 200, {
+            open: true,
+            seen: true,
+            visible: presence.visible,
+            focused: presence.focused,
+            secondsSinceActivity: Math.round((Date.now() - presence.atMs + presence.idleMs) / 1000),
+            secondsSincePing: Math.round((Date.now() - presence.atMs) / 1000),
+          });
+        }
       } else if (req.method === 'POST' && pathname === '/api/update') {
         if (req.headers['x-relay-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
         const body = JSON.parse((await readBody(req)) || '{}');
@@ -311,6 +400,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
           comment: typeof body.comment === 'string' ? body.comment : '',
           notes: body.notes && typeof body.notes === 'object' ? body.notes : {},
           annotations: sanitizeAnnotations(body.annotations),
+          blockEdits: sanitizeBlockEdits(body.blockEdits),
           updatedAt: new Date().toISOString(),
         };
         saveBoard(record);
@@ -328,6 +418,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
           comment: typeof body.comment === 'string' ? body.comment : '',
           notes: body.notes && typeof body.notes === 'object' ? body.notes : {},
           annotations: sanitizeAnnotations(body.annotations),
+          blockEdits: sanitizeBlockEdits(body.blockEdits),
         });
       } else {
         sendJson(res, 404, { error: 'not found' });
@@ -363,6 +454,10 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
     if (finished) return;
     finished = true;
     status = partial.status;
+    // blockEdits: from this submit, else fall back to the autosaved draft
+    // (timeout/cancel). null when there are none.
+    const editsRaw = partial.blockEdits ?? (record.draft?.blockEdits || {});
+    const blockEdits = editsRaw && Object.keys(editsRaw).length ? editsRaw : null;
     const result = {
       status: partial.status,
       boardId: record.id,
@@ -373,6 +468,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
       comment: partial.comment ?? '',
       notes: partial.notes ?? null,
       annotations: partial.annotations ?? (record.draft?.annotations || []),
+      blockEdits,
       createdAt: record.createdAt,
       finishedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAt,
@@ -384,6 +480,8 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
     }
     record.result = result;
     saveBoard(record);
+    // Push-wake: run the agent's local command for EVERY terminal status.
+    runOnResult(record.onResult, result, { quiet });
     removeRunning(record.id);
     if (timer) clearTimeout(timer);
     process.removeListener('SIGINT', onSignal);

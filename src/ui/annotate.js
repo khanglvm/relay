@@ -200,6 +200,7 @@
   function refreshBadges() {
     for (const b of badges) b.remove();
     badges = [];
+    if (torndown) return;
     registered = registered.filter((r) => r.el.isConnected);
     for (const entry of registered) {
       const count = matching(entry.info).length;
@@ -500,7 +501,32 @@
     renderSummaries();
   }
 
+  // Remove every floating element (pin, badges, popover, selection button)
+  // and stop reacting — called when the board reaches its submitted screen so
+  // nothing leaks over it (they live on <body> with elevated z-index).
+  let torndown = false;
+  function teardown() {
+    torndown = true;
+    try {
+      closePopover();
+    } catch {
+      // popover may not be open
+    }
+    hidePin();
+    hideSelBtn();
+    for (const b of badges) b.remove();
+    badges = [];
+    registered = [];
+    if (dom) {
+      dom.pin.remove();
+      dom.selBtn.remove();
+      dom.pop.remove();
+      dom = null;
+    }
+  }
+
   function register(targetEl, info) {
+    if (torndown) return;
     ensureDom();
     targetEl.classList.add('ann-target');
     const entry = { el: targetEl, info };
@@ -511,14 +537,17 @@
   }
 
   function enableTextSelection(rootEl, baseInfo) {
+    if (torndown) return;
     ensureDom();
     rootEl.addEventListener('mouseup', () => {
+      if (torndown) return;
       // defer: the selection settles after mouseup
       setTimeout(() => maybeShowSelBtn(rootEl, baseInfo), 0);
     });
   }
 
   function openExternal(info, anchorEl) {
+    if (torndown) return;
     openPopover(info, anchorEl);
   }
 
@@ -532,5 +561,5 @@
     renderSummaryInto(target);
   }
 
-  window.RelayAnnotate = { init, register, enableTextSelection, openExternal, list, renderSummary };
+  window.RelayAnnotate = { init, register, enableTextSelection, openExternal, list, renderSummary, teardown };
 })();

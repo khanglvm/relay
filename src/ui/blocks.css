@@ -169,6 +169,69 @@
 .blk-mermaid .node,
 .blk-mermaid .edgeLabel { cursor: default; }
 
+/* ---------- editable mermaid (diagram editor) ---------- */
+.blk-mermaid-edit { margin-top: 8px; }
+.blk-edit-btn {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 0.78rem;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: color 150ms var(--ease), border-color 150ms var(--ease);
+}
+.blk-edit-btn:hover,
+.blk-edit-btn.is-open { color: var(--accent); border-color: var(--accent); }
+.blk-editor { margin-top: 8px; }
+.blk-editor[hidden] { display: none; }
+.blk-editor-ta {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 120px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.blk-editor-ta:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.blk-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+.blk-editor-reset {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 0.78rem;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: color 150ms var(--ease), border-color 150ms var(--ease);
+}
+.blk-editor-reset:hover { color: var(--accent); border-color: var(--accent); }
+.blk-editor-status {
+  font-family: var(--sans);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.blk-editor-status.has-error { color: var(--muted); }
+
 /* ---------- graphviz (offline, vendored Viz.js) ---------- */
 .blk-graphviz {
   overflow: auto;

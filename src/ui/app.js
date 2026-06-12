@@ -82,6 +82,10 @@
     notes: {},
     comment: '',
     annotations: (boot.prefill && boot.prefill.annotations) || [],
+    // Editable-mermaid edits: blockId -> edited source. Seeded from the live
+    // draft so a reload/reopen restores the user's edited diagram. Mutated via
+    // the blocks ctx.onBlockEdit callback below; returned in payload().
+    blockEdits: (boot.prefill && boot.prefill.blockEdits) || {},
   };
   let submitted = false;
 
@@ -147,7 +151,13 @@
       const n = typeof state.notes[q.id] === 'string' ? state.notes[q.id].trim() : '';
       if (n) notes[q.id] = n;
     }
-    return { answers, comment: (state.comment || '').trim(), notes, annotations: state.annotations };
+    return {
+      answers,
+      comment: (state.comment || '').trim(),
+      notes,
+      annotations: state.annotations,
+      blockEdits: state.blockEdits,
+    };
   }
 
   // ---------- real-time autosave ----------
@@ -174,6 +184,44 @@
     }
   }
 
+  // ---------- presence / awareness ----------
+  // Track the last time the user interacted with the page so the agent (via
+  // /api/presence) can tell whether someone is still actively viewing the board
+  // and keep waiting instead of timing out. Every existing 3s heartbeat tick
+  // also POSTs /api/ping {visible, focused, idleMs}; pinging stops after submit.
+  let lastInteractionAt = Date.now();
+  let lastMoveAt = 0;
+  function noteInteraction() {
+    lastInteractionAt = Date.now();
+  }
+  window.addEventListener('pointerdown', noteInteraction, { passive: true });
+  window.addEventListener('keydown', noteInteraction, { passive: true });
+  window.addEventListener('scroll', noteInteraction, { passive: true });
+  window.addEventListener('touchstart', noteInteraction, { passive: true });
+  // pointermove fires continuously — throttle to at most once per second.
+  window.addEventListener('pointermove', () => {
+    const now = Date.now();
+    if (now - lastMoveAt >= 1000) {
+      lastMoveAt = now;
+      lastInteractionAt = now;
+    }
+  }, { passive: true });
+
+  function pingPresence() {
+    if (submitted) return;
+    fetch('/api/ping', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        visible: !document.hidden,
+        focused: document.hasFocus(),
+        idleMs: Date.now() - lastInteractionAt,
+      }),
+    }).catch(() => {
+      // presence is best-effort — a failed ping must never surface to the user
+    });
+  }
+
   // ---------- annotations ----------
   // RelayAnnotate owns the live annotation list; mirror it into state on every
   // change so payload()/autosave/submit carry it exactly like answers.
@@ -188,13 +236,25 @@
     });
   }
 
-  // ctx for RelayBlocks.render — theme()/htmlSrc per the shared contract.
+  // Editable-mermaid: record (or clear) the user's edit for a block, then
+  // autosave. A null/empty code clears the entry (block matches the original
+  // again — e.g. after Reset), so payload()/draft carry only real divergences.
+  function onBlockEdit(blockId, codeOrNull) {
+    if (codeOrNull === null || codeOrNull === undefined) delete state.blockEdits[blockId];
+    else state.blockEdits[blockId] = codeOrNull;
+    scheduleSave();
+  }
+
+  // ctx for RelayBlocks.render — theme()/htmlSrc per the shared contract, plus
+  // the editable-mermaid plumbing (edits map + onBlockEdit callback).
   function blockCtx(questionId) {
     return {
       theme: effectiveTheme,
       htmlSrc: (blockId) => '/html/b/' + encodeURIComponent(blockId) + '?theme=' + effectiveTheme(),
       questionId: questionId == null ? null : questionId,
       annotate: Annotate,
+      edits: state.blockEdits,
+      onBlockEdit,
     };
   }
 
@@ -517,6 +577,15 @@
 
   function showDone(closing) {
     stopHeartbeat();
+    // Annotation pins/badges/popover float on <body> with elevated z-index —
+    // remove them so they don't leak over the submitted screen.
+    if (window.RelayAnnotate && typeof RelayAnnotate.teardown === 'function') {
+      try {
+        RelayAnnotate.teardown();
+      } catch {
+        // best effort
+      }
+    }
     app.replaceChildren(
       el('div', { class: 'done' },
         el('div', { class: 'mark' }, '✓'),
@@ -608,6 +677,8 @@
   let misses = 0;
   let reloading = false;
   let hb = setInterval(async () => {
+    // Piggyback presence on the heartbeat (best-effort; no-ops after submit).
+    pingPresence();
     try {
       const r = await fetch('/api/status', { cache: 'no-store' });
       if (!r.ok) throw new Error('bad status');

@@ -473,7 +473,7 @@ console.log('15. rename checks');
 {
   ok(fs.existsSync(BIN), 'bin/rly.js exists');
   const ver = await run(['--version']);
-  ok(ver.stdout.trim() === '0.3.0', '--version prints 0.3.0');
+  ok(ver.stdout.trim() === '0.4.0', '--version prints 0.4.0');
   const help = await run(['help']);
   ok(/\brly\b/.test(help.stdout), 'help mentions rly');
   ok(/blocks/i.test(help.stdout), 'help mentions blocks');
@@ -740,6 +740,60 @@ console.log('21. reopen --replies');
   ok(page.includes('please rename this'), 'original user comment preserved alongside the agent reply');
   await post(re.url, '/api/submit', { answers: { q1: 'a' } });
   await re.exited;
+}
+
+// ---------- 16. v0.4: presence / blockEdits / push-wake / while-active ----------
+console.log('16. presence, blockEdits, push-wake, while-active');
+{
+  const onResultFile = path.join(HOME, 'onresult.json');
+  const v4spec = path.join(HOME, 'v4.json');
+  fs.writeFileSync(v4spec, JSON.stringify({
+    title: 'v4',
+    blocks: [{ type: 'mermaid', code: 'graph TD; A-->B', editable: true }],
+    questions: [{ id: 'ok', type: 'yesno', label: 'OK?' }],
+  }));
+  const r = await run(['ask', '--file', v4spec, '--detach', '--no-open', '--timeout', '60', '--on-result', `cat > ${onResultFile}`]);
+  const info = JSON.parse(r.stdout);
+  const { boardId, url } = info;
+
+  // while-active on a NEVER-pinged board must still time out promptly.
+  // (Run this FIRST: any /api/ping below would count as recent activity.)
+  const idleWait = await run(['wait', boardId, '--timeout', '3', '--while-active', '--idle-grace', '60']);
+  ok(idleWait.code === 2 && JSON.parse(idleWait.stdout).status === 'wait-timeout', 'while-active on an idle board still times out (exit 2)');
+
+  // presence lifecycle
+  const p0 = await (await fetch(new URL('/api/presence', url))).json();
+  ok(p0.open === true && p0.seen === false, 'presence before any ping → seen:false');
+  await post(url, '/api/ping', { visible: true, focused: true, idleMs: 1000 });
+  const p1 = await (await fetch(new URL('/api/presence', url))).json();
+  ok(p1.seen === true && p1.visible === true && p1.secondsSinceActivity <= 3, 'presence after ping → seen:true with sane activity');
+  const peek = JSON.parse((await run(['result', boardId])).stdout);
+  ok(peek.status === 'open' && peek.presence?.seen === true, 'rly result includes presence on an open board');
+
+  // editable mermaid normalize + blockEdits draft round-trip
+  const board = await (await fetch(new URL('/api/board', url))).json();
+  ok(board.spec.blocks[0].editable === true, 'editable flag survives normalization');
+  await post(url, '/api/draft', { answers: {}, blockEdits: { b1: 'graph TD; X-->Y' } });
+  const reloaded = await (await fetch(url)).text();
+  ok(reloaded.includes('"blockEdits":{"b1":"graph TD; X--&gt;Y"}') || reloaded.includes('"blockEdits":{"b1":"graph TD; X-->Y"}'), 'draft blockEdits prefill on reload');
+
+  // while-active: activity extends the wait past its timeout
+  const waitP = run(['wait', boardId, '--timeout', '3', '--while-active', '--idle-grace', '60']);
+  await sleep(1000);
+  await post(url, '/api/ping', { visible: true, focused: true, idleMs: 200 });
+  await sleep(2500);
+  await post(url, '/api/ping', { visible: true, focused: true, idleMs: 200 });
+  await sleep(1500);
+  await post(url, '/api/submit', { answers: { ok: 'yes' }, blockEdits: { b1: 'graph TD; X-->Y' } });
+  const w = await waitP;
+  const wr = JSON.parse(w.stdout);
+  ok(w.code === 0 && wr.status === 'submitted', 'while-active extends past timeout while the user is active');
+  ok(wr.blockEdits?.b1 === 'graph TD; X-->Y', 'edited mermaid source returned in result.blockEdits');
+
+  // push-wake: --on-result received the result JSON on stdin
+  await sleep(1500);
+  const piped = JSON.parse(fs.readFileSync(onResultFile, 'utf8'));
+  ok(piped.status === 'submitted' && piped.boardId === boardId, '--on-result command received the result JSON on stdin');
 }
 
 console.log(`\nAll ${passed} assertions passed. (storage: ${HOME})`);

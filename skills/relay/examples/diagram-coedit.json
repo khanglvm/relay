@@ -1,0 +1,15 @@
+{
+  "title": "Architecture review — redraw it if I got it wrong",
+  "intro": "Below is my proposed architecture. If it doesn't match your mental model, click 'Edit diagram' and change it directly — I'll read your version.",
+  "blocks": [
+    {
+      "type": "mermaid",
+      "editable": true,
+      "code": "graph TD; client[Web Client] --> api[API Gateway]; api --> auth[Auth Service]; api --> core[Core Service]; core --> db[(Postgres)]; core --> queue[[Job Queue]]"
+    }
+  ],
+  "questions": [
+    { "id": "match", "type": "yesno", "label": "Does this match your mental model (after your edits, if any)?", "required": true },
+    { "id": "notes", "type": "textarea", "label": "Anything the diagram can't express?", "placeholder": "constraints, scaling concerns, naming…" }
+  ]
+}

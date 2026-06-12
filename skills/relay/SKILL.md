@@ -1,6 +1,6 @@
 ---
 name: relay
-description: Ask the user interactive questions in a browser board (single/multi choice, yes-no, free text, scale) and/or present rich content blocks (markdown, mermaid diagrams, graphviz, plantuml, uml, charts, interactive tables, code, sandboxed HTML), then wait for Submit and read JSON answers plus element-level annotations. PROACTIVELY use whenever you would otherwise (a) call a native ask-user/question tool with 2+ questions or options that need explanation, (b) describe a UI/design/plan/architecture in prose that a visual would show better — draft diagrams (mermaid, graphviz, plantuml), charts, and interactive tables as native blocks, or (c) hand-roll an HTML file or local server to demo an idea - relay replaces all three. Triggers - clarify requirements before ambiguous work, choose between approaches, plan approval, design/UX feedback, mockup or prototype review, compare alternatives, survey, metrics review, "ask the user", "show the user", "which do you prefer", "get feedback", diagram, chart, data table, architecture overview, metrics, dependency graph, sequence diagram, class diagram, uml, graphviz, plantuml. Skip only for a single trivial yes/no confirmation.
+description: Show the user anything visual in an interactive browser board - repo/file structures, architecture diagrams (mermaid, graphviz, plantuml, uml), charts, sortable data tables, code, prototypes - and/or ask structured questions (single/multi choice, yes-no, free text, scale), then wait for Submit and read JSON answers plus element-level comments and user-edited diagrams. PROACTIVELY use whenever you would otherwise (a) draw an ASCII tree/table/diagram in the terminal or describe a structure/design/plan in prose - render it as interactive blocks instead, (b) call a native ask-user/question tool with 2+ questions or options that need explanation, or (c) hand-roll an HTML file or local server to demo an idea - relay replaces all three. Triggers - show me the structure, repo/project/folder structure, file tree, directory layout, codebase map, architecture overview, dependency graph, sequence/class diagram, uml, visualize, diagram, chart, data table, metrics review, mockup or prototype review, plan approval, design/UX feedback, compare alternatives, let the user edit the diagram, clarify requirements before ambiguous work, survey, "ask the user", "show the user", "which do you prefer", "get feedback". Skip only for a single trivial yes/no confirmation.
 ---
 
 # relay (`rly`)
@@ -44,6 +44,19 @@ rly wait b-xxxxx --timeout 550       # blocks until submit, prints result JSON
                                      # (on exit 2 "wait-timeout" just run wait again)
 rly result b-xxxxx                   # non-blocking peek (includes live draft)
 ```
+
+For long waits prefer presence-aware waiting over a huge --timeout:
+
+```sh
+rly wait b-xxxxx --timeout 550 --while-active --idle-grace 180
+# keeps extending while the user is demonstrably viewing/typing on the board;
+# returns wait-timeout promptly once they are idle/gone (presence included)
+rly result b-xxxxx        # while open also shows presence {visible, focused, secondsSinceActivity}
+```
+
+Push-wake instead of polling: add --on-result '<shell cmd>' to ask/show/reopen
+(or --notify-cmd on wait) - the command runs the moment the board finishes,
+with the full result JSON on stdin and RLY_BOARD_ID/RLY_STATUS/RLY_URL in env.
 
 Blocking mode (`rly ask --file spec.json --timeout 1800`, no --detach) is fine
 ONLY when your shell tool has no execution time limit.
@@ -167,6 +180,14 @@ for confidence; `textarea` for what's missing from both.
 numbers, followed by a `table` block for the raw data; at least one question
 asking what to act on. In the intro, tell the user they can click chart points
 and table cells to comment on specific values.
+
+## Diagram co-editing (user edits your diagram)
+
+Add "editable": true to a mermaid block: the user gets an Edit button with
+live-preview source editing. Their version comes back as
+result.blockEdits["<blockId>"] - diff it against your original to see what
+they changed. Recipe: propose an architecture as an editable mermaid block +
+one yesno "Does this match your mental model?" + a textarea for notes.
 
 ## Reuse & management
 

@@ -356,6 +356,17 @@ Exit codes: `0` submitted/acknowledged · `2` timeout · `3` cancelled ·
 
 Storage: `~/.relay` (override with `RLY_HOME`). Boards bind to `127.0.0.1` only.
 
+## Presence, push-wake & diagram co-editing (v0.4)
+
+While a board is open the page reports user activity; `rly result <id>`
+includes `presence` ({visible, focused, secondsSinceActivity}) and
+`rly wait <id> --while-active --idle-grace 180` keeps waiting while the user
+is demonstrably engaged instead of dying on a fixed timer. For pushes,
+`--on-result '<cmd>'` (on ask/show/reopen/reuse) and `rly wait --notify-cmd`
+execute your command with the result JSON on stdin the moment the board
+finishes. Mermaid blocks with `"editable": true` let the user edit the diagram
+source with live preview — their version returns as `result.blockEdits`.
+
 ## Agent skill (Claude Code, Codex, …)
 
 A universal [SKILL.md](skills/relay/SKILL.md) is bundled:

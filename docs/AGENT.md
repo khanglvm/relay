@@ -321,6 +321,53 @@ annotation IDs cause a `CliError` (exit 4) listing valid IDs.
 The UI shows agent and user replies as a thread under each comment — agent replies
 use an accent chip, user replies use a muted chip.
 
+## Presence — is the user still there?
+
+While a board is open, the page reports activity (visibility, focus, idle
+time). Use it instead of guessing timeouts:
+
+```sh
+rly result b-xxxxx     # open board → includes "presence":
+                       #   {open, seen, visible, focused, secondsSinceActivity, secondsSincePing}
+rly wait b-xxxxx --timeout 550 --while-active --idle-grace 180
+```
+
+`--while-active` keeps extending the wait as long as the user is demonstrably
+active (page visible/focused and interaction within `--idle-grace` seconds,
+default 180); once they go idle it returns the normal `wait-timeout` JSON,
+with `presence` attached so you can decide what to do next. Prefer this over
+raising `--timeout`.
+
+## Push-wake — get notified instead of polling
+
+```sh
+rly ask --file spec.json --detach --on-result 'curl -s -X POST localhost:9999/wake -d @-'
+rly wait b-xxxxx --notify-cmd 'touch /tmp/board-done'
+```
+
+`--on-result` (on ask/show/reopen/reuse) runs your shell command the moment
+the board reaches a terminal status — submitted, acknowledged, timeout, or
+cancelled — with the full result JSON piped to stdin and `RLY_BOARD_ID`,
+`RLY_STATUS`, `RLY_URL` in the environment. `--notify-cmd` does the same from
+a `wait` that obtains a terminal result. Write a file your harness watches,
+hit a webhook — whatever wakes you.
+
+## Editable diagrams — let the user redraw your mermaid
+
+Add `"editable": true` to any mermaid block. The user gets an "Edit diagram"
+button with live-preview source editing (syntax errors shown inline without
+destroying the last good render; Reset restores your original). Their edited
+source returns in the result:
+
+```json
+"blockEdits": { "b2": "graph TD; A-->B; B-->C[their new step]" }
+```
+
+Diff it against your original to see exactly what the user changed. Recipe:
+propose an architecture as an editable mermaid block + a `yesno` "Does this
+match your mental model?" + a `textarea` for anything the diagram can't say.
+Edits autosave with the draft, so they survive reloads and timeouts too.
+
 ## Managing boards
 
 ```sh

@@ -28,6 +28,7 @@ const VERSION = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, 'package.json'), 
 const VALUED_FLAGS = new Set([
   'file', 'html', 'html-file', 'title', 'intro', 'timeout', 'port',
   'submit-label', 'height', 'limit', 'target', 'id', 'replies',
+  'on-result', 'notify-cmd', 'idle-grace',
 ]);
 
 function camel(key) {
@@ -69,6 +70,44 @@ export function parseArgs(argv) {
 
 function printJson(obj) {
   process.stdout.write(JSON.stringify(obj, null, 2) + '\n');
+}
+
+// Push-wake for `rly wait --notify-cmd`: run the agent's local shell command
+// once a TERMINAL result lands. Result JSON goes to the command's stdin;
+// RLY_BOARD_ID / RLY_STATUS / RLY_URL are exported. Same shape as the server's
+// --on-result hook. Failures are swallowed; a 30s kill timer caps a hung cmd.
+function runNotifyCmd(cmd, result) {
+  if (typeof cmd !== 'string' || !cmd.trim()) return;
+  try {
+    const child = spawn('/bin/sh', ['-c', cmd], {
+      env: {
+        ...process.env,
+        RLY_BOARD_ID: result.boardId || '',
+        RLY_STATUS: result.status || '',
+        RLY_URL: result.url || '',
+      },
+      stdio: ['pipe', 'ignore', 'ignore'],
+    });
+    child.on('error', () => {});
+    try {
+      child.stdin.write(JSON.stringify(result));
+      child.stdin.end();
+    } catch {
+      // best effort
+    }
+    const killTimer = setTimeout(() => {
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        // already gone
+      }
+    }, 30000);
+    killTimer.unref();
+    child.on('close', () => clearTimeout(killTimer));
+    child.unref();
+  } catch {
+    // swallow — push-wake is best effort
+  }
 }
 
 function exitCodeFor(status) {
@@ -145,6 +184,15 @@ async function runOrDetach(record, args) {
   const timeoutSec = args.timeout !== undefined ? Math.max(0, Number.parseInt(args.timeout, 10) || 0) : 1800;
   const port = args.port !== undefined ? Number.parseInt(args.port, 10) || 0 : 0;
   const open = args.open !== false;
+
+  // Push-wake: persist the agent's --on-result command on the record so BOTH
+  // the inline runBoard path and the detached __serve path pick it up (the
+  // detached server reads record.onResult from disk). Runtime concern only —
+  // not part of the spec.
+  if (typeof args.onResult === 'string' && args.onResult.trim()) {
+    record.onResult = args.onResult;
+    saveBoard(record);
+  }
 
   if (args.detach) {
     const child = spawn(
@@ -313,25 +361,52 @@ async function cmdUpdate(args) {
   return 0;
 }
 
+// Best-effort fetch of /api/presence for a running board. Returns the parsed
+// presence object, or null on any failure / timeout (500ms cap via
+// AbortController). Never throws.
+async function fetchPresence(url) {
+  if (!url) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 500);
+  try {
+    const res = await fetch(new URL('/api/presence', url), { signal: controller.signal });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function cmdWait(args) {
   const id = args._[0];
-  if (!id) throw new CliError('usage: rly wait <board-id> [--timeout <sec>]');
+  if (!id) throw new CliError('usage: rly wait <board-id> [--timeout <sec>] [--while-active] [--idle-grace <sec>] [--notify-cmd <cmd>]');
   const timeoutSec = args.timeout !== undefined ? Math.max(1, Number.parseInt(args.timeout, 10) || 1) : 3600;
-  const deadline = Date.now() + timeoutSec * 1000;
+  const whileActive = args.whileActive === true;
+  const idleGrace = args.idleGrace !== undefined ? Math.max(0, Number.parseInt(args.idleGrace, 10) || 0) : 180;
+  const notifyCmd = typeof args.notifyCmd === 'string' && args.notifyCmd.trim() ? args.notifyCmd : null;
+  let deadline = Date.now() + timeoutSec * 1000;
   mustLoad(id);
+
+  // Push-wake: run the agent's --notify-cmd after a TERMINAL result, then print.
+  const finishResult = (result) => {
+    if (notifyCmd) runNotifyCmd(notifyCmd, result);
+    printJson(result);
+    return exitCodeFor(result.status);
+  };
+
   while (Date.now() < deadline) {
     const record = mustLoad(id);
     if (record.result && record.result.finishedAt) {
-      printJson(record.result);
-      return exitCodeFor(record.result.status);
+      return finishResult(record.result);
     }
     const running = loadRunning(id);
     if (!running || !isAlive(running.pid)) {
       await sleep(700); // the result write may be racing the process exit
       const again = loadBoard(id);
       if (again?.result?.finishedAt) {
-        printJson(again.result);
-        return exitCodeFor(again.result.status);
+        return finishResult(again.result);
       }
       printJson({
         status: 'lost',
@@ -341,17 +416,93 @@ async function cmdWait(args) {
       });
       return 5;
     }
+    if (Date.now() >= deadline) break;
     await sleep(400);
   }
-  printJson({
+
+  // Deadline hit while the board is still OPEN. Fetch presence (cheaply).
+  const running = loadRunning(id);
+  const presence = running && isAlive(running.pid) ? await fetchPresence(running.url) : null;
+
+  // --while-active: if the user is present + recently active, EXTEND and keep
+  // waiting (repeat indefinitely while they stay active).
+  if (
+    whileActive &&
+    presence &&
+    presence.seen &&
+    (presence.visible || presence.focused) &&
+    presence.secondsSinceActivity < idleGrace
+  ) {
+    deadline = Date.now() + Math.min(idleGrace, 120) * 1000;
+    return cmdWaitLoop(id, deadline, { whileActive, idleGrace, notifyCmd });
+  }
+
+  const out = {
     status: 'wait-timeout',
     boardId: id,
     hint: `board is still open — run \`rly wait ${id}\` again, or \`rly result ${id}\` to peek at the live draft`,
-  });
+  };
+  if (presence) out.presence = presence;
+  printJson(out);
   return 2;
 }
 
-function cmdResult(args) {
+// Continuation loop for `rly wait --while-active` after a deadline extension.
+// Identical waiting logic to cmdWait's main loop, then re-evaluates presence;
+// extends again while the user stays active, otherwise emits wait-timeout.
+async function cmdWaitLoop(id, deadline, opts) {
+  const { whileActive, idleGrace, notifyCmd } = opts;
+  const finishResult = (result) => {
+    if (notifyCmd) runNotifyCmd(notifyCmd, result);
+    printJson(result);
+    return exitCodeFor(result.status);
+  };
+  while (Date.now() < deadline) {
+    const record = mustLoad(id);
+    if (record.result && record.result.finishedAt) {
+      return finishResult(record.result);
+    }
+    const running = loadRunning(id);
+    if (!running || !isAlive(running.pid)) {
+      await sleep(700);
+      const again = loadBoard(id);
+      if (again?.result?.finishedAt) {
+        return finishResult(again.result);
+      }
+      printJson({
+        status: 'lost',
+        boardId: id,
+        draft: again?.draft ?? null,
+        error: 'board server exited without writing a result',
+      });
+      return 5;
+    }
+    if (Date.now() >= deadline) break;
+    await sleep(400);
+  }
+  const running = loadRunning(id);
+  const presence = running && isAlive(running.pid) ? await fetchPresence(running.url) : null;
+  if (
+    whileActive &&
+    presence &&
+    presence.seen &&
+    (presence.visible || presence.focused) &&
+    presence.secondsSinceActivity < idleGrace
+  ) {
+    const next = Date.now() + Math.min(idleGrace, 120) * 1000;
+    return cmdWaitLoop(id, next, opts);
+  }
+  const out = {
+    status: 'wait-timeout',
+    boardId: id,
+    hint: `board is still open — run \`rly wait ${id}\` again, or \`rly result ${id}\` to peek at the live draft`,
+  };
+  if (presence) out.presence = presence;
+  printJson(out);
+  return 2;
+}
+
+async function cmdResult(args) {
   const record = mustLoad(args._[0]);
   if (record.result && record.result.finishedAt) {
     printJson(record.result);
@@ -359,8 +510,12 @@ function cmdResult(args) {
   }
   const running = loadRunning(record.id);
   if (running && isAlive(running.pid)) {
-    // While open, expose the real-time autosaved draft so agents can peek.
-    printJson({ status: 'open', boardId: record.id, url: running.url, draft: record.draft ?? null });
+    // While open, expose the real-time autosaved draft so agents can peek, plus
+    // best-effort presence (whether the user is still viewing/focused/active).
+    const out = { status: 'open', boardId: record.id, url: running.url, draft: record.draft ?? null };
+    const presence = await fetchPresence(running.url);
+    if (presence) out.presence = presence;
+    printJson(out);
     return 0;
   }
   printJson({ status: 'lost', boardId: record.id, draft: record.draft ?? null });
@@ -643,9 +798,13 @@ USAGE
   rly ask -q "Deploy?::yesno" -q "!Env::single::dev,staging,prod"
                                       quick inline questions ("!" = required, label::type::options)
   rly ask ... --detach                no blocking: prints {boardId,url} now; collect via \`rly wait <id>\`
+  rly ask ... --on-result "<cmd>"     push-wake: run <cmd> when the board finishes (result JSON on stdin)
   rly show --html-file viz.html       visualization-only board (submit button = acknowledge)
   rly wait <id> [--timeout 3600]      block until board finishes, print result JSON
-  rly result <id>                     result/status now (includes live autosaved draft while open)
+                                      --while-active [--idle-grace 180]: keep waiting past the deadline
+                                        while the user is still viewing/focused & recently active
+                                      --notify-cmd "<cmd>": run <cmd> on a terminal result (JSON on stdin)
+  rly result <id>                     result/status now (includes live autosaved draft + presence while open)
   rly list [--json]                   running boards
   rly open [id]                       re-open the browser tab of a running board
   rly reopen <id> [--replies f.json]  serve a saved board again, prefilled with saved answers
@@ -706,7 +865,7 @@ export async function main(argv) {
       case 'wait':
         return await cmdWait(parseArgs(rest));
       case 'result':
-        return cmdResult(parseArgs(rest));
+        return await cmdResult(parseArgs(rest));
       case 'list':
         return cmdList(parseArgs(rest));
       case 'open':
