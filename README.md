@@ -10,11 +10,17 @@ JSON and keeps working.
 
 ## See it
 
-A real board from a real session — an agent presenting three animated UI
-prototypes, asking which to build, expanding one full-screen, and getting the
-answers on Submit:
+**Visual answer options** — every choice carries its own chart/image/diagram, so you pick by looking:
 
-![relay demo — animated prototypes, picking an option, full-screen, submit](https://raw.githubusercontent.com/khanglvm/relay/main/docs/assets/demo.gif)
+![Visual answer options: clicking between two options that each carry their own chart](https://raw.githubusercontent.com/khanglvm/relay/main/docs/assets/feature-options.gif)
+
+**Comment on anything** — click a chart bar, diagram node, table cell, or sentence; comments return to the agent with the answers:
+
+![Clicking a chart bar and leaving an inline comment](https://raw.githubusercontent.com/khanglvm/relay/main/docs/assets/feature-annotate.gif)
+
+**Full-screen any visual** — one button above every chart, diagram, table, image, and prototype:
+
+![Expanding a diagram into the full-screen overlay](https://raw.githubusercontent.com/khanglvm/relay/main/docs/assets/feature-fullscreen.gif)
 
 | Light theme | Dark theme |
 |---|---|
