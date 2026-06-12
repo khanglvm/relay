@@ -10,6 +10,12 @@ JSON and keeps working.
 
 ## See it
 
+**The whole loop** — your agent asks in the terminal, a board opens in your
+browser; you pick a style, expand the chart, comment on a data point, leave a
+note, Submit — and the agent picks up your answers and keeps going:
+
+![Full flow: Claude Code opens a relay board, the user answers, comments and submits, the agent continues](https://raw.githubusercontent.com/khanglvm/relay/main/docs/assets/demo.gif)
+
 **Visual answer options** — every choice carries its own chart/image/diagram, so you pick by looking:
 
 ![Visual answer options: clicking between two options that each carry their own chart](https://raw.githubusercontent.com/khanglvm/relay/main/docs/assets/feature-options.gif)
