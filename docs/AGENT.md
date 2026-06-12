@@ -136,6 +136,12 @@ so far.
 
 ## Blocks
 
+Every visual block (mermaid / graphviz / plantuml / chart / html) automatically
+gets viewer controls: zoom in/out (or cmd/ctrl+wheel), 1:1, fit-to-width, and a
+full-screen overlay (Esc closes). Don't shrink large diagrams to make them fit
+— the user can always expand and zoom; annotations keep working at any zoom
+and inside full-screen.
+
 Blocks can appear at the board level (`"blocks": [...]` on the root object) or
 per question (`"blocks": [...]` on a question object). Heights clamp to
 100–2400 px.
