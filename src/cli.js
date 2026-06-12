@@ -652,6 +652,9 @@ const SKILL_SRC = path.join(PKG_ROOT, 'skills', 'relay');
 const KNOWN_SKILL_DIRS = () => ({
   claude: path.join(os.homedir(), '.claude', 'skills', 'relay'),
   codex: path.join(os.homedir(), '.codex', 'skills', 'relay'),
+  // The cross-agent skills dir (npx-skills ecosystem). Some Codex/agent
+  // setups load skills from here INSTEAD of ~/.codex/skills.
+  agents: path.join(os.homedir(), '.agents', 'skills', 'relay'),
 });
 
 // Pre-rename skill dirs (quest-board). `skill install` removes these so a
@@ -702,19 +705,15 @@ function skillFreshnessWarning() {
 }
 
 function skillTargets(target) {
-  const home = os.homedir();
-  const known = {
-    claude: path.join(home, '.claude', 'skills', 'relay'),
-    codex: path.join(home, '.codex', 'skills', 'relay'),
-  };
+  const known = KNOWN_SKILL_DIRS();
   if (!target || target === true || target === 'auto') {
     const found = Object.values(known).filter((p) => fs.existsSync(path.dirname(path.dirname(p))));
     if (!found.length) {
-      throw new CliError('no agent dirs found (~/.claude or ~/.codex). Use --target claude|codex|both|<dir>.');
+      throw new CliError('no agent dirs found (~/.claude, ~/.codex, or ~/.agents). Use --target claude|codex|agents|all|<dir>.');
     }
     return found;
   }
-  if (target === 'both') return Object.values(known);
+  if (target === 'both' || target === 'all') return Object.values(known);
   if (known[target]) return [known[target]];
   return [path.join(path.resolve(target), 'relay')];
 }

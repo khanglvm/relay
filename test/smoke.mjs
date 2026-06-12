@@ -796,5 +796,22 @@ console.log('16. presence, blockEdits, push-wake, while-active');
   ok(piped.status === 'submitted' && piped.boardId === boardId, '--on-result command received the result JSON on stdin');
 }
 
+// ---------- 17. skill frontmatter portability guard ----------
+// Codex (and other strict-YAML agents) silently DROP a skill whose
+// description is an unquoted scalar containing ": " or exceeds the
+// agent-skills spec cap of 1024 chars. Claude Code is lenient, so only this
+// guard catches it before publish.
+console.log('17. skill frontmatter portability');
+{
+  const skillMd = fs.readFileSync(path.join(ROOT, 'skills', 'relay', 'SKILL.md'), 'utf8');
+  const m = skillMd.match(/^description: (.*)$/m);
+  ok(Boolean(m), 'SKILL.md has a description line');
+  const line = m[1].trim();
+  ok(line.startsWith('"') && line.endsWith('"'), 'description is double-quoted (strict-YAML safe)');
+  const inner = line.slice(1, -1);
+  ok(!inner.includes('"'), 'description has no unescaped inner double quotes');
+  ok(inner.length <= 1024, `description within the 1024-char agent-skills cap (${inner.length})`);
+}
+
 console.log(`\nAll ${passed} assertions passed. (storage: ${HOME})`);
 process.exit(0);
