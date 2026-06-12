@@ -1,6 +1,6 @@
 {
   "name": "@khanglvm/relay",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Browser-based question boards with rich blocks (markdown, charts, mermaid, tables, code, sandboxed HTML) and element-level annotations for AI coding agents (Claude Code, Codex, …): ask users structured questions, present interactive visuals, collect inline comments, wait for submit, read answers as JSON.",
   "keywords": [
     "ai-agents",
