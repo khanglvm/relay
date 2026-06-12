@@ -202,7 +202,14 @@
     badges = [];
     if (torndown) return;
     registered = registered.filter((r) => r.el.isConnected);
+    // While a block is expanded full-screen, body-level overlay badges for
+    // OTHER blocks would float above the overlay at stale positions — only
+    // badge elements inside the expanded block.
+    const fullEl = document.body.classList.contains('blk-full-open')
+      ? document.querySelector('.blk-full')
+      : null;
     for (const entry of registered) {
+      if (fullEl && !fullEl.contains(entry.el)) continue;
       const count = matching(entry.info).length;
       if (!count) continue;
       const badge = el('span', { class: 'ann-badge', title: count + (count === 1 ? ' comment' : ' comments') }, String(count));

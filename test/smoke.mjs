@@ -473,7 +473,8 @@ console.log('15. rename checks');
 {
   ok(fs.existsSync(BIN), 'bin/rly.js exists');
   const ver = await run(['--version']);
-  ok(ver.stdout.trim() === '0.4.0', '--version prints 0.4.0');
+  const pkgVersion = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+  ok(ver.stdout.trim() === pkgVersion, `--version prints package.json version (${pkgVersion})`);
   const help = await run(['help']);
   ok(/\brly\b/.test(help.stdout), 'help mentions rly');
   ok(/blocks/i.test(help.stdout), 'help mentions blocks');

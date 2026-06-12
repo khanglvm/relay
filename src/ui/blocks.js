@@ -502,6 +502,7 @@
     }
     syncBadge();
     wrap.append(badge);
+    attachViewer(wrap, { zoomEl: null }); // full-screen only; charts redraw responsively
 
     loadChart().then((Chart) => {
       let config = block.config
@@ -724,6 +725,8 @@
             });
           });
         }
+        // re-attach per render: innerHTML replacement above wiped the old bar
+        if (svgEl) attachViewer(container, { zoomEl: svgEl, natural: svgNatural(svgEl) });
         if (onDone) onDone();
       };
       try {
@@ -809,6 +812,7 @@
         const svgEl = viz.renderSVGElement(block.dot || '');
         sizeDiagramSvg(svgEl);
         container.replaceChildren(svgEl);
+        attachViewer(container, { zoomEl: svgEl, natural: svgNatural(svgEl) });
         if (!ctx.annotate) return;
         const parts = svgEl.querySelectorAll('g.node, g.edge');
         parts.forEach((g) => {
@@ -885,6 +889,13 @@
         if (block.height) img.style.height = clampHeight(block.height, 360) + 'px';
         img.addEventListener('error', fail);
         container.replaceChildren(img);
+        const attachImgViewer = () =>
+          attachViewer(container, {
+            zoomEl: img,
+            natural: () => (img.naturalWidth > 0 ? { w: img.naturalWidth, h: img.naturalHeight } : null),
+          });
+        if (img.complete && img.naturalWidth > 0) attachImgViewer();
+        else img.addEventListener('load', attachImgViewer, { once: true });
         if (ctx.annotate) {
           ctx.annotate.register(img, {
             blockId,
@@ -897,10 +908,115 @@
     return container;
   }
 
+  // ---------- viewer controls (zoom / fit / full-screen) ----------
+  // Large diagrams get squeezed to the column width; these controls let the
+  // user zoom (buttons or cmd/ctrl+wheel) and expand any visual block into a
+  // full-screen overlay. An overlay — NOT the native Fullscreen API — keeps
+  // the annotation pins/badges/popover usable while expanded (they live on
+  // <body>, which native fullscreen would hide).
+  let fullOpen = null; // container currently expanded
+
+  function exitFull() {
+    if (!fullOpen) return;
+    fullOpen.classList.remove('blk-full');
+    document.body.classList.remove('blk-full-open');
+    const btn = fullOpen.querySelector('.blk-tools .tool-full');
+    if (btn) btn.textContent = '⛶';
+    fullOpen = null;
+    window.dispatchEvent(new Event('resize'));
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && fullOpen) exitFull();
+  });
+
+  // opts: { zoomEl: svg|img|null, natural: () => ({w,h}|null) } — zoomEl null
+  // means full-screen only (charts, html iframes).
+  function attachViewer(container, opts) {
+    if (container._rlyTools) container._rlyTools.remove();
+    container.classList.add('blk-viewer');
+    const zoomable = Boolean(opts && opts.zoomEl);
+    let z = null; // null = fit-to-width
+
+    const pct = el('span', { class: 'tool-pct' }, 'fit');
+    function apply() {
+      if (!zoomable) return;
+      const target = opts.zoomEl;
+      const nat = opts.natural();
+      if (z === null || !nat || !nat.w) {
+        target.style.width = '100%';
+        target.style.maxWidth = nat && nat.w ? Math.ceil(nat.w) + 'px' : '100%';
+        target.style.height = 'auto';
+        pct.textContent = 'fit';
+      } else {
+        target.style.maxWidth = 'none';
+        target.style.width = Math.round(nat.w * z) + 'px';
+        target.style.height = 'auto';
+        pct.textContent = Math.round(z * 100) + '%';
+      }
+      // annotation overlay badges reposition on resize
+      window.dispatchEvent(new Event('resize'));
+    }
+    function currentZ() {
+      if (z !== null) return z;
+      const nat = opts.natural();
+      if (!nat || !nat.w) return 1;
+      const shown = opts.zoomEl.getBoundingClientRect().width;
+      return shown > 0 ? shown / nat.w : 1;
+    }
+    function setZoom(next) {
+      z = next === null ? null : Math.min(5, Math.max(0.2, next));
+      apply();
+    }
+
+    const tools = el('div', { class: 'blk-tools' });
+    if (zoomable) {
+      tools.append(
+        el('button', { type: 'button', title: 'Zoom out', onclick: () => setZoom(currentZ() / 1.25) }, '−'),
+        pct,
+        el('button', { type: 'button', title: 'Zoom in', onclick: () => setZoom(currentZ() * 1.25) }, '+'),
+        el('button', { type: 'button', title: 'Actual size', onclick: () => setZoom(1) }, '1:1'),
+        el('button', { type: 'button', title: 'Fit to width', onclick: () => setZoom(null) }, 'fit')
+      );
+      container.addEventListener(
+        'wheel',
+        (e) => {
+          if (!(e.ctrlKey || e.metaKey)) return;
+          e.preventDefault();
+          setZoom(currentZ() * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
+        },
+        { passive: false }
+      );
+    }
+    const fullBtn = el('button', { class: 'tool-full', type: 'button', title: 'Full screen (Esc closes)' }, '⛶');
+    fullBtn.addEventListener('click', () => {
+      if (fullOpen === container) {
+        exitFull();
+        return;
+      }
+      exitFull();
+      container.classList.add('blk-full');
+      document.body.classList.add('blk-full-open');
+      fullOpen = container;
+      fullBtn.textContent = '✕';
+      window.dispatchEvent(new Event('resize'));
+    });
+    tools.append(fullBtn);
+    container.append(tools);
+    container._rlyTools = tools;
+    if (zoomable) apply();
+  }
+
+  function svgNatural(svgEl) {
+    return () => {
+      const vb = svgEl.viewBox && svgEl.viewBox.baseVal;
+      return vb && vb.width > 0 ? { w: vb.width, h: vb.height } : null;
+    };
+  }
+
   // ---------- html (sandboxed iframe) ----------
   function renderHtml(block, ctx, blockId) {
     const height = clampHeight(block.height, 360);
-    return el('iframe', {
+    const iframe = el('iframe', {
       class: 'viz',
       'data-block-id': blockId,
       'data-question-id': ctx.questionId || '',
@@ -909,6 +1025,9 @@
       sandbox: 'allow-scripts allow-forms allow-popups allow-modals',
       loading: 'lazy',
     });
+    const wrap = el('div', { class: 'blk-htmlwrap' }, iframe);
+    attachViewer(wrap, { zoomEl: null });
+    return wrap;
   }
 
   // ---------- dispatch ----------

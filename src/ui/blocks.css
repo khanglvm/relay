@@ -265,3 +265,37 @@
   max-width: 100%;
   height: auto;
 }
+
+/* ---------- viewer controls (zoom / fit / full-screen) ---------- */
+.blk-viewer { position: relative; }
+.blk-tools {
+  position: absolute; top: 6px; right: 6px;
+  display: flex; gap: 2px; align-items: center;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 2px 4px;
+  opacity: 0.35; transition: opacity 150ms var(--ease);
+  z-index: 5;
+}
+.blk-viewer:hover .blk-tools, .blk-full .blk-tools { opacity: 1; }
+.blk-tools button {
+  background: none; border: none; color: var(--fg-2);
+  font: inherit; font-size: 0.8rem; line-height: 1;
+  padding: 4px 6px; border-radius: 6px; cursor: pointer;
+}
+.blk-tools button:hover { background: var(--bg-sunken); color: var(--accent); }
+.blk-tools .tool-pct { color: var(--muted); font-size: 0.72rem; min-width: 30px; text-align: center; }
+/* charts keep their annotation-count badge top-right; tools go top-left there */
+.blk-chart .blk-tools { right: auto; left: 6px; }
+
+/* full-screen = fixed overlay (NOT native fullscreen: annotation pins/badges/
+   popover live on <body> and must stay visible above the expanded block) */
+.blk-full {
+  position: fixed !important; inset: 12px; z-index: 49;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: var(--shadow-lift);
+  overflow: auto; max-height: none !important; margin: 0 !important;
+  padding: 48px 16px 16px;
+}
+body.blk-full-open { overflow: hidden; }
+.blk-chart.blk-full { height: calc(100vh - 24px) !important; width: auto !important; }
+.blk-htmlwrap.blk-full iframe.viz { height: calc(100vh - 90px) !important; width: 100%; }
