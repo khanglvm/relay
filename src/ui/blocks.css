@@ -307,14 +307,28 @@
 .blk-tools .tool-pct { color: var(--muted); font-size: 0.72rem; min-width: 30px; text-align: center; }
 
 /* full-screen = fixed overlay (NOT native fullscreen: annotation pins/badges/
-   popover live on <body> and must stay visible above the expanded block) */
+   popover live on <body> and must stay visible above the expanded block).
+   Edge-to-edge (no modal gap); the toolbar pins to the top as a fixed bar so
+   the close button stays on screen while the content scrolls. */
 .blk-full {
-  position: fixed !important; inset: 12px; z-index: 49;
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: 12px; box-shadow: var(--shadow-lift);
+  position: fixed !important; inset: 0; z-index: 49;
+  background: var(--card); border: 0; border-radius: 0; box-shadow: none;
   overflow: auto; max-height: none !important; margin: 0 !important;
-  padding: 48px 16px 16px;
+  padding: 44px 0 0;
 }
 body.blk-full-open { overflow: hidden; }
-.blk-chart.blk-full { height: calc(100vh - 24px) !important; width: auto !important; }
-.blk-htmlwrap.blk-full iframe.viz { height: calc(100vh - 90px) !important; width: 100%; }
+/* detach the toolbar from the scrolling content and fix it to the viewport top */
+.blk-full > .blk-tools {
+  position: fixed; top: 0; left: 0; right: 0; height: 44px;
+  margin: 0; padding: 0 12px;
+  background: var(--card); border-bottom: 1px solid var(--border);
+  z-index: 51;
+}
+.blk-chart.blk-full {
+  height: 100vh !important; width: auto !important;
+  padding: 44px 16px 16px;
+}
+.blk-htmlwrap.blk-full iframe.viz {
+  height: calc(100vh - 44px) !important; width: 100%;
+  margin: 0; border: 0; border-radius: 0;
+}

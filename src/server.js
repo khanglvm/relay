@@ -230,16 +230,35 @@ function sendFromDir(res, dir, name, contentType) {
   return true;
 }
 
+// Loaded into every custom-HTML iframe so users can hover any element to leave a
+// comment (relayKit.annotate.auto). Idempotent with an author-added /kit.js, and
+// a no-op when the author opts out via data-relay-annotate="off".
+const ANNOTATE_BOOTSTRAP =
+  '<script>(function(){function go(){try{window.relayKit&&window.relayKit.annotate&&window.relayKit.annotate.auto();}catch(e){}}' +
+  'if(window.relayKit&&window.relayKit.annotate)return go();' +
+  "var s=document.createElement('script');s.src='/kit.js';s.onload=go;s.onerror=go;" +
+  '(document.head||document.documentElement).appendChild(s);})();<\/script>';
+
+// Insert a snippet right before </body> (else </html>, else append).
+function injectBeforeBodyEnd(html, snippet) {
+  const lower = html.toLowerCase();
+  let idx = lower.lastIndexOf('</body>');
+  if (idx === -1) idx = lower.lastIndexOf('</html>');
+  if (idx === -1) return html + snippet;
+  return html.slice(0, idx) + snippet + html.slice(idx);
+}
+
 // Custom-HTML fragments (no <html> tag) get wrapped in a minimal document that
 // matches the user's theme, so e.g. "<b>hi</b>" doesn't paint a stark white
 // block in dark mode. Full documents are served verbatim — their authors can
-// read the ?theme=light|dark query param themselves.
+// read the ?theme=light|dark query param themselves. Either way the annotate
+// bootstrap is injected so every element is hover-commentable.
 function wrapFragment(content, theme) {
-  if (/<html[\s>]/i.test(content)) return content;
+  if (/<html[\s>]/i.test(content)) return injectBeforeBodyEnd(content, ANNOTATE_BOOTSTRAP);
   const dark = theme === 'dark';
   const bg = dark ? '#282624' : '#ffffff';
   const fg = dark ? '#edeae4' : '#1c1b19';
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>:root{color-scheme:${dark ? 'dark' : 'light'}}body{margin:12px;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:${bg};color:${fg}}</style></head><body>${content}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>:root{color-scheme:${dark ? 'dark' : 'light'}}body{margin:12px;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:${bg};color:${fg}}</style></head><body>${content}${ANNOTATE_BOOTSTRAP}</body></html>`;
 }
 
 function readBody(req, limit = 5 * 1024 * 1024) {

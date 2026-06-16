@@ -92,6 +92,22 @@ Node ≥ 18; Chart.js / Mermaid / Graphviz are vendored and lazy-loaded offline.
 npm test     # zero-dep smoke tests (spawns real servers, fake-submits)
 ```
 
+## Changelog
+
+### 0.6.0 — comment on anything
+- **Comment on any part of a custom-HTML mockup.** Hover any element — a heading,
+  a button, a card, the price — and a pin appears to leave an inline note. No
+  setup needed; the agent writes zero annotation code. Want to scope it? Mark
+  specific elements with `data-relay-annotate="label"`.
+- **Radio questions can carry a note.** Pick an option *and* say why, in one
+  optional field — now shown by default (set `"note": false` to hide it).
+- **Edge-to-edge fullscreen** for charts and HTML mockups, with the toolbar
+  pinned to the top while you scroll.
+- The board **title and intro are commentable** too.
+
+### 0.5.0
+- Visual answer options, image blocks, viewer redesign, adoption rules.
+
 ## Migration from quest-board
 
 relay was formerly `@khanglvm/quest-board` (CLI: `qbd`) — that package is

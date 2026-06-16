@@ -332,7 +332,10 @@ export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
       label,
       description: asStr(rq.description),
       required: rq.required === true,
-      note: rq.note === true,
+      // Radio (single) questions show the optional per-answer note by default so
+      // the user can qualify their pick; other types stay opt-in. An explicit
+      // note:false turns it off for a single question.
+      note: rq.note === undefined ? type === 'single' : rq.note === true,
       blocks: buildBlocks(rq, cwd, where, `${id}-`),
       placeholder: asStr(rq.placeholder),
     };
@@ -486,7 +489,7 @@ export const SPEC_SCHEMA = {
             },
           },
           other: { type: 'boolean', default: false, description: 'single/multi: add a free-text "Other" option. Its text is returned verbatim as the value.' },
-          note: { type: 'boolean', default: false, description: 'Add a small optional free-text field under the question (e.g. to qualify a choice). Returned separately as result.notes[questionId].' },
+          note: { type: 'boolean', description: 'Small optional free-text field under the question (to qualify an answer). Returned separately as result.notes[questionId]. Defaults to true for "single" (radio) questions so users can comment on their pick, false for other types; set note:false to hide it on a single question.' },
           placeholder: { type: 'string', description: 'For text/textarea.' },
           default: { description: 'Pre-selected value. Shape matches the answer shape for the type.' },
           min: { type: 'integer', default: 1, description: 'scale only' },
@@ -504,7 +507,7 @@ export const SPEC_SCHEMA = {
       type: 'array',
       readOnly: true,
       description:
-        'Returned in the result (not part of the input spec). Element-level comments the user attached to blocks. Each: {id, questionId|null, blockId|null, target:{kind:"chart-element"|"mermaid-node"|"table-cell"|"text"|"html-element", …}, text, createdAt}.',
+        'Returned in the result (not part of the input spec). Element-level comments the user attached to blocks. Each: {id, questionId|null, blockId|null, target:{kind:"chart-element"|"mermaid-node"|"graphviz-node"|"table-cell"|"text"|"html-element"|"image", …}, text, createdAt}. For html-element, target carries a stable ref + label; users can hover any element of a custom-HTML block (automatic) or ones the author marked with data-relay-annotate.',
     },
     blockEdits: {
       type: 'object',

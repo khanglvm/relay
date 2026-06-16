@@ -93,7 +93,8 @@ submit with unanswered questions (returned in `skipped`) unless
 
 Set `"note": true` on a question to add a small optional free-text field under
 it — use when the user may want to qualify their choice. Returned as
-`result.notes[questionId]`.
+`result.notes[questionId]`. `single` (radio) questions include this note by
+default (so a pick can carry a comment); set `"note": false` to hide it.
 
 Quick one-liners without a spec file:
 
@@ -153,8 +154,12 @@ pass `"server"` for a self-hosted instance. Legacy `"html"` / `"htmlFile"` /
 
 ## Annotations
 
-Users can hover chart points, diagram nodes (mermaid + graphviz), table cells, or
-select text in markdown to leave inline comments. Always mention this in the board intro.
+Users can hover chart points, diagram nodes (mermaid + graphviz), table cells,
+any element of a custom-HTML block, or select text in markdown to leave inline
+comments. Custom HTML is hover-commentable automatically — to scope/label what's
+annotatable, mark elements with `data-relay-annotate="Label"` (any signal turns
+the auto-pick off); opt a block out with `data-relay-annotate="off"`. Always
+mention annotation in the board intro.
 
 `result.annotations` is an array of:
 

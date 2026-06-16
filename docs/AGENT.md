@@ -6,9 +6,10 @@ then **wait for them to click Submit** and read the answers as JSON from stdout.
 No "type 'done' in the terminal", no hand-rolled HTML+server.
 
 **Tell the user** at the start of your intro text that they can hover chart
-points, diagram nodes, and table cells to leave comments, and select text in
-markdown blocks to annotate — their comments come back in `result.annotations`
-alongside their answers. Treat annotations as first-class feedback.
+points, diagram nodes, table cells, and any element of a custom-HTML block to
+leave comments, and select text in markdown blocks to annotate — their comments
+come back in `result.annotations` alongside their answers. Treat annotations as
+first-class feedback.
 
 Everything machine-relevant is on **stdout as JSON**; human-facing logs go to
 stderr. Exit codes: `0` submitted/acknowledged · `2` timeout · `3` cancelled ·
@@ -137,7 +138,9 @@ boolean/bool/yn→yesno, input→text, longtext→textarea, rating/likert→scal
 
 Unanswered questions are absent from `answers` and listed in `skipped`.
 Questions with `"note": true` show a small optional free-text field; non-empty
-notes come back in `notes` keyed by question id. On `timeout`/`cancelled`, a
+notes come back in `notes` keyed by question id. **`single` (radio) questions
+show this note by default** so the user can qualify their pick — set
+`"note": false` to hide it. On `timeout`/`cancelled`, a
 `draft` field carries the autosaved partial answers and any annotations written
 so far.
 
@@ -295,23 +298,40 @@ Rules of thumb:
   background/text match the user's current theme. **Full documents** are served
   verbatim and receive a `?theme=light|dark` query param on theme toggle.
 
-### kit.js — make iframe elements annotatable
+### Custom HTML is hover-commentable automatically
 
-Load `/kit.js` inside your custom HTML iframe to let users comment on specific
-elements:
+Every custom-HTML block is annotatable out of the box — relay injects a tiny
+runtime that lets the user **hover any meaningful element** (headings,
+paragraphs, list items, buttons, images, cards, table cells…) to get a comment
+pin, exactly like the rest of the board. You don't have to do anything. Comments
+come back in `result.annotations` with `target.kind = "html-element"`, a stable
+`target.ref` (the element), and a `target.label` derived from the element.
+
+Reach for the controls below only when you want to **scope or label** what's
+annotatable — typically for an interactive prototype where blanket hover targets
+would get in the way:
+
+**Declarative signal (preferred)** — mark the elements you want commented. Any
+signal present switches the auto-pick off, so only your marked elements are
+annotatable:
+
+```html
+<button data-relay-annotate="Primary CTA" data-relay-detail="checkout flow">Buy now</button>
+<section data-relay-annotate="Pricing table">…</section>
+```
+
+**Imperative** — same effect from script (needs `/kit.js`, which relay also
+auto-loads):
 
 ```html
 <script src="/kit.js"></script>
 <script>
   relayKit.commentable(document.getElementById('chart'), 'Revenue chart', 'Q1 2026');
-  relayKit.commentable(document.getElementById('hero-cta'), 'CTA button');
 </script>
 ```
 
-`relayKit.commentable(el, label, detail?)` — outlines `el` on hover; a click
-opens the annotation popover in the parent page anchored to the element.
-Annotations come back in `result.annotations` with `target.kind = "html-element"`,
-`target.label`, and (if provided) `target.detail`.
+**Opt out** of element annotation for a block with `data-relay-annotate="off"`
+on `<html>` or `<body>`.
 
 ## Annotations
 
@@ -349,7 +369,7 @@ intro. Annotations are autosaved with the draft and returned in the final result
 | `graphviz-node` | `nodeId`, `text` | clicking a Graphviz node or edge |
 | `table-cell` | `row` (0-based), `col` (column key), `value` | clicking a table cell |
 | `text` | `quote`, `prefix` (≤30 chars before), `suffix` (≤30 after) | selecting text in a markdown block |
-| `html-element` | `label`, `detail?` | clicking a `relayKit.commentable()` element |
+| `html-element` | `ref`, `label`, `detail?` | hovering any element in a custom-HTML block (auto), or a `data-relay-annotate` / `relayKit.commentable()` element |
 | `image` | `label` | clicking a PlantUML diagram or an image block |
 
 Read annotations as first-class feedback — they often carry the sharpest insight

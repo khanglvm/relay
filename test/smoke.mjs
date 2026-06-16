@@ -358,10 +358,32 @@ console.log('11. /html/b/<id>');
   const body = await (await fetch(new URL('/html/b/b1?theme=dark', url))).text();
   ok(body.includes('<b>block body marker</b>'), '/html/b/<id> serves the html block body');
   ok(body.includes('<!doctype html') && body.includes('color-scheme:dark'), 'fragment auto-wrapped with theme-matching document');
+  ok(body.includes('relayKit.annotate.auto') && body.includes("'/kit.js'"), 'annotate bootstrap injected so every element is hover-commentable');
   const legacy = await (await fetch(new URL('/html/board', url))).text();
   ok(legacy.includes('<b>block body marker</b>'), 'legacy /html/board aliases the first board html block');
   const missing = await fetch(new URL('/html/b/does-not-exist', url));
   ok(missing.status === 404, '/html/b/<unknown> → 404');
+  await post(url, '/api/submit', { answers: { go: 'yes' } });
+  await exited;
+}
+
+// ---------- 11b. annotate bootstrap injected into a FULL html document ----------
+console.log('11b. annotate bootstrap into full document');
+{
+  const FULL = '<html><head><title>Full</title></head><body><h1>full doc marker</h1></body></html>';
+  const FULL_SPEC = {
+    title: 'Full doc board',
+    blocks: [{ type: 'html', html: FULL }],
+    questions: [{ id: 'go', type: 'yesno', label: 'Go?' }],
+  };
+  const p = path.join(HOME, 'fulldoc-spec.json');
+  fs.writeFileSync(p, JSON.stringify(FULL_SPEC));
+  const { url, exited } = await spawnBlocking(['ask', '--file', p, '--no-open', '--timeout', '60']);
+  const body = await (await fetch(new URL('/html/b/b1', url))).text();
+  ok(body.includes('<h1>full doc marker</h1>'), 'full document served verbatim');
+  ok(!body.startsWith('<!doctype html><html><head><meta'), 'full document NOT re-wrapped in the fragment shell');
+  const bootAt = body.indexOf('relayKit.annotate.auto');
+  ok(bootAt !== -1 && bootAt < body.toLowerCase().indexOf('</body>'), 'annotate bootstrap injected before </body> of a full document');
   await post(url, '/api/submit', { answers: { go: 'yes' } });
   await exited;
 }
@@ -393,7 +415,7 @@ let annBoardId;
     },
     {
       id: 'a5', questionId: 'pick', blockId: 'pick-b1',
-      target: { kind: 'html-element', label: 'CTA button', detail: '#buy' },
+      target: { kind: 'html-element', ref: 'div>button:nth-of-type(2)', label: 'CTA button', detail: '#buy' },
       text: 'make it bigger', createdAt: new Date().toISOString(),
     },
   ];
@@ -416,6 +438,7 @@ let annBoardId;
   ok(textAnn.target.quote === 'Select me' && textAnn.target.prefix === 'Hello ' && textAnn.target.suffix === ' please', 'text annotation quote/prefix/suffix intact');
   const htmlAnn = result.annotations.find((a) => a.id === 'a5');
   ok(htmlAnn.questionId === 'pick' && htmlAnn.target.detail === '#buy', 'html-element annotation question scope + detail intact');
+  ok(htmlAnn.target.ref === 'div>button:nth-of-type(2)', 'html-element annotation stable element ref round-trips');
 }
 
 // ---------- 13. draft annotations prefill on reload ----------
@@ -887,6 +910,38 @@ console.log('18. option blocks & image block');
     input: JSON.stringify({ title: 'x', questions: [{ id: 'q', type: 'single', label: 'q', options: [{ value: 'a', blocks: [{ type: 'nope' }] }] }] }),
   });
   ok(badOptBlock.code === 4 && /options\[0\]\.blocks\[0\]/.test(badOptBlock.stderr), 'invalid option block error references options[<j>].blocks[<i>]');
+}
+
+// ---------- 22. single-question note defaults on; opt-out + round-trip ----------
+console.log('22. single-question note default');
+{
+  const NOTE_SPEC = {
+    title: 'Note defaults',
+    questions: [
+      { id: 'radio', type: 'single', label: 'Pick', options: ['a', 'b'] },           // note defaults true
+      { id: 'radioOff', type: 'single', label: 'Pick2', options: ['a', 'b'], note: false }, // explicit off
+      { id: 'multi', type: 'multi', label: 'Many', options: ['x', 'y'] },             // stays false
+      { id: 'free', type: 'text', label: 'Free', note: true },                        // explicit on
+    ],
+  };
+  const p = path.join(HOME, 'note-spec.json');
+  fs.writeFileSync(p, JSON.stringify(NOTE_SPEC));
+  const { url, exited } = await spawnBlocking(['ask', '--file', p, '--no-open', '--timeout', '60']);
+  const board = await (await fetch(new URL('/api/board', url))).json();
+  const byId = Object.fromEntries(board.spec.questions.map((q) => [q.id, q]));
+  ok(byId.radio.note === true, 'single (radio) question defaults to note:true');
+  ok(byId.radioOff.note === false, 'single question honors explicit note:false');
+  ok(byId.multi.note === false, 'non-single question (multi) stays note:false by default');
+  ok(byId.free.note === true, 'explicit note:true still works on other types');
+
+  // The radio's note round-trips through submit into result.notes[qid].
+  const res = await post(url, '/api/submit', {
+    answers: { radio: 'a' },
+    notes: { radio: 'picked a because it ships sooner' },
+  });
+  ok(res.ok, 'submit with a single-question note accepted');
+  const result = JSON.parse((await exited).stdout);
+  ok(result.notes?.radio === 'picked a because it ships sooner', 'single-question note round-trips in result.notes');
 }
 
 console.log(`\nAll ${passed} assertions passed. (storage: ${HOME})`);
