@@ -19,13 +19,48 @@ note, Submit — and the agent picks up your answers and keeps going:
 ## Quick start
 
 ```sh
-npm i -g @khanglvm/relay                  # the rly CLI
-npx -y skills add khanglvm/relay -g -y    # the agent skill (Claude Code, Codex, Cursor, …)
-rly skill rules >> ~/.claude/CLAUDE.md    # optional: skills are ignorable hints — this enforces usage (or >> AGENTS.md)
+# the rly CLI
+npm i -g @khanglvm/relay
+
+# the agent skill → every detected agent (Claude Code, Codex, Cursor, …)
+npx skills add khanglvm/relay --skill relay --all
+
+# enforce it (recommended) — a skill alone is an ignorable hint; append relay's
+# short usage rules to your agent's global instructions (per-agent commands below)
+rly skill rules
 ```
 
 That's it. Next time your agent needs a decision or wants to show you a plan,
 it opens a board like the ones above and waits for your Submit.
+
+### Tell your agent to actually use it
+
+`rly skill rules` prints relay's short usage rules. A skill is just an ignorable
+hint — these rules in the file your agent *always* reads are what make it reach for
+relay. Append them to your agent's **global** instructions:
+
+```sh
+rly skill rules >> ~/.claude/CLAUDE.md          # Claude Code
+rly skill rules >> ~/.codex/AGENTS.md           # Codex
+rly skill rules >> ~/.gemini/GEMINI.md          # Gemini CLI
+rly skill rules >> ~/.config/opencode/AGENTS.md # OpenCode
+```
+
+Cursor and GitHub Copilot keep global rules in a settings panel, not a file — run
+`rly skill rules` and paste the output into Cursor's *Settings → Rules → User Rules*
+or Copilot's custom-instructions.
+
+<details>
+<summary>More agents</summary>
+
+```sh
+rly skill rules >> ~/.codeium/windsurf/memories/global_rules.md # Windsurf
+rly skill rules >> ~/.factory/AGENTS.md                         # Droid (Factory)
+```
+
+Any other agent: run `rly skill rules` and paste the block into whatever file or
+settings panel it reads as global instructions.
+</details>
 
 ## What it improves
 

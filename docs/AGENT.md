@@ -479,4 +479,4 @@ call rather than calling it repeatedly in a loop.
 - For sensitive PlantUML diagrams, set `"server": "https://your-server"` to avoid
   sending source to the public plantuml.com server.
 - Bundled universal skill (Claude Code, Codex, any SKILL.md-aware agent):
-  `rly skill install` — or `npx skills add khanglvm/relay`.
+  `rly skill install` — or `npx skills add khanglvm/relay --skill relay --all`.

@@ -782,9 +782,10 @@ function cmdSkill(rest) {
   bundled at:  ${SKILL_SRC}
   install it:  rly skill install            # auto-detects ~/.claude, ~/.codex, ~/.agents
                rly skill install --target claude|codex|both|<dir>
-  from repo:   npx skills add khanglvm/relay
-  enforce it:  rly skill rules >> CLAUDE.md # or AGENTS.md — short always-read rules,
-                                            # because a skill alone is an ignorable hint
+  from repo:   npx skills add khanglvm/relay --skill relay --all
+  enforce it:  rly skill rules              # short always-read rules — paste into the file your
+                                            # agent reads (CLAUDE.md, AGENTS.md, .cursor/rules, …);
+                                            # a skill alone is an ignorable hint
 
 The skill teaches your agent the board spec format (questions + rich blocks +
 annotations), the blocking vs --detach patterns, and visualization sizing.
@@ -853,7 +854,7 @@ NOTES        answers & annotations autosave in real time (drafts survive timeout
 
 AI AGENTS    run \`rly agent\` for the complete machine-oriented guide.
              a universal skill is bundled — install with \`rly skill install\`
-             (or from the repo: npx skills add khanglvm/relay)`);
+             (or from the repo: npx skills add khanglvm/relay --skill relay --all)`);
   return 0;
 }
 
