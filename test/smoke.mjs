@@ -841,6 +841,21 @@ console.log('17. skill frontmatter portability');
   const rules = await run(['skill', 'rules']);
   ok(rules.code === 0 && rules.stdout.startsWith('## relay'), 'rly skill rules prints a markdown rules block');
   ok(/rly ask --file spec\.json --detach/.test(rules.stdout) && /options\[\]\.blocks/.test(rules.stdout), 'rules cover the detach pattern and visual options');
+
+  // `rly install` — multi-agent instruction injection. Read-only paths only
+  // (list + print + error); real writes target the user's home/cwd, so those
+  // are exercised out-of-band, not against the shared test environment.
+  const list = await run(['install']);
+  ok(list.code === 0, 'rly install (no args) exits 0');
+  const matrix = JSON.parse(list.stdout);
+  const ids = matrix.agents.map((a) => a.agent);
+  ok(['claude', 'cursor', 'copilot', 'kiro', 'windsurf', 'cline', 'gemini', 'codex'].every((x) => ids.includes(x)), 'install matrix lists the major agents');
+  const printed = await run(['install', '--target', 'cursor', '--print']);
+  ok(printed.code === 0 && /\.cursor\/rules\/relay\.mdc/.test(printed.stdout) && /alwaysApply: true/.test(printed.stdout), 'install --print emits Cursor .mdc with frontmatter + path');
+  const sharedPrint = await run(['install', '--target', 'gemini', '--print']);
+  ok(/relay:begin/.test(sharedPrint.stdout) && /relay:end/.test(sharedPrint.stdout), 'install --print wraps shared-file agents in relay markers');
+  const bogus = await run(['install', '--target', 'nope']);
+  ok(bogus.code === 4, 'install --target <unknown> exits 4');
 }
 
 // ---------- 18. option-level blocks + image block ----------
