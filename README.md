@@ -25,8 +25,9 @@ npm i -g @khanglvm/relay
 # the agent skill → every detected agent (Claude Code, Codex, Cursor, …)
 npx skills add khanglvm/relay --skill relay --all
 
-# enforce it (recommended) — a skill alone is an ignorable hint. `rly install`
-# writes relay's short usage rules into the right file for each agent (details below):
+# enforce it (recommended) — a skill alone is an ignorable hint; `rly install`
+# writes relay's usage rules into the file each agent reads (run `rly install`
+# with no args to see every supported target and where it lands):
 rly install --all          # every agent detected on this machine
 ```
 
@@ -35,32 +36,6 @@ it opens a board like the ones above and waits for your Submit.
 
 Keep relay current with **`rly upgrade`** — it installs the latest CLI and
 refreshes the skill in one step, leaving any boards you have open untouched.
-
-### Tell your agent to actually use it
-
-A skill is just an ignorable hint — relay's short usage rules in the file your
-agent *always* reads are what make it reach for relay. **`rly install` writes
-those rules into the right file for each agent**, cross-platform (macOS / Linux /
-Windows):
-
-```sh
-rly install --all                # every agent detected on this machine
-rly install --target claude      # → ~/.claude/CLAUDE.md
-rly install --target cursor      # → .cursor/rules/relay.mdc (with frontmatter)
-rly install --target copilot     # → .github/copilot-instructions.md (+ JetBrains global)
-rly install                      # no target: print the agent → file map for your OS
-```
-
-Supported targets: `claude`, `codex`, `cursor`, `copilot` (VS Code / Visual Studio /
-JetBrains), `kiro`, `windsurf`, `cline`, `gemini`, `opencode`, `droid` (Factory), and
-the generic `agents` (`AGENTS.md`). Flags: `--scope global|project` (where the rules
-land), `--print` (emit the text + resolved path for manual copy/paste), `--list`.
-relay's block is marker-delimited and idempotent — re-running updates only that block
-and leaves the rest of your file alone.
-
-Using an agent that isn't listed? `rly skill rules` prints the block to paste into
-whatever file or settings panel it reads — e.g. Cursor's *Settings → Rules → User
-Rules* or Copilot's custom instructions (their *user-level* rules aren't file-based).
 
 ## What it improves
 
