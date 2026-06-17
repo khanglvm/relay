@@ -96,12 +96,17 @@ npm test     # zero-dep smoke tests (spawns real servers, fake-submits)
 
 ## Changelog
 
+### 0.8.1
+- `rly install` adds **OpenCode** (`~/.config/opencode/AGENTS.md`) and **Droid /
+  Factory** (`~/.factory/AGENTS.md`) targets.
+- README documents `rly install` and `rly upgrade`.
+
 ### 0.8.0 — install into any agent
 - **`rly install --target <agent>`** writes relay's usage rules into the right
   file for Claude Code, Codex, Cursor, GitHub Copilot (VS Code / Visual Studio /
-  JetBrains), Kiro, Windsurf, Cline, Gemini, OpenCode, Droid (Factory), or the
-  generic `AGENTS.md` — cross-platform (macOS / Linux / Windows), idempotent,
-  with `--all`, `--scope`, and `--print`.
+  JetBrains), Kiro, Windsurf, Cline, Gemini, or the generic `AGENTS.md` —
+  cross-platform (macOS / Linux / Windows), idempotent, with `--all`, `--scope`,
+  and `--print`.
 - Fixed `rly skill install` crashing when the target skill dir was a symlink.
 
 ### 0.7.0 — sturdier boards, self-update
