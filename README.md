@@ -25,42 +25,42 @@ npm i -g @khanglvm/relay
 # the agent skill → every detected agent (Claude Code, Codex, Cursor, …)
 npx skills add khanglvm/relay --skill relay --all
 
-# enforce it (recommended) — a skill alone is an ignorable hint; append relay's
-# short usage rules to your agent's global instructions (per-agent commands below)
-rly skill rules
+# enforce it (recommended) — a skill alone is an ignorable hint. `rly install`
+# writes relay's short usage rules into the right file for each agent (details below):
+rly install --all          # every agent detected on this machine
 ```
 
 That's it. Next time your agent needs a decision or wants to show you a plan,
 it opens a board like the ones above and waits for your Submit.
 
+Keep relay current with **`rly upgrade`** — it installs the latest CLI and
+refreshes the skill in one step, leaving any boards you have open untouched.
+
 ### Tell your agent to actually use it
 
-`rly skill rules` prints relay's short usage rules. A skill is just an ignorable
-hint — these rules in the file your agent *always* reads are what make it reach for
-relay. Append them to your agent's **global** instructions:
+A skill is just an ignorable hint — relay's short usage rules in the file your
+agent *always* reads are what make it reach for relay. **`rly install` writes
+those rules into the right file for each agent**, cross-platform (macOS / Linux /
+Windows):
 
 ```sh
-rly skill rules >> ~/.claude/CLAUDE.md          # Claude Code
-rly skill rules >> ~/.codex/AGENTS.md           # Codex
-rly skill rules >> ~/.gemini/GEMINI.md          # Gemini CLI
-rly skill rules >> ~/.config/opencode/AGENTS.md # OpenCode
+rly install --all                # every agent detected on this machine
+rly install --target claude      # → ~/.claude/CLAUDE.md
+rly install --target cursor      # → .cursor/rules/relay.mdc (with frontmatter)
+rly install --target copilot     # → .github/copilot-instructions.md (+ JetBrains global)
+rly install                      # no target: print the agent → file map for your OS
 ```
 
-Cursor and GitHub Copilot keep global rules in a settings panel, not a file — run
-`rly skill rules` and paste the output into Cursor's *Settings → Rules → User Rules*
-or Copilot's custom-instructions.
+Supported targets: `claude`, `codex`, `cursor`, `copilot` (VS Code / Visual Studio /
+JetBrains), `kiro`, `windsurf`, `cline`, `gemini`, `opencode`, `droid` (Factory), and
+the generic `agents` (`AGENTS.md`). Flags: `--scope global|project` (where the rules
+land), `--print` (emit the text + resolved path for manual copy/paste), `--list`.
+relay's block is marker-delimited and idempotent — re-running updates only that block
+and leaves the rest of your file alone.
 
-<details>
-<summary>More agents</summary>
-
-```sh
-rly skill rules >> ~/.codeium/windsurf/memories/global_rules.md # Windsurf
-rly skill rules >> ~/.factory/AGENTS.md                         # Droid (Factory)
-```
-
-Any other agent: run `rly skill rules` and paste the block into whatever file or
-settings panel it reads as global instructions.
-</details>
+Using an agent that isn't listed? `rly skill rules` prints the block to paste into
+whatever file or settings panel it reads — e.g. Cursor's *Settings → Rules → User
+Rules* or Copilot's custom instructions (their *user-level* rules aren't file-based).
 
 ## What it improves
 
@@ -82,6 +82,8 @@ Node ≥ 18; Chart.js / Mermaid / Graphviz are vendored and lazy-loaded offline.
 | | |
 |---|---|
 | `rly help` | every command at a glance |
+| `rly install --target <agent>` | write relay's rules into an agent's instruction file — `claude` `codex` `cursor` `copilot` `kiro` `windsurf` `cline` `gemini` `opencode` `droid` `agents`; `--all`, `--scope`, `--print`, `--list` |
+| `rly upgrade` | update the CLI **and** refresh the skill in one step (safe around open boards; `--dry-run`, `--cli-only`, `--skill-only`) |
 | `rly agent` | the full agent guide — spec format, all block types, annotations, patterns ([docs/AGENT.md](docs/AGENT.md)) |
 | `rly schema` | board spec JSON Schema |
 | [skills/relay/SKILL.md](skills/relay/SKILL.md) | the bundled skill |
@@ -93,6 +95,23 @@ npm test     # zero-dep smoke tests (spawns real servers, fake-submits)
 ```
 
 ## Changelog
+
+### 0.8.0 — install into any agent
+- **`rly install --target <agent>`** writes relay's usage rules into the right
+  file for Claude Code, Codex, Cursor, GitHub Copilot (VS Code / Visual Studio /
+  JetBrains), Kiro, Windsurf, Cline, Gemini, OpenCode, Droid (Factory), or the
+  generic `AGENTS.md` — cross-platform (macOS / Linux / Windows), idempotent,
+  with `--all`, `--scope`, and `--print`.
+- Fixed `rly skill install` crashing when the target skill dir was a symlink.
+
+### 0.7.0 — sturdier boards, self-update
+- **Markdown blocks render GFM tables**; element comments moved to an
+  Outline-style right sidebar with inline highlights on commented text.
+- **Seamless timeouts** — a detached board that runs past its deadline keeps
+  serving so you can still submit (it lands as `submitted`); the page shows a
+  calm note instead of disconnecting.
+- **`rly upgrade`** — install the latest CLI and refresh the skill in one step.
+- Per-question notes are multi-line textboxes.
 
 ### 0.6.0 — comment on anything
 - **Comment on any part of a custom-HTML mockup.** Hover any element — a heading,

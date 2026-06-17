@@ -821,7 +821,7 @@ function platformDirs({ platform, home, env }) {
   const jetbrainsCopilot = platform === 'win32'
     ? path.join(localApp, 'github-copilot', 'intellij')
     : path.join(xdg, 'github-copilot', 'intellij');
-  return { jetbrainsCopilot, documents: path.join(home, 'Documents') };
+  return { xdg, jetbrainsCopilot, documents: path.join(home, 'Documents') };
 }
 
 // The relay instruction registry. Each agent declares how to install relay's
@@ -877,6 +877,14 @@ export function agentRegistry({ platform = process.platform, home = os.homedir()
       detect: j(home, '.gemini'),
       global: { file: j(home, '.gemini', 'GEMINI.md'), style: 'shared' },
       project: { file: j(cwd, 'GEMINI.md'), style: 'shared' } },
+    { id: 'opencode', label: 'OpenCode',
+      detect: j(d.xdg, 'opencode'),
+      global: { file: j(d.xdg, 'opencode', 'AGENTS.md'), style: 'shared' },
+      project: { file: j(cwd, 'AGENTS.md'), style: 'shared' } },
+    { id: 'droid', label: 'Droid (Factory)',
+      detect: j(home, '.factory'),
+      global: { file: j(home, '.factory', 'AGENTS.md'), style: 'shared' },
+      project: { file: j(cwd, 'AGENTS.md'), style: 'shared' } },
   ];
 }
 
@@ -1144,7 +1152,7 @@ USAGE
   rly skill [install|rules|path]      bundled universal agent skill (Claude Code, Codex, …)
                                       \`rly skill rules >> CLAUDE.md\` adds always-read usage rules
   rly install --target <agent>        inject relay's rules into an agent's instruction file
-                                      agents: claude codex cursor copilot kiro windsurf cline gemini agents
+                                      claude codex cursor copilot kiro windsurf cline gemini opencode droid agents
                                       --scope global|project · --print (copy/paste) · --all · --list (no flags)
   rly upgrade                         install the latest CLI globally + refresh the skill in one step
                                       --stop/--force handle running boards · --dry-run · --cli-only/--skill-only
