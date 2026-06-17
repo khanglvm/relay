@@ -771,6 +771,11 @@ function cmdSkill(rest) {
     const installed = [];
     for (const t of targets) {
       fs.mkdirSync(path.dirname(t), { recursive: true });
+      // Clear whatever is already there first. cpSync refuses to overwrite a
+      // non-directory (a symlink or file at the target — e.g. a skill dir the
+      // user symlinked elsewhere) with a directory, so a plain re-install would
+      // crash. rmSync on a symlink removes the link itself, not its target.
+      fs.rmSync(t, { recursive: true, force: true });
       fs.cpSync(SKILL_SRC, t, { recursive: true });
       fs.writeFileSync(path.join(t, '.rly-version'), VERSION);
       installed.push(t);
