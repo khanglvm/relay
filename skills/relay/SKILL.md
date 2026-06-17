@@ -117,6 +117,8 @@ single/multi question.
   "labels": ["Jan","Feb"], "series": [{"label":"x","data":[1,2]}], "height": 320 }
 { "type": "chart",    "config": { /* full Chart.js v4 config */ }, "height": 300 }
 { "type": "table",    "columns": ["A","B"], "rows": [["x","y"]], "sortable": true }
+// ^ use a `table` block for tabular data — sortable + per-cell comments.
+//   (markdown blocks render GFM pipe tables too, but those are display-only.)
 { "type": "code",     "lang": "js",  "code": "const x = 1;" }
 { "type": "html",     "html": "<p>hi</p>",           "height": 360 }
 { "type": "html",     "htmlFile": "viz.html",         "height": 400 }

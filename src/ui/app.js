@@ -34,6 +34,22 @@
     setTimeout(() => toast.remove(), 4000);
   }
 
+  // True once the board has soft-timed-out (the agent stopped waiting) or the
+  // live connection dropped — used to tailor the post-submit message. The board
+  // stays fully usable either way; we never disable Submit.
+  let handedBack = false;
+  // Calm, persistent status note (reuses the #banner bar). tone 'info' is the
+  // default neutral style; 'warn' is a softer amber, NOT the old red error.
+  // Shown at most once per message so the heartbeat can call it every tick.
+  const notesShown = new Set();
+  function showNotice(message, tone) {
+    if (notesShown.has(message)) return;
+    notesShown.add(message);
+    banner.textContent = message;
+    banner.className = 'banner ' + (tone === 'warn' ? 'warn' : 'info');
+    banner.style.display = 'block';
+  }
+
   // ---------- theme (auto -> light -> dark) ----------
   // Server-side pref wins: boards run on random ports, so localStorage alone
   // can't carry the choice across boards. The server persists it globally.
@@ -551,7 +567,7 @@
     else control.append(controlText(q, q.type === 'textarea'));
     card.append(control);
     if (q.note) {
-      const noteInput = el('input', { type: 'text', class: 'qnote', placeholder: 'optional note about this answer…' });
+      const noteInput = el('textarea', { class: 'qnote', rows: 2, placeholder: 'optional note about this answer…' });
       noteInput.value = typeof state.notes[q.id] === 'string' ? state.notes[q.id] : '';
       noteInput.addEventListener('input', () => {
         state.notes[q.id] = noteInput.value;
@@ -578,12 +594,8 @@
     ));
   }
 
-  // Annotations summary (editable list) sits directly above the submit bar.
-  if (Annotate) {
-    const summary = el('div', { class: 'ann-summary-wrap' });
-    app.append(summary);
-    Annotate.renderSummary(summary);
-  }
+  // Element-level comments live in the Outline-style right rail (created and
+  // managed by RelayAnnotate); no inline summary list here anymore.
 
   const submitBtn = el('button', { class: 'submit', type: 'button' }, spec.submitLabel);
   saveEl = el('span', { class: 'savestate' }, '');
@@ -616,11 +628,19 @@
         // best effort
       }
     }
+    // If the agent already stopped waiting (soft timeout / dropped connection),
+    // the submission won't be picked up automatically — tell the user to nudge
+    // the agent. Otherwise the normal hand-back copy applies.
+    const note = handedBack
+      ? 'Saved. Your agent had stopped waiting — send it a message so it picks up your answers.'
+      : closing
+        ? 'Handing back to your agent — this tab will close itself…'
+        : 'Handed back to your agent. You can close this tab.';
     app.replaceChildren(
       el('div', { class: 'done' },
         el('div', { class: 'mark' }, '✓'),
         el('h2', {}, QS.length ? 'Submitted' : 'Acknowledged'),
-        el('p', { id: 'done-note' }, closing ? 'Handing back to your agent — this tab will close itself…' : 'Handed back to your agent. You can close this tab.')
+        el('p', { id: 'done-note' }, note)
       )
     );
   }
@@ -638,8 +658,11 @@
       });
       if (!res.ok) throw new Error('submit rejected');
       submitted = true;
-      showDone(spec.autoClose);
-      if (spec.autoClose) {
+      // Don't auto-close when the agent had stopped waiting — the user needs to
+      // read the "send your agent a message" note and act on it.
+      const autoClose = spec.autoClose && !handedBack;
+      showDone(autoClose);
+      if (autoClose) {
         setTimeout(() => {
           window.close();
           // window.close() is best-effort (browsers may block it for
@@ -651,11 +674,15 @@
         }, 700);
       }
     } catch {
+      // The server is gone, so this submit couldn't be delivered. Keep the
+      // button live and tell the user how to get their input to the agent —
+      // their draft was autosaved up to the last edit.
       submitBtn.disabled = false;
       submitBtn.textContent = spec.submitLabel;
-      banner.textContent = 'Submit failed — the board server may have stopped.';
-      banner.style.display = 'block';
-      setTimeout(() => { if (!submitted) banner.style.display = 'none'; }, 4000);
+      showNotice(
+        'Couldn’t reach the agent to submit just now — your draft is saved. Prompt the agent to reopen this board so your input isn’t lost.',
+        'warn'
+      );
     }
   });
 
@@ -751,6 +778,17 @@
       // the live draft — answers for now-removed question ids are ignored),
       // then reload to render the new spec. Guarded so it fires once.
       const body = await r.json().catch(() => null);
+      // Soft timeout: the board ran past its deadline so the agent was handed a
+      // result and stopped waiting — but the server is still up and the board
+      // stays fully usable. Surface a calm note (never disable Submit) so the
+      // user knows to prompt the agent after submitting.
+      if (body && body.softTimedOut && !submitted) {
+        handedBack = true;
+        showNotice(
+          'You’ve had this open a while, so the agent stopped waiting. Your changes save automatically — submit when you’re ready, then prompt the agent to pick them up.',
+          'info'
+        );
+      }
       if (body && typeof body.rev === 'number' && bootRev !== null && body.rev !== bootRev && !submitted && !reloading) {
         reloading = true;
         stopHeartbeat();
@@ -768,10 +806,16 @@
         location.reload();
       }
     } catch {
+      // Lost the live connection (the session ended, or the machine slept).
+      // Keep the board usable — do NOT disable Submit — and show a calm note
+      // rather than the old red "closed" banner. A submit attempt that can't
+      // reach the server falls back to the same guidance below.
       if (++misses >= 2 && !submitted) {
-        banner.textContent = 'This board is closed — the server has stopped. Answers up to your last edit were autosaved.';
-        banner.style.display = 'block';
-        submitBtn.disabled = true;
+        handedBack = true;
+        showNotice(
+          'Lost the live connection to your agent’s session — your latest edits were saved. You can still try Submit; if it doesn’t go through, prompt the agent to reopen this board.',
+          'warn'
+        );
         stopHeartbeat();
       }
     }

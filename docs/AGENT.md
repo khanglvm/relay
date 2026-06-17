@@ -189,7 +189,9 @@ Rules of thumb:
 ### All block shapes
 
 ```jsonc
-// Markdown — built-in mini renderer, no library
+// Markdown — built-in mini renderer, no library. Headings, lists, code, quotes,
+// links, and GFM pipe tables all render. For real tabular DATA use a `table`
+// block instead (sortable + per-cell comments); markdown tables are display-only.
 { "type": "markdown", "md": "## Heading\nAny **CommonMark** prose." }
 
 // Mermaid diagram — vendored, lazy-loaded; natural height, max 1200 px + scroll
@@ -229,7 +231,9 @@ Rules of thumb:
   "height": 280
 }
 
-// Table — sortable, annotatable cells
+// Table — sortable, with individually annotatable cells. Prefer this over a
+// markdown pipe table whenever you're showing structured data (option matrices,
+// comparisons, workstream/effort grids): users can sort it and comment per cell.
 {
   "type": "table",
   "columns": [
@@ -266,8 +270,8 @@ Rules of thumb:
 | `graphviz` | precise dependency graphs, call graphs, state machines when Mermaid's auto-layout falls short; individually annotatable nodes and edges |
 | `plantuml` | UML diagrams (sequence, class, component) via server rendering; great for detailed interface contracts |
 | `chart` | numbers, trends, comparisons, metrics |
-| `table` | structured comparisons, option matrices, data grids |
-| `markdown` | prose context, background, instructions, section headings |
+| `table` | structured comparisons, option matrices, data grids — **use this for any tabular data**: it's sortable and every cell is commentable, unlike a markdown pipe table |
+| `markdown` | prose context, background, instructions, section headings (renders GFM pipe tables too, but reach for a `table` block for real data) |
 | `code` | code snippets, config examples, command output |
 | `image` | screenshots, mockup exports, photos — local files embed and work offline |
 | `html` | anything else — pixel-perfect mockups, custom widgets, embeds |
@@ -409,6 +413,18 @@ active (page visible/focused and interaction within `--idle-grace` seconds,
 default 180); once they go idle it returns the normal `wait-timeout` JSON,
 with `presence` attached so you can decide what to do next. Prefer this over
 raising `--timeout`.
+
+### A `timeout` on a detached board is NOT the end
+
+For a **detached** board, the `timeout` deadline is *soft*: it hands you a
+`timeout` result (with the autosaved draft) so you regain control, but the
+server stays up and the board stays fully usable — the user can keep
+commenting and still hit Submit. The page tells them you stopped waiting and
+to prompt you afterward. So if you got a `timeout` and the user might still be
+working: re-check later with `rly result <id>` (its status flips to
+`submitted` once they finish), or pass `--on-result` so a late submit
+push-wakes you. A blocking `rly ask` (no `--detach`) still ends hard on
+timeout, since there's no separate waiter to hand back to.
 
 ## Push-wake — get notified instead of polling
 

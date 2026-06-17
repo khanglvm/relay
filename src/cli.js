@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { CliError, sleep, pollFor } from './util.js';
 import { normalizeSpec, questionFromInline, SPEC_SCHEMA } from './spec.js';
@@ -23,7 +23,9 @@ import { openUrl } from './open.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = path.join(__dirname, '..');
 const BIN = path.join(PKG_ROOT, 'bin', 'rly.js');
-const VERSION = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, 'package.json'), 'utf8')).version;
+const PKG_JSON = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, 'package.json'), 'utf8'));
+const VERSION = PKG_JSON.version;
+const PKG_NAME = PKG_JSON.name; // e.g. "@khanglvm/relay" — the global package to upgrade
 
 const VALUED_FLAGS = new Set([
   'file', 'html', 'html-file', 'title', 'intro', 'timeout', 'port',
@@ -798,6 +800,113 @@ function cmdAgent() {
   return 0;
 }
 
+// `rly upgrade` — install the latest CLI globally AND refresh the bundled skill
+// in one shot. (`update` is taken by the live-mutate command, so this is
+// `upgrade` / `self-update`.) Running boards are surfaced and handled: a global
+// reinstall overwrites relay's files, but live detached servers snapshot their
+// UI at first request and serve from memory, so they keep working on their own
+// version. Flags: --stop (stop running boards first), --force (upgrade while
+// they keep running), --cli-only / --skill-only (scope).
+async function cmdUpgrade(args) {
+  const force = args.force === true;
+  const doStop = args.stop === true;
+  const wantCli = args.skillOnly !== true;
+  const wantSkill = args.cliOnly !== true;
+
+  const running = listRunning();
+
+  // --dry-run: report the plan (incl. how running boards would be handled)
+  // without installing anything or stopping anything.
+  if (args.dryRun === true) {
+    printJson({
+      dryRun: true,
+      wouldRun: [wantCli && `npm install -g ${PKG_NAME}@latest`, wantSkill && 'rly skill install'].filter(Boolean),
+      runningBoards: running.map((r) => r.id),
+      runningHandling: running.length
+        ? doStop
+          ? 'stop them first'
+          : force
+            ? 'leave them running (snapshotted)'
+            : 'BLOCKED — pass --stop or --force'
+        : 'none running',
+    });
+    return 0;
+  }
+
+  if (running.length) {
+    const ids = running.map((r) => r.id).join(', ');
+    if (doStop) {
+      process.stderr.write(`Stopping ${running.length} running board(s) before upgrading: ${ids}\n`);
+      for (const r of running) {
+        try { process.kill(r.pid, 'SIGTERM'); } catch { /* already gone */ }
+      }
+      for (const r of running) await pollFor(() => (loadRunning(r.id) ? null : true), 5000);
+    } else if (!force) {
+      // Default: don't silently overwrite under live boards — explain + let the
+      // user choose. The boards themselves are safe; this is about clarity.
+      process.stderr.write(
+        `${running.length} board(s) still running: ${ids}\n` +
+          'They keep serving their current version safely (each snapshots its UI in memory),\n' +
+          'and stay readable via `rly result <id>` / `rly wait <id>`. Pick one:\n' +
+          '  • rly stop --all       then re-run `rly upgrade`  (cleanest)\n' +
+          '  • rly upgrade --stop   stop them as part of this upgrade\n' +
+          '  • rly upgrade --force  upgrade now; leave them running on their snapshot\n'
+      );
+      printJson({ upgraded: false, reason: 'running-boards', running: running.map((r) => r.id) });
+      return 0;
+    } else {
+      process.stderr.write(`--force: leaving ${running.length} board(s) running on their snapshotted version: ${ids}\n`);
+    }
+  }
+
+  const did = {};
+
+  if (wantCli) {
+    process.stderr.write(`\nUpgrading ${PKG_NAME} → latest  (npm install -g ${PKG_NAME}@latest)\n`);
+    const r = spawnSync('npm', ['install', '-g', `${PKG_NAME}@latest`], { stdio: 'inherit' });
+    if (r.error || r.status !== 0) {
+      throw new CliError(
+        `npm install failed${r.error ? ` (${r.error.message})` : ` (exit ${r.status})`}. ` +
+          `Update manually: npm install -g ${PKG_NAME}@latest`,
+        1
+      );
+    }
+    did.cli = `${PKG_NAME}@latest`;
+  }
+
+  if (wantSkill) {
+    // Spawn the freshly installed binary (on PATH) so the NEW bundled skill is
+    // what lands — this process still holds the previous bundle in memory.
+    process.stderr.write('\nRefreshing the bundled skill  (rly skill install)\n');
+    const r = spawnSync('rly', ['skill', 'install'], { stdio: 'inherit', shell: true });
+    if (r.error || r.status !== 0) {
+      process.stderr.write(
+        `Skill refresh did not complete${r.error ? ` (${r.error.message})` : ` (exit ${r.status})`} — ` +
+          'run `rly skill install` yourself (or `npx skills add khanglvm/relay --skill relay --all`).\n'
+      );
+    } else {
+      did.skill = 'installed';
+    }
+  }
+
+  // Report the now-current global version (best-effort).
+  let nowVersion = null;
+  try {
+    const v = spawnSync('rly', ['--version'], { encoding: 'utf8', shell: true });
+    if (v.status === 0 && v.stdout) nowVersion = String(v.stdout).trim();
+  } catch {
+    // best effort
+  }
+
+  printJson({
+    upgraded: true,
+    ...did,
+    version: nowVersion,
+    note: 'most agents pick the new skill up immediately; if not, re-list skills or restart the session',
+  });
+  return 0;
+}
+
 async function cmdServeInternal(args) {
   const id = args.id;
   if (!id) throw new CliError('__serve: missing --id');
@@ -807,6 +916,9 @@ async function cmdServeInternal(args) {
     open: args.open !== false,
     timeoutSec: args.timeout !== undefined ? Math.max(0, Number.parseInt(args.timeout, 10) || 0) : 1800,
     quiet: true,
+    // Detached board: timeout hands back to the agent but keeps serving so the
+    // user can keep commenting and still submit (seamless past the deadline).
+    keepAliveOnTimeout: true,
   });
   await done;
   return 0;
@@ -842,6 +954,8 @@ USAGE
   rly agent                           FULL GUIDE for AI agents (spec format, blocks, sizing, patterns)
   rly skill [install|rules|path]      bundled universal agent skill (Claude Code, Codex, …)
                                       \`rly skill rules >> CLAUDE.md\` adds always-read usage rules
+  rly upgrade                         install the latest CLI globally + refresh the skill in one step
+                                      --stop/--force handle running boards · --dry-run · --cli-only/--skill-only
 
 COMMON FLAGS
   --title <s> --intro <s> --html-file <f> --height <px> --submit-label <s>
@@ -904,6 +1018,9 @@ export async function main(argv) {
         return cmdRm(parseArgs(rest));
       case 'skill':
         return cmdSkill(rest);
+      case 'upgrade':
+      case 'self-update':
+        return await cmdUpgrade(parseArgs(rest));
       case 'agent':
         return cmdAgent();
       case 'schema':

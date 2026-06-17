@@ -74,6 +74,10 @@
   font-size: 0.85rem;
   line-height: 1.5;
 }
+/* GFM pipe tables inside markdown reuse .blk-table styling; the wrapper lets a
+   wide table scroll horizontally instead of overflowing the column. */
+.blk-markdown .md .md-tablewrap { overflow-x: auto; margin: 12px 0; }
+.blk-markdown .md .md-table { margin: 0; }
 
 /* ---------- code block ---------- */
 .blk-pre {

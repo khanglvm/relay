@@ -16,12 +16,25 @@ const escapeHtml = (s) =>
 
 // Concurrently authored UI assets (blocks/annotate) may not exist yet at this
 // phase's runtime — read-guard so the server still boots with empty fallbacks.
+//
+// Successful reads are cached for the lifetime of the process. A running board
+// thus serves one consistent UI snapshot taken at first request: if the relay
+// package is updated on disk (e.g. `rly upgrade`) while this server is live, it
+// keeps serving its own version instead of mixing new assets with old in-memory
+// server logic. Empty/failed reads are NOT cached, preserving the boot-time
+// fallback for assets authored concurrently during a build.
+const _uiCache = new Map();
 function readUi(name) {
+  const hit = _uiCache.get(name);
+  if (hit) return hit;
+  let content = '';
   try {
-    return fs.readFileSync(path.join(UI_DIR, name), 'utf8');
+    content = fs.readFileSync(path.join(UI_DIR, name), 'utf8');
   } catch {
     return '';
   }
+  if (content) _uiCache.set(name, content);
+  return content;
 }
 
 // Strips block bodies for the client payload: html blocks ship only metadata
@@ -324,7 +337,7 @@ function runOnResult(cmd, result, { quiet = false } = {}) {
 // (submitted / acknowledged / timeout / cancelled). The result is also
 // persisted into the board record so `rly wait` / `rly result` can read it
 // from another process.
-export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, quiet = false }) {
+export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, quiet = false, keepAliveOnTimeout = false }) {
   const record = loadBoard(id);
   if (!record) throw new Error(`board ${id} not found`);
   const spec = record.spec;
@@ -355,6 +368,11 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
   let rev = 1;
   let status = 'open';
   let finished = false;
+  // Soft timeout: the board's time is up and a `timeout` result was handed back
+  // to the waiting agent, but the server stays live so the user can keep
+  // working and still submit. Surfaced via /api/status so the page can show a
+  // calm "agent stopped waiting" note instead of disconnecting.
+  let softTimedOut = false;
   // Latest client presence ping (null until the first ping arrives).
   let presence = null;
   let resolveDone;
@@ -372,7 +390,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
       } else if (req.method === 'GET' && pathname === '/api/board') {
         sendJson(res, 200, { id: record.id, spec: record.spec, draft: record.draft, result: record.result });
       } else if (req.method === 'GET' && pathname === '/api/status') {
-        sendJson(res, 200, { status, rev });
+        sendJson(res, 200, { status, rev, softTimedOut });
       } else if (req.method === 'POST' && pathname === '/api/ping') {
         const body = JSON.parse((await readBody(req)) || '{}');
         // Validate body shape: visible/focused booleans, idleMs finite >= 0.
@@ -498,15 +516,25 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
   });
 
   let timer = null;
-  if (timeoutSec > 0) timer = setTimeout(() => finish({ status: 'timeout' }), timeoutSec * 1000);
+  let idleTimer = null;
+  // The detached server's timeout is SOFT (keepAliveOnTimeout): at the deadline
+  // we hand a `timeout` result back to the waiting agent (so `rly wait` returns
+  // with the autosaved draft) but keep the server listening, so the user can
+  // keep working and still submit. A late submit overwrites the result with
+  // `submitted` and re-fires the push-wake; the board only truly closes on
+  // submit, an explicit stop, or once the user has clearly left (idle
+  // watchdog). A BLOCKING `rly ask` has no separate waiter to hand back to, so
+  // its timeout stays hard (close + resolve, exit 2).
+  if (timeoutSec > 0) {
+    timer = setTimeout(keepAliveOnTimeout ? softTimeout : () => finish({ status: 'timeout' }), timeoutSec * 1000);
+  }
   const onSignal = () => finish({ status: 'cancelled' });
   process.on('SIGINT', onSignal);
   process.on('SIGTERM', onSignal);
 
-  function finish(partial) {
-    if (finished) return;
-    finished = true;
-    status = partial.status;
+  // Build + persist a result object onto the record (read cross-process by
+  // `rly wait` / `rly result`). Does NOT touch the server lifecycle.
+  function persistResult(partial) {
     // blockEdits: from this submit, else fall back to the autosaved draft
     // (timeout/cancel). null when there are none.
     const editsRaw = partial.blockEdits ?? (record.draft?.blockEdits || {});
@@ -533,13 +561,17 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
     }
     record.result = result;
     saveBoard(record);
-    // Push-wake: run the agent's local command for EVERY terminal status.
-    runOnResult(record.onResult, result, { quiet });
+    return result;
+  }
+
+  // Tear the HTTP server down after a short grace (so the success page renders
+  // and auto-closes first). The result is assumed already persisted.
+  function closeServer(result) {
     removeRunning(record.id);
     if (timer) clearTimeout(timer);
+    if (idleTimer) clearInterval(idleTimer);
     process.removeListener('SIGINT', onSignal);
     process.removeListener('SIGTERM', onSignal);
-    // Grace period so the success page renders (and auto-closes) first.
     setTimeout(() => {
       try {
         server.closeAllConnections?.();
@@ -549,6 +581,52 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
       server.close(() => resolveDone(result));
       setTimeout(() => resolveDone(result), 1500).unref();
     }, 600);
+  }
+
+  // Terminal finish (submit / acknowledge / explicit cancel): persist the
+  // result, push-wake the agent for EVERY terminal status, and close the
+  // server. A late submit after a soft timeout lands here and overwrites the
+  // earlier `timeout` result with `submitted` (re-firing the push-wake).
+  function finish(partial) {
+    if (finished) return;
+    finished = true;
+    status = partial.status;
+    const result = persistResult(partial);
+    runOnResult(record.onResult, result, { quiet });
+    closeServer(result);
+  }
+
+  // SOFT timeout — hand a `timeout` result to the agent but keep the board live
+  // and submittable. The agent's `rly wait` returns now; the user can carry on.
+  function softTimeout() {
+    if (finished || softTimedOut) return;
+    softTimedOut = true;
+    const result = persistResult({ status: 'timeout' });
+    runOnResult(record.onResult, result, { quiet });
+    startIdleWatchdog();
+  }
+
+  // After a soft timeout, close the board for real once the user has clearly
+  // left (no presence ping for IDLE_CLOSE_MS) or a hard absolute cap is hit, so
+  // an abandoned board doesn't keep a server alive forever. Re-persists the
+  // latest draft as the final `timeout` result; no double push-wake.
+  function startIdleWatchdog() {
+    const IDLE_CLOSE_MS = 15 * 60 * 1000;
+    const HARD_CAP_MS = 6 * 60 * 60 * 1000;
+    const softAt = Date.now();
+    idleTimer = setInterval(() => {
+      if (finished) {
+        clearInterval(idleTimer);
+        return;
+      }
+      const lastSeen = presence ? presence.atMs : softAt;
+      if (Date.now() - lastSeen > IDLE_CLOSE_MS || Date.now() - softAt > HARD_CAP_MS) {
+        finished = true;
+        clearInterval(idleTimer);
+        closeServer(persistResult({ status: 'timeout' }));
+      }
+    }, 60 * 1000);
+    idleTimer.unref?.();
   }
 
   if (open) openUrl(url);

@@ -73,7 +73,7 @@ body {
   color: var(--fg);
   font: 16px/1.6 var(--sans);
   -webkit-font-smoothing: antialiased;
-  transition: background 200ms var(--ease), color 200ms var(--ease);
+  transition: background 200ms var(--ease), color 200ms var(--ease), padding 240ms var(--ease);
 }
 .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 28px; }
 
@@ -193,7 +193,7 @@ input[type="text"]:focus, textarea:focus {
 textarea { min-height: 90px; resize: vertical; }
 
 .qnotewrap { margin-top: 10px; }
-.qnotewrap .qnote { font-size: 0.88rem; padding: 8px 12px; }
+.qnotewrap .qnote { font-size: 0.88rem; padding: 8px 12px; min-height: 52px; resize: vertical; }
 
 .errmsg { color: var(--danger); font-size: 0.85rem; margin: 8px 0 0; display: none; }
 .card.error .errmsg { display: block; }
@@ -220,8 +220,14 @@ textarea { min-height: 90px; resize: vertical; }
   position: sticky; top: 0;
   background: var(--danger); color: var(--danger-fg);
   text-align: center; padding: 9px 16px; font-size: 0.9rem;
+  line-height: 1.45;
   z-index: 10; display: none;
+  border-bottom: 1px solid transparent;
 }
+/* Calm status notes (timeout hand-back / lost connection). Never the red error
+   state — the board stays usable, so these only inform. */
+.banner.info { background: var(--accent-soft); color: var(--accent); }
+.banner.warn { background: var(--bg-sunken); color: var(--fg-2); border-bottom-color: var(--border-strong); }
 
 /* Live-update toast: flagged after a `rly update` reload (see app.js).
    Fixed top-center, accent-soft bg, accent text; JS auto-removes it. */

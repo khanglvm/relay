@@ -411,7 +411,7 @@ const BLOCK_SCHEMA = {
     required: ['type'],
     properties: {
       type: { type: 'string', enum: BLOCK_TYPES },
-      md: { type: 'string', description: 'markdown: built-in mini renderer (no external library). Text selections are commentable.' },
+      md: { type: 'string', description: 'markdown: built-in mini renderer (no external library) — headings, lists, code, quotes, links, and GFM pipe tables. Text selections are commentable. For real tabular data prefer a "table" block (sortable + per-cell comments).' },
       code: { type: 'string', description: 'mermaid: diagram source (e.g. "graph TD; A-->B"); plantuml: the @startuml…@enduml source; code: the source to display.' },
       editable: { type: 'boolean', description: 'mermaid: when true, render an "Edit diagram" toggle so the user can edit the diagram source live. The edited source is returned in result.blockEdits[<blockId>].' },
       dot: { type: 'string', description: 'graphviz: DOT source (e.g. "digraph { a -> b }"). Rendered offline via vendored Viz.js; nodes and edges are individually commentable.' },

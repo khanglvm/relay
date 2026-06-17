@@ -103,6 +103,55 @@
       return out;
     }
 
+    // GFM pipe tables — a header row of "| a | b |" cells immediately followed
+    // by a separator row of dashes (with optional ":" alignment markers).
+    // Rendered as a real .blk-table so it matches the dedicated table block.
+    function splitRow(row) {
+      const trimmed = row.trim().replace(/^\|/, '').replace(/\|$/, '');
+      return trimmed.split(/(?<!\\)\|/).map((c) => c.replace(/\\\|/g, '|').trim());
+    }
+    function isSepRow(row) {
+      if (!row || row.indexOf('|') === -1) return false;
+      const cells = splitRow(row);
+      return cells.length > 0 && cells.every((c) => /^:?-{1,}:?$/.test(c));
+    }
+    function isTableStart(idx) {
+      const head = lines[idx];
+      return (
+        idx + 1 < lines.length &&
+        head.indexOf('|') !== -1 &&
+        !isSepRow(head) &&
+        isSepRow(lines[idx + 1])
+      );
+    }
+    function consumeTable() {
+      const headers = splitRow(lines[i]);
+      const aligns = splitRow(lines[i + 1]).map((c) => {
+        const left = c.startsWith(':');
+        const right = c.endsWith(':');
+        return left && right ? 'center' : right ? 'right' : left ? 'left' : '';
+      });
+      i += 2;
+      const body = [];
+      while (i < lines.length && !/^\s*$/.test(lines[i]) && lines[i].indexOf('|') !== -1 && !isSepRow(lines[i])) {
+        body.push(splitRow(lines[i]));
+        i++;
+      }
+      const ncols = headers.length;
+      const alignAttr = (ci) => (aligns[ci] ? ` style="text-align:${aligns[ci]}"` : '');
+      const cell = (tag, ci, text) => `<${tag}${alignAttr(ci)}>${mdInline(esc(text == null ? '' : text))}</${tag}>`;
+      let out = '<div class="md-tablewrap"><table class="blk-table md-table"><thead><tr>';
+      for (let c = 0; c < ncols; c++) out += cell('th', c, headers[c]);
+      out += '</tr></thead><tbody>';
+      for (const r of body) {
+        out += '<tr>';
+        for (let c = 0; c < ncols; c++) out += cell('td', c, r[c]);
+        out += '</tr>';
+      }
+      out += '</tbody></table></div>';
+      return out;
+    }
+
     while (i < lines.length) {
       const line = lines[i];
 
@@ -140,6 +189,9 @@
         continue;
       }
 
+      // GFM pipe table (header row + dash separator)
+      if (isTableStart(i)) { html += consumeTable(); continue; }
+
       // lists
       if (/^(\s*)([-*]|\d+\.)\s+/.test(line)) { html += consumeList(); continue; }
 
@@ -155,7 +207,8 @@
         !/^\s*---+\s*$/.test(lines[i]) &&
         !/^#{1,3}\s+/.test(lines[i]) &&
         !/^\s*>\s?/.test(lines[i]) &&
-        !/^(\s*)([-*]|\d+\.)\s+/.test(lines[i])
+        !/^(\s*)([-*]|\d+\.)\s+/.test(lines[i]) &&
+        !isTableStart(i)
       ) {
         buf.push(lines[i]);
         i++;

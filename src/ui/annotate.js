@@ -90,13 +90,163 @@
   let badges = [];             // live badge nodes (rebuilt on every refresh)
   let pendingSelection = null; // {info} captured at mouseup time
 
-  let dom = null;              // {pin, selBtn, pop}
+  // Text-selection comments are anchored back into the document as inline
+  // <mark> highlights. textRoots maps a blockId (null = intro/board) to the
+  // element whose text can be highlighted; highlightMap maps a target
+  // signature to its live <mark> nodes so we can flash or unwrap them.
+  const textRoots = new Map();
+  const highlightMap = new Map();
+
+  let dom = null;              // {pin, selBtn, pop, rail, railList, railToggle, railScrim, ...}
   let pinTimer = null;
   let pinEntry = null;
   let popOpen = false;
   let popScrollY = 0;
   let popSave = null;
   let badgeTimer = 0;
+  let railOpen = false;
+
+  // Stable signature for a (blockId, target) pair — same key matching() groups by.
+  const sigOf = (blockId, target) => JSON.stringify({ b: blockId ?? null, t: target });
+
+  // Brief highlight pulse used by the rail's jump-to.
+  function flashEl(target) {
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.remove('ann-flash');
+    void target.getBoundingClientRect(); // restart the animation
+    target.classList.add('ann-flash');
+    setTimeout(() => target.classList.remove('ann-flash'), 1000);
+  }
+
+  // ---------- text-selection highlights ----------
+  // Re-locate a saved text quote inside a root using its prefix/suffix anchors,
+  // returning a live Range (or null when the text can't be found anymore).
+  function findRangeByQuote(root, target) {
+    const quote = target && target.quote ? String(target.quote) : '';
+    if (!quote) return null;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    const map = []; // [{ node, start }] start = offset in `full`
+    let full = '';
+    let node;
+    while ((node = walker.nextNode())) {
+      map.push({ node, start: full.length });
+      full += node.nodeValue;
+    }
+    if (!map.length) return null;
+    const prefix = target.prefix || '';
+    const suffix = target.suffix || '';
+    const hits = [];
+    let from = 0;
+    let idx;
+    while ((idx = full.indexOf(quote, from)) !== -1) {
+      hits.push(idx);
+      from = idx + 1;
+    }
+    if (!hits.length) return null;
+    let chosen = hits[0];
+    for (const h of hits) {
+      const before = full.slice(Math.max(0, h - prefix.length), h);
+      const after = full.slice(h + quote.length, h + quote.length + suffix.length);
+      if ((!prefix || before.endsWith(prefix)) && (!suffix || after.startsWith(suffix))) {
+        chosen = h;
+        break;
+      }
+    }
+    const locate = (off) => {
+      for (const m of map) {
+        if (off <= m.start + m.node.nodeValue.length) return { node: m.node, offset: off - m.start };
+      }
+      const last = map[map.length - 1];
+      return { node: last.node, offset: last.node.nodeValue.length };
+    };
+    const s = locate(chosen);
+    const e = locate(chosen + quote.length);
+    const range = document.createRange();
+    try {
+      range.setStart(s.node, s.offset);
+      range.setEnd(e.node, e.offset);
+    } catch {
+      return null;
+    }
+    return range;
+  }
+
+  // Wrap every text-node segment inside `range` in its own <mark>; clicking a
+  // mark opens the comment popover for that target. Returns the mark nodes.
+  function wrapRange(range, sig, info) {
+    const sC = range.startContainer;
+    const sO = range.startOffset;
+    const eC = range.endContainer;
+    const eO = range.endOffset;
+    const anc = range.commonAncestorContainer;
+    const root = anc.nodeType === 1 ? anc : anc.parentNode;
+    if (!root) return [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    const all = [];
+    let n;
+    while ((n = walker.nextNode())) all.push(n);
+    // Decide membership BEFORE mutating the DOM (splitText adds new siblings).
+    const inRange = all.filter((node) => {
+      try {
+        return range.intersectsNode(node);
+      } catch {
+        return false;
+      }
+    });
+    const marks = [];
+    for (const orig of inRange) {
+      let fromOff = 0;
+      let toOff = orig.nodeValue.length;
+      if (orig === sC) fromOff = sO;
+      if (orig === eC) toOff = eO;
+      if (fromOff >= toOff) continue;
+      let seg = orig;
+      if (fromOff > 0) seg = seg.splitText(fromOff);
+      if (toOff - fromOff < seg.nodeValue.length) seg.splitText(toOff - fromOff);
+      const mark = el('mark', { class: 'ann-hl', 'data-sig': sig });
+      seg.parentNode.insertBefore(mark, seg);
+      mark.appendChild(seg);
+      mark.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        openPopover(info, mark);
+      });
+      marks.push(mark);
+    }
+    return marks;
+  }
+
+  function unwrapHighlight(sig) {
+    const marks = highlightMap.get(sig);
+    if (!marks) return;
+    for (const m of marks) {
+      if (!m.isConnected) continue;
+      const parent = m.parentNode;
+      while (m.firstChild) parent.insertBefore(m.firstChild, m);
+      parent.removeChild(m);
+      parent.normalize();
+    }
+    highlightMap.delete(sig);
+  }
+
+  // Highlight every saved text annotation whose blockId matches this root and
+  // that isn't already wrapped (idempotent — safe to call on every register).
+  function applyHighlightsForRoot(root, blockId) {
+    const key = blockId ?? null;
+    const seen = new Set();
+    for (const a of annotations) {
+      if (!a.target || a.target.kind !== 'text') continue;
+      if ((a.blockId ?? null) !== key) continue;
+      const sig = sigOf(a.blockId, a.target);
+      if (seen.has(sig) || highlightMap.has(sig)) continue;
+      seen.add(sig);
+      const range = findRangeByQuote(root, a.target);
+      if (!range) continue;
+      const info = { blockId: a.blockId ?? null, questionId: a.questionId ?? null, target: a.target };
+      const marks = wrapRange(range, sig, info);
+      if (marks.length) highlightMap.set(sig, marks);
+    }
+  }
 
   // ---------- singleton DOM ----------
   function ensureDom() {
@@ -135,8 +285,36 @@
       }
     });
 
-    document.body.append(pin, selBtn, pop);
-    dom = { pin, selBtn, pop };
+    // Comments rail (Outline-style right sidebar) + its floating toggle and
+    // narrow-screen scrim. The list is a summary target, so renderSummaries()
+    // keeps it in sync; chrome (count, visibility) is refreshed separately.
+    const railToggleCount = el('span', { class: 'ann-rail-toggle-count' }, '0');
+    const railToggle = el('button', { class: 'ann-rail-toggle', type: 'button', 'aria-label': 'Comments' });
+    railToggle.innerHTML =
+      '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">' +
+      '<path d="M3 2.5h10A1.5 1.5 0 0 1 14.5 4v5a1.5 1.5 0 0 1-1.5 1.5H8.4L5 13.4v-2.9H3A1.5 1.5 0 0 1 1.5 9V4A1.5 1.5 0 0 1 3 2.5Z" fill="currentColor"/></svg>';
+    railToggle.append(el('span', { class: 'ann-rail-toggle-label' }, 'Comments'), railToggleCount);
+    railToggle.addEventListener('click', toggleRail);
+
+    const railScrim = el('div', { class: 'ann-rail-scrim' });
+    railScrim.addEventListener('click', closeRail);
+
+    const railClose = el('button', { class: 'ann-rail-close', type: 'button', 'aria-label': 'Close comments', title: 'Close' }, '×');
+    railClose.addEventListener('click', closeRail);
+    const railHeadCount = el('span', { class: 'ann-rail-headcount' }, '');
+    const railList = el('div', { class: 'ann-rail-list' });
+    const rail = el('aside', { class: 'ann-rail', 'aria-label': 'Comments' },
+      el('div', { class: 'ann-rail-head' },
+        el('span', { class: 'ann-rail-title' }, 'Comments'),
+        railHeadCount,
+        railClose
+      ),
+      railList
+    );
+
+    document.body.append(pin, selBtn, pop, railToggle, railScrim, rail);
+    dom = { pin, selBtn, pop, railToggle, railToggleCount, railScrim, rail, railList, railHeadCount };
+    summaryEls.add(railList);
 
     document.addEventListener('selectionchange', () => {
       if (dom.selBtn.style.display === '' || dom.selBtn.style.display === 'none') return;
@@ -161,6 +339,36 @@
     }, true);
 
     window.addEventListener('resize', scheduleBadgeRefresh);
+  }
+
+  // ---------- comments rail ----------
+  function openRail() {
+    if (!dom || torndown || !annotations.length) return;
+    railOpen = true;
+    dom.rail.classList.add('open');
+    dom.railScrim.classList.add('show');
+    document.body.classList.add('ann-rail-open');
+  }
+  function closeRail() {
+    railOpen = false;
+    if (!dom) return;
+    dom.rail.classList.remove('open');
+    dom.railScrim.classList.remove('show');
+    document.body.classList.remove('ann-rail-open');
+  }
+  function toggleRail() {
+    if (railOpen) closeRail();
+    else openRail();
+  }
+  // Sync the toggle badge + rail count with the live list; hide the whole rail
+  // affordance when there are no comments.
+  function refreshRailChrome() {
+    if (!dom) return;
+    const n = annotations.length;
+    dom.railToggleCount.textContent = String(n);
+    dom.railHeadCount.textContent = n ? `${n}` : '';
+    dom.railToggle.style.display = n ? 'inline-flex' : 'none';
+    if (!n) closeRail();
   }
 
   // ---------- hover pin ----------
@@ -345,7 +553,21 @@
       author: 'user',
       replies: [],
     });
+    // Highlight the selected text in place (re-located via its quote anchors,
+    // since the live selection is already gone by save time).
+    if (info.target && info.target.kind === 'text') {
+      const sig = sigOf(info.blockId, info.target);
+      const root = textRoots.get(info.blockId ?? null);
+      if (root && !highlightMap.has(sig)) {
+        const range = findRangeByQuote(root, info.target);
+        if (range) {
+          const marks = wrapRange(range, sig, { blockId: info.blockId ?? null, questionId: info.questionId ?? null, target: info.target });
+          if (marks.length) highlightMap.set(sig, marks);
+        }
+      }
+    }
     changed();
+    openRail(); // surface the new comment in the sidebar, Outline-style
   }
 
   // Append a user reply to a top-level annotation's thread (cap 50, like the
@@ -366,13 +588,20 @@
   function removeAnnotation(id) {
     const i = annotations.findIndex((a) => a.id === id);
     if (i < 0) return;
+    const removed = annotations[i];
     annotations.splice(i, 1);
+    // Drop the inline highlight once the last comment on that text is gone.
+    if (removed.target && removed.target.kind === 'text') {
+      const sig = sigOf(removed.blockId, removed.target);
+      if (!annotations.some((a) => sigOf(a.blockId, a.target) === sig)) unwrapHighlight(sig);
+    }
     changed();
   }
 
   function changed() {
     scheduleBadgeRefresh();
     renderSummaries();
+    refreshRailChrome();
     if (onChange) onChange(annotations.slice());
   }
 
@@ -434,6 +663,7 @@
   }
 
   function renderSummaryInto(target) {
+    const isRail = target.classList.contains('ann-rail-list');
     target.classList.add('ann-summary');
     target.replaceChildren();
     if (!annotations.length) {
@@ -441,7 +671,8 @@
       return;
     }
     target.style.display = '';
-    target.append(el('h3', { class: 'ann-sum-head' }, `Comments (${annotations.length})`));
+    // The rail has its own header chrome; standalone summaries get a heading.
+    if (!isRail) target.append(el('h3', { class: 'ann-sum-head' }, `Comments (${annotations.length})`));
     for (const a of annotations) {
       const del = el('button', { class: 'ann-del', type: 'button', title: 'Delete comment', 'aria-label': 'Delete comment' }, '×');
       del.addEventListener('click', (e) => {
@@ -463,17 +694,22 @@
         ),
         del
       );
-      // Clicking a row jumps to (and flashes) the matching registered element.
+      // Clicking a row jumps to (and flashes) the matching element: a
+      // registered block element, or the inline highlight for a text comment.
       row.addEventListener('click', () => {
         const entry = registered.find(
           (r) => r.el.isConnected && sameBlock(r.info.blockId, a.blockId) && sameTarget(r.info.target, a.target)
         );
-        if (!entry) return;
-        entry.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        entry.el.classList.remove('ann-flash');
-        void entry.el.getBoundingClientRect(); // restart the animation
-        entry.el.classList.add('ann-flash');
-        setTimeout(() => entry.el.classList.remove('ann-flash'), 1000);
+        let jump = entry ? entry.el : null;
+        if (!jump && a.target && a.target.kind === 'text') {
+          const marks = highlightMap.get(sigOf(a.blockId, a.target));
+          jump = marks && marks.find((m) => m.isConnected);
+        }
+        if (!jump) return;
+        // On narrow screens the rail overlays the page — close it so the
+        // flashed target is actually visible.
+        if (isRail && window.matchMedia('(max-width: 1179px)').matches) closeRail();
+        flashEl(jump);
       });
       target.append(row);
     }
@@ -506,6 +742,7 @@
     }
     scheduleBadgeRefresh();
     renderSummaries();
+    refreshRailChrome();
   }
 
   // Remove every floating element (pin, badges, popover, selection button)
@@ -521,13 +758,20 @@
     }
     hidePin();
     hideSelBtn();
+    closeRail();
     for (const b of badges) b.remove();
     badges = [];
     registered = [];
+    textRoots.clear();
+    highlightMap.clear();
     if (dom) {
       dom.pin.remove();
       dom.selBtn.remove();
       dom.pop.remove();
+      dom.railToggle.remove();
+      dom.railScrim.remove();
+      dom.rail.remove();
+      summaryEls.delete(dom.railList);
       dom = null;
     }
   }
@@ -546,11 +790,15 @@
   function enableTextSelection(rootEl, baseInfo) {
     if (torndown) return;
     ensureDom();
+    const blockId = (baseInfo && baseInfo.blockId != null) ? baseInfo.blockId : null;
+    textRoots.set(blockId, rootEl);
     rootEl.addEventListener('mouseup', () => {
       if (torndown) return;
       // defer: the selection settles after mouseup
       setTimeout(() => maybeShowSelBtn(rootEl, baseInfo), 0);
     });
+    // Re-anchor any saved text comments for this root (reload / prefill path).
+    applyHighlightsForRoot(rootEl, blockId);
   }
 
   function openExternal(info, anchorEl) {
