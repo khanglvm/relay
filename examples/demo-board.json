@@ -1,0 +1,144 @@
+{
+  "title": "Relay Demo — \"Project Atlas\" Q3 Launch Review",
+  "intro": "This is a showcase board. It exercises every question type (single, multi, yes/no, scale, text, textarea) and every visual block type (markdown, chart, table, mermaid, graphviz, plantuml, code, html, image).\n\n**Try the interactions:** hover a chart point, a diagram node, or a table cell to leave an inline comment; select text in any prose to annotate it; and click **Edit** on the architecture diagram to revise it yourself. Answers autosave as you go.",
+  "blocks": [
+    {
+      "type": "markdown",
+      "md": "## 📊 Where we stand\nAtlas hit **GA-readiness** last sprint. Below is the launch dashboard the steering group will review. Everything on this page is annotatable — *select this sentence* to leave a margin note."
+    },
+    {
+      "type": "chart",
+      "kind": "line",
+      "title": "Weekly active users — beta cohort",
+      "labels": ["W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8"],
+      "series": [
+        { "label": "Activated", "data": [120, 240, 410, 560, 690, 910, 1180, 1520] },
+        { "label": "Retained (W+1)", "data": [110, 205, 360, 470, 560, 720, 905, 1180] }
+      ],
+      "height": 320
+    },
+    {
+      "type": "table",
+      "columns": ["Metric", "Target", "Current", "Status"],
+      "rows": [
+        ["Activation rate", "60%", "67%", "✅ ahead"],
+        ["W1 retention", "45%", "41%", "⚠️ behind"],
+        ["p95 latency (ms)", "300", "248", "✅ ahead"],
+        ["Crash-free sessions", "99.5%", "99.2%", "⚠️ behind"],
+        ["Support tickets / 1k", "5.0", "3.1", "✅ ahead"]
+      ],
+      "sortable": true
+    },
+    {
+      "type": "mermaid",
+      "editable": true,
+      "height": 380,
+      "code": "graph TD\n  U[Client apps] --> GW[API Gateway]\n  GW --> AUTH[Auth service]\n  GW --> ATLAS[Atlas core]\n  ATLAS --> DB[(Primary DB)]\n  ATLAS --> CACHE[(Redis cache)]\n  ATLAS --> Q[Event queue]\n  Q --> WORK[Async workers]\n  WORK --> DB\n  ATLAS --> SEARCH[(Search index)]"
+    },
+    {
+      "type": "graphviz",
+      "height": 300,
+      "dot": "digraph deps { rankdir=LR; node [shape=box,style=rounded]; \"web\" -> \"gateway\"; \"mobile\" -> \"gateway\"; \"gateway\" -> \"atlas-core\"; \"gateway\" -> \"auth\"; \"atlas-core\" -> \"billing\"; \"atlas-core\" -> \"notifications\"; \"billing\" -> \"stripe\" [style=dashed]; \"notifications\" -> \"sendgrid\" [style=dashed]; }"
+    },
+    {
+      "type": "code",
+      "lang": "yaml",
+      "code": "# atlas launch flags\nlaunch:\n  strategy: phased        # big_bang | phased | soft\n  rollout_percent: 10\n  regions: [us-east, eu-west]\n  killswitch: enabled\n  canary_minutes: 30"
+    },
+    {
+      "type": "html",
+      "height": 140,
+      "html": "<div style=\"display:flex;gap:12px;font-family:system-ui\">\n  <div data-relay-annotate=\"Budget burn\" style=\"flex:1;padding:14px;border-radius:10px;background:#0f172a;color:#e2e8f0\"><div style=\"font-size:12px;opacity:.7\">Budget burn</div><div style=\"font-size:26px;font-weight:700\">$184k</div><div style=\"font-size:12px;color:#4ade80\">of $250k · 74%</div></div>\n  <div data-relay-annotate=\"Days to GA\" style=\"flex:1;padding:14px;border-radius:10px;background:#0f172a;color:#e2e8f0\"><div style=\"font-size:12px;opacity:.7\">Days to GA</div><div style=\"font-size:26px;font-weight:700\">11</div><div style=\"font-size:12px;color:#facc15\">2 blockers open</div></div>\n  <div data-relay-annotate=\"NPS\" style=\"flex:1;padding:14px;border-radius:10px;background:#0f172a;color:#e2e8f0\"><div style=\"font-size:12px;opacity:.7\">Beta NPS</div><div style=\"font-size:26px;font-weight:700\">+52</div><div style=\"font-size:12px;color:#4ade80\">n=430</div></div>\n</div>"
+    }
+  ],
+  "questions": [
+    {
+      "id": "strategy",
+      "type": "single",
+      "label": "Which launch strategy should we commit to?",
+      "required": true,
+      "other": true,
+      "options": [
+        {
+          "value": "big_bang",
+          "label": "Big Bang",
+          "description": "Ship to 100% on launch day. Maximum momentum, maximum risk.",
+          "blocks": [
+            { "type": "html", "height": 150, "html": "<div style=\"font-family:system-ui;padding:12px;border-radius:8px;background:#1e1b4b;color:#e0e7ff\"><div style=\"height:10px;background:#6366f1;border-radius:6px;width:100%\"></div><div style=\"margin-top:8px;font-size:13px\">Day 0 → <b>100%</b> of users</div><div style=\"margin-top:6px;font-size:12px;opacity:.8\">⚡ Fastest · 🔥 Highest blast radius</div></div>" }
+          ]
+        },
+        {
+          "value": "phased",
+          "label": "Phased Rollout",
+          "description": "10% → 50% → 100% over 3 weeks with canary gates. Balanced.",
+          "blocks": [
+            { "type": "html", "height": 150, "html": "<div style=\"font-family:system-ui;padding:12px;border-radius:8px;background:#052e2b;color:#ccfbf1\"><div style=\"display:flex;gap:4px\"><div style=\"height:10px;background:#14b8a6;border-radius:6px;width:10%\"></div><div style=\"height:10px;background:#14b8a6;opacity:.6;border-radius:6px;width:40%\"></div><div style=\"height:10px;background:#14b8a6;opacity:.3;border-radius:6px;width:50%\"></div></div><div style=\"margin-top:8px;font-size:13px\">W1 <b>10%</b> · W2 <b>50%</b> · W3 <b>100%</b></div><div style=\"margin-top:6px;font-size:12px;opacity:.8\">🛡️ Safe · ⏱️ Slower</div></div>" }
+          ]
+        },
+        {
+          "value": "soft",
+          "label": "Soft Launch",
+          "description": "Quiet release to opt-in users + 2 regions, no marketing push.",
+          "blocks": [
+            { "type": "html", "height": 150, "html": "<div style=\"font-family:system-ui;padding:12px;border-radius:8px;background:#3b1f0e;color:#fed7aa\"><div style=\"height:10px;background:#f97316;border-radius:6px;width:25%\"></div><div style=\"margin-top:8px;font-size:13px\">Opt-in only · <b>2 regions</b></div><div style=\"margin-top:6px;font-size:12px;opacity:.8\">🤫 Low risk · 📉 Low reach</div></div>" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "channels",
+      "type": "multi",
+      "label": "Which launch channels should be in scope for week 1?",
+      "note": true,
+      "options": [
+        { "value": "email", "label": "Email to beta list" },
+        { "value": "blog", "label": "Engineering blog post" },
+        { "value": "social", "label": "Social / launch thread" },
+        { "value": "ph", "label": "Product Hunt" },
+        { "value": "press", "label": "Press / analyst briefing" }
+      ]
+    },
+    {
+      "id": "sequence",
+      "type": "single",
+      "label": "Does this canary promotion sequence look right?",
+      "blocks": [
+        {
+          "type": "plantuml",
+          "height": 320,
+          "code": "@startuml\nactor Operator\nparticipant \"Deploy bot\" as Bot\nparticipant \"Canary 10%\" as Canary\nparticipant \"Fleet 100%\" as Fleet\nOperator -> Bot: promote()\nBot -> Canary: route 10% traffic\nCanary --> Bot: metrics OK (30m)\nBot -> Fleet: ramp to 100%\nFleet --> Operator: launch complete\n@enduml"
+        }
+      ],
+      "options": [
+        { "value": "yes_ok", "label": "Yes — ship it as drawn" },
+        { "value": "longer_canary", "label": "Yes, but extend the canary window" },
+        { "value": "needs_rework", "label": "No — needs rework (note below)" }
+      ]
+    },
+    {
+      "id": "approve",
+      "type": "yesno",
+      "label": "Approve the Atlas Q3 launch plan as presented?",
+      "required": true
+    },
+    {
+      "id": "confidence",
+      "type": "scale",
+      "label": "How confident are you in the current GA timeline?",
+      "min": 1,
+      "max": 5,
+      "minLabel": "Not at all",
+      "maxLabel": "Very confident"
+    },
+    {
+      "id": "ga_date",
+      "type": "text",
+      "label": "Target GA date (your call)"
+    },
+    {
+      "id": "risks",
+      "type": "textarea",
+      "label": "Top risks or blockers we should resolve before launch?"
+    }
+  ]
+}
