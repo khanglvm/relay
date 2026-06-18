@@ -1,6 +1,6 @@
 {
   "title": "Relay Demo — \"Project Atlas\" Q3 Launch Review",
-  "intro": "This is a showcase board. It exercises every question type (single, multi, yes/no, scale, text, textarea) and every visual block type (markdown, chart, table, mermaid, graphviz, plantuml, code, html, image).\n\n**Try the interactions:** hover a chart point, a diagram node, or a table cell to leave an inline comment; select text in any prose to annotate it; and click **Edit** on the architecture diagram to revise it yourself.\n\n**New — zoom & pan:** hold **⌘/Ctrl** and scroll to zoom into the architecture or dependency diagram, then **drag to pan** around it (the cursor turns into a grab hand once a visual overflows its frame). Charts and diagrams now also sit in a subtle framed card. Answers autosave as you go.",
+  "intro": "A full showcase board. It exercises every QUESTION type (single, multi, yes/no, scale, text, textarea) and every BLOCK type (markdown, chart, table, mermaid, graphviz, plantuml, code, html, image).\n\n**Every chart & diagram has a hover toolbar** (top-right): 💬 comment on the whole block · − / + zoom · ⤢ full-screen.\n\n**Ways to comment:** hover a chart point, a diagram node, a PlantUML label, or a table cell · select text in prose **or in the code block** · or use the 💬 button for a whole-block note. Click **Edit** on the architecture diagram to revise it yourself.\n\n**Zoom & pan:** ⌘/Ctrl-scroll (or the −/+ buttons) to zoom a diagram, then **drag to pan** — the cursor becomes a grab hand once a visual overflows its framed card. Answers autosave as you go.",
   "blocks": [
     {
       "type": "markdown",
@@ -10,22 +10,108 @@
       "type": "chart",
       "kind": "line",
       "title": "Weekly active users — beta cohort",
-      "labels": ["W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8"],
+      "labels": [
+        "W1",
+        "W2",
+        "W3",
+        "W4",
+        "W5",
+        "W6",
+        "W7",
+        "W8"
+      ],
       "series": [
-        { "label": "Activated", "data": [120, 240, 410, 560, 690, 910, 1180, 1520] },
-        { "label": "Retained (W+1)", "data": [110, 205, 360, 470, 560, 720, 905, 1180] }
+        {
+          "label": "Activated",
+          "data": [
+            120,
+            240,
+            410,
+            560,
+            690,
+            910,
+            1180,
+            1520
+          ]
+        },
+        {
+          "label": "Retained (W+1)",
+          "data": [
+            110,
+            205,
+            360,
+            470,
+            560,
+            720,
+            905,
+            1180
+          ]
+        }
       ],
       "height": 320
     },
     {
+      "type": "chart",
+      "kind": "doughnut",
+      "title": "Beta traffic by region",
+      "labels": [
+        "us-east",
+        "eu-west",
+        "ap-south",
+        "other"
+      ],
+      "series": [
+        {
+          "label": "share",
+          "data": [
+            52,
+            28,
+            14,
+            6
+          ]
+        }
+      ],
+      "height": 260
+    },
+    {
       "type": "table",
-      "columns": ["Metric", "Target", "Current", "Status"],
+      "columns": [
+        "Metric",
+        "Target",
+        "Current",
+        "Status"
+      ],
       "rows": [
-        ["Activation rate", "60%", "67%", "✅ ahead"],
-        ["W1 retention", "45%", "41%", "⚠️ behind"],
-        ["p95 latency (ms)", "300", "248", "✅ ahead"],
-        ["Crash-free sessions", "99.5%", "99.2%", "⚠️ behind"],
-        ["Support tickets / 1k", "5.0", "3.1", "✅ ahead"]
+        [
+          "Activation rate",
+          "60%",
+          "67%",
+          "✅ ahead"
+        ],
+        [
+          "W1 retention",
+          "45%",
+          "41%",
+          "⚠️ behind"
+        ],
+        [
+          "p95 latency (ms)",
+          "300",
+          "248",
+          "✅ ahead"
+        ],
+        [
+          "Crash-free sessions",
+          "99.5%",
+          "99.2%",
+          "⚠️ behind"
+        ],
+        [
+          "Support tickets / 1k",
+          "5.0",
+          "3.1",
+          "✅ ahead"
+        ]
       ],
       "sortable": true
     },
@@ -49,6 +135,12 @@
       "type": "html",
       "height": 140,
       "html": "<div style=\"display:flex;gap:12px;font-family:system-ui\">\n  <div data-relay-annotate=\"Budget burn\" style=\"flex:1;padding:14px;border-radius:10px;background:#0f172a;color:#e2e8f0\"><div style=\"font-size:12px;opacity:.7\">Budget burn</div><div style=\"font-size:26px;font-weight:700\">$184k</div><div style=\"font-size:12px;color:#4ade80\">of $250k · 74%</div></div>\n  <div data-relay-annotate=\"Days to GA\" style=\"flex:1;padding:14px;border-radius:10px;background:#0f172a;color:#e2e8f0\"><div style=\"font-size:12px;opacity:.7\">Days to GA</div><div style=\"font-size:26px;font-weight:700\">11</div><div style=\"font-size:12px;color:#facc15\">2 blockers open</div></div>\n  <div data-relay-annotate=\"NPS\" style=\"flex:1;padding:14px;border-radius:10px;background:#0f172a;color:#e2e8f0\"><div style=\"font-size:12px;opacity:.7\">Beta NPS</div><div style=\"font-size:26px;font-weight:700\">+52</div><div style=\"font-size:12px;color:#4ade80\">n=430</div></div>\n</div>"
+    },
+    {
+      "type": "image",
+      "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NDAiIGhlaWdodD0iMjIwIiB2aWV3Qm94PSIwIDAgNjQwIDIyMCIgZm9udC1mYW1pbHk9InN5c3RlbS11aSxzYW5zLXNlcmlmIj4KICA8cmVjdCB3aWR0aD0iNjQwIiBoZWlnaHQ9IjIyMCIgZmlsbD0iI2ZhZjlmNyIvPgogIDx0ZXh0IHg9IjI0IiB5PSIzNCIgZm9udC1zaXplPSIxNiIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0iIzFjMWIxOSI+UmVnaW9uYWwgcm9sbG91dCB0aW1lbGluZTwvdGV4dD4KICA8ZyBmb250LXNpemU9IjEyIiBmaWxsPSIjOGE4NTgwIj48dGV4dCB4PSIxMjAiIHk9IjY0Ij5XMTwvdGV4dD48dGV4dCB4PSIyNDAiIHk9IjY0Ij5XMjwvdGV4dD48dGV4dCB4PSIzNjAiIHk9IjY0Ij5XMzwvdGV4dD48dGV4dCB4PSI0ODAiIHk9IjY0Ij5XNDwvdGV4dD48L2c+CiAgPHRleHQgeD0iMjQiIHk9IjEwMCIgZm9udC1zaXplPSIxMyIgZmlsbD0iIzFjMWIxOSI+dXMtZWFzdDwvdGV4dD4KICA8cmVjdCB4PSIxMTAiIHk9Ijg4IiB3aWR0aD0iNDcwIiBoZWlnaHQ9IjE2IiByeD0iOCIgZmlsbD0iI2UzZjBlYyIvPjxyZWN0IHg9IjExMCIgeT0iODgiIHdpZHRoPSI0NzAiIGhlaWdodD0iMTYiIHJ4PSI4IiBmaWxsPSIjMmY4ZjZmIi8+CiAgPHRleHQgeD0iMjQiIHk9IjE0MCIgZm9udC1zaXplPSIxMyIgZmlsbD0iIzFjMWIxOSI+ZXUtd2VzdDwvdGV4dD4KICA8cmVjdCB4PSIxMTAiIHk9IjEyOCIgd2lkdGg9IjQ3MCIgaGVpZ2h0PSIxNiIgcng9IjgiIGZpbGw9IiNlM2YwZWMiLz48cmVjdCB4PSIxMTAiIHk9IjEyOCIgd2lkdGg9IjMyMCIgaGVpZ2h0PSIxNiIgcng9IjgiIGZpbGw9IiMzYTlmN2MiLz4KICA8dGV4dCB4PSIyNCIgeT0iMTgwIiBmb250LXNpemU9IjEzIiBmaWxsPSIjMWMxYjE5Ij5hcC1zb3V0aDwvdGV4dD4KICA8cmVjdCB4PSIxMTAiIHk9IjE2OCIgd2lkdGg9IjQ3MCIgaGVpZ2h0PSIxNiIgcng9IjgiIGZpbGw9IiNlM2YwZWMiLz48cmVjdCB4PSIxMTAiIHk9IjE2OCIgd2lkdGg9IjE1MCIgaGVpZ2h0PSIxNiIgcng9IjgiIGZpbGw9IiNjZGJmYWUiLz4KICA8dGV4dCB4PSIxMTAiIHk9IjIwNiIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzhhODU4MCI+c29saWQgPSBsaXZlLCBmYWRlZCA9IHBsYW5uZWQ8L3RleHQ+Cjwvc3ZnPg==",
+      "alt": "Regional rollout timeline",
+      "height": 240
     }
   ],
   "questions": [
@@ -64,7 +156,11 @@
           "label": "Big Bang",
           "description": "Ship to 100% on launch day. Maximum momentum, maximum risk.",
           "blocks": [
-            { "type": "html", "height": 150, "html": "<div style=\"font-family:system-ui;padding:12px;border-radius:8px;background:#1e1b4b;color:#e0e7ff\"><div style=\"height:10px;background:#6366f1;border-radius:6px;width:100%\"></div><div style=\"margin-top:8px;font-size:13px\">Day 0 → <b>100%</b> of users</div><div style=\"margin-top:6px;font-size:12px;opacity:.8\">⚡ Fastest · 🔥 Highest blast radius</div></div>" }
+            {
+              "type": "html",
+              "height": 150,
+              "html": "<div style=\"font-family:system-ui;padding:12px;border-radius:8px;background:#1e1b4b;color:#e0e7ff\"><div style=\"height:10px;background:#6366f1;border-radius:6px;width:100%\"></div><div style=\"margin-top:8px;font-size:13px\">Day 0 → <b>100%</b> of users</div><div style=\"margin-top:6px;font-size:12px;opacity:.8\">⚡ Fastest · 🔥 Highest blast radius</div></div>"
+            }
           ]
         },
         {
@@ -72,7 +168,11 @@
           "label": "Phased Rollout",
           "description": "10% → 50% → 100% over 3 weeks with canary gates. Balanced.",
           "blocks": [
-            { "type": "html", "height": 150, "html": "<div style=\"font-family:system-ui;padding:12px;border-radius:8px;background:#052e2b;color:#ccfbf1\"><div style=\"display:flex;gap:4px\"><div style=\"height:10px;background:#14b8a6;border-radius:6px;width:10%\"></div><div style=\"height:10px;background:#14b8a6;opacity:.6;border-radius:6px;width:40%\"></div><div style=\"height:10px;background:#14b8a6;opacity:.3;border-radius:6px;width:50%\"></div></div><div style=\"margin-top:8px;font-size:13px\">W1 <b>10%</b> · W2 <b>50%</b> · W3 <b>100%</b></div><div style=\"margin-top:6px;font-size:12px;opacity:.8\">🛡️ Safe · ⏱️ Slower</div></div>" }
+            {
+              "type": "html",
+              "height": 150,
+              "html": "<div style=\"font-family:system-ui;padding:12px;border-radius:8px;background:#052e2b;color:#ccfbf1\"><div style=\"display:flex;gap:4px\"><div style=\"height:10px;background:#14b8a6;border-radius:6px;width:10%\"></div><div style=\"height:10px;background:#14b8a6;opacity:.6;border-radius:6px;width:40%\"></div><div style=\"height:10px;background:#14b8a6;opacity:.3;border-radius:6px;width:50%\"></div></div><div style=\"margin-top:8px;font-size:13px\">W1 <b>10%</b> · W2 <b>50%</b> · W3 <b>100%</b></div><div style=\"margin-top:6px;font-size:12px;opacity:.8\">🛡️ Safe · ⏱️ Slower</div></div>"
+            }
           ]
         },
         {
@@ -80,7 +180,11 @@
           "label": "Soft Launch",
           "description": "Quiet release to opt-in users + 2 regions, no marketing push.",
           "blocks": [
-            { "type": "html", "height": 150, "html": "<div style=\"font-family:system-ui;padding:12px;border-radius:8px;background:#3b1f0e;color:#fed7aa\"><div style=\"height:10px;background:#f97316;border-radius:6px;width:25%\"></div><div style=\"margin-top:8px;font-size:13px\">Opt-in only · <b>2 regions</b></div><div style=\"margin-top:6px;font-size:12px;opacity:.8\">🤫 Low risk · 📉 Low reach</div></div>" }
+            {
+              "type": "html",
+              "height": 150,
+              "html": "<div style=\"font-family:system-ui;padding:12px;border-radius:8px;background:#3b1f0e;color:#fed7aa\"><div style=\"height:10px;background:#f97316;border-radius:6px;width:25%\"></div><div style=\"margin-top:8px;font-size:13px\">Opt-in only · <b>2 regions</b></div><div style=\"margin-top:6px;font-size:12px;opacity:.8\">🤫 Low risk · 📉 Low reach</div></div>"
+            }
           ]
         }
       ]
@@ -91,11 +195,26 @@
       "label": "Which launch channels should be in scope for week 1?",
       "note": true,
       "options": [
-        { "value": "email", "label": "Email to beta list" },
-        { "value": "blog", "label": "Engineering blog post" },
-        { "value": "social", "label": "Social / launch thread" },
-        { "value": "ph", "label": "Product Hunt" },
-        { "value": "press", "label": "Press / analyst briefing" }
+        {
+          "value": "email",
+          "label": "Email to beta list"
+        },
+        {
+          "value": "blog",
+          "label": "Engineering blog post"
+        },
+        {
+          "value": "social",
+          "label": "Social / launch thread"
+        },
+        {
+          "value": "ph",
+          "label": "Product Hunt"
+        },
+        {
+          "value": "press",
+          "label": "Press / analyst briefing"
+        }
       ]
     },
     {
@@ -110,9 +229,18 @@
         }
       ],
       "options": [
-        { "value": "yes_ok", "label": "Yes — ship it as drawn" },
-        { "value": "longer_canary", "label": "Yes, but extend the canary window" },
-        { "value": "needs_rework", "label": "No — needs rework (note below)" }
+        {
+          "value": "yes_ok",
+          "label": "Yes — ship it as drawn"
+        },
+        {
+          "value": "longer_canary",
+          "label": "Yes, but extend the canary window"
+        },
+        {
+          "value": "needs_rework",
+          "label": "No — needs rework (note below)"
+        }
       ]
     },
     {
