@@ -1,6 +1,6 @@
 {
   "title": "Relay Demo — \"Project Atlas\" Q3 Launch Review",
-  "intro": "This is a showcase board. It exercises every question type (single, multi, yes/no, scale, text, textarea) and every visual block type (markdown, chart, table, mermaid, graphviz, plantuml, code, html, image).\n\n**Try the interactions:** hover a chart point, a diagram node, or a table cell to leave an inline comment; select text in any prose to annotate it; and click **Edit** on the architecture diagram to revise it yourself. Answers autosave as you go.",
+  "intro": "This is a showcase board. It exercises every question type (single, multi, yes/no, scale, text, textarea) and every visual block type (markdown, chart, table, mermaid, graphviz, plantuml, code, html, image).\n\n**Try the interactions:** hover a chart point, a diagram node, or a table cell to leave an inline comment; select text in any prose to annotate it; and click **Edit** on the architecture diagram to revise it yourself.\n\n**New — zoom & pan:** hold **⌘/Ctrl** and scroll to zoom into the architecture or dependency diagram, then **drag to pan** around it (the cursor turns into a grab hand once a visual overflows its frame). Charts and diagrams now also sit in a subtle framed card. Answers autosave as you go.",
   "blocks": [
     {
       "type": "markdown",
@@ -43,7 +43,7 @@
     {
       "type": "code",
       "lang": "yaml",
-      "code": "# atlas launch flags\nlaunch:\n  strategy: phased        # big_bang | phased | soft\n  rollout_percent: 10\n  regions: [us-east, eu-west]\n  killswitch: enabled\n  canary_minutes: 30"
+      "code": "# atlas launch flags\nlaunch:\n  strategy: phased        # big_bang | phased | soft\n  rollout_percent: 5      # canary start (was 10 — per review)\n  regions: [us-east, eu-west]\n  killswitch: enabled\n  canary_minutes: 30"
     },
     {
       "type": "html",
@@ -106,7 +106,7 @@
         {
           "type": "plantuml",
           "height": 320,
-          "code": "@startuml\nactor Operator\nparticipant \"Deploy bot\" as Bot\nparticipant \"Canary 10%\" as Canary\nparticipant \"Fleet 100%\" as Fleet\nOperator -> Bot: promote()\nBot -> Canary: route 10% traffic\nCanary --> Bot: metrics OK (30m)\nBot -> Fleet: ramp to 100%\nFleet --> Operator: launch complete\n@enduml"
+          "code": "@startuml\nactor Operator\nparticipant \"Deploy bot\" as Bot\nparticipant \"Canary 5%\" as Canary\nparticipant \"Fleet 100%\" as Fleet\nOperator -> Bot: promote()\nBot -> Canary: route 5% traffic\nCanary --> Bot: metrics OK (30m)\nBot -> Fleet: ramp to 100%\nFleet --> Operator: launch complete\n@enduml"
         }
       ],
       "options": [
