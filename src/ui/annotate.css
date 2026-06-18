@@ -30,8 +30,12 @@
   user-select: none;
 }
 .ann-badge:hover { background: var(--accent-hover); }
-/* SVG targets (mermaid nodes) get the badge overlaid in document coords */
-.ann-badge-overlay { top: auto; right: auto; z-index: 58; }
+/* SVG / image targets get the badge overlaid (positioned as a child of the
+   scrollable diagram viewport so it rides with the content). z 15: above the
+   diagram it marks, but BELOW the sticky submit bar (z 30) so a badge near the
+   page bottom never covers the Submit button. Pins/popover/rail stay high —
+   they're transient and must clear the full-screen overlay. */
+.ann-badge-overlay { top: auto; right: auto; z-index: 15; }
 
 /* ---------- comment popover ---------- */
 .ann-pop {

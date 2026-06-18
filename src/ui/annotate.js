@@ -432,17 +432,32 @@
         hidePin();
         openPopover(entry.info, entry.el);
       });
-      if (entry.el instanceof HTMLElement) {
+      if (entry.el instanceof HTMLElement && !(entry.el instanceof HTMLImageElement)) {
+        // a normal HTML element hosts the badge as a child — it tracks naturally
         if (getComputedStyle(entry.el).position === 'static') entry.el.classList.add('ann-rel');
         entry.el.append(badge);
       } else {
-        // SVG targets (mermaid nodes) can't host an HTML child — overlay it
-        // in document coordinates so it scrolls with the content.
+        // SVG node or <img> — neither can host an HTML child. Anchor the badge
+        // INSIDE the scrollable diagram viewport in CONTENT coordinates: as an
+        // absolutely-positioned child of the scroll box it rides with the content
+        // on drag-pan / container-scroll / page-scroll, with no listener needed.
+        // (A document-body overlay stayed put when the diagram itself scrolled.)
         badge.classList.add('ann-badge-overlay');
-        document.body.append(badge);
+        const host = entry.el.closest ? entry.el.closest('.blk-viewer') : null;
         const r = entry.el.getBoundingClientRect();
-        badge.style.left = (r.right + window.scrollX - 10) + 'px';
-        badge.style.top = (r.top + window.scrollY - 6) + 'px';
+        if (host) {
+          const cr = host.getBoundingClientRect();
+          const cs = getComputedStyle(host);
+          const bL = parseFloat(cs.borderLeftWidth) || 0;
+          const bT = parseFloat(cs.borderTopWidth) || 0;
+          badge.style.left = (r.right - cr.left - bL + host.scrollLeft - 10) + 'px';
+          badge.style.top = (r.top - cr.top - bT + host.scrollTop - 6) + 'px';
+          host.append(badge);
+        } else {
+          badge.style.left = (r.right + window.scrollX - 10) + 'px';
+          badge.style.top = (r.top + window.scrollY - 6) + 'px';
+          document.body.append(badge);
+        }
       }
       badges.push(badge);
     }

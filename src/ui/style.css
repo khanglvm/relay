@@ -203,6 +203,10 @@ textarea { min-height: 90px; resize: vertical; }
   background: linear-gradient(transparent, var(--bg) 38%);
   padding: 22px 0 16px;
   display: flex; align-items: center; gap: 14px;
+  /* above content-anchored annotation badges (z 15) so the Submit bar is never
+     covered; still below the full-screen overlay (49) and the modal popover/
+     rail/toast, which are intentional and must sit on top */
+  z-index: 30;
 }
 .submit {
   background: var(--accent); color: var(--accent-fg);
