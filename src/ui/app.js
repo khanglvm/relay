@@ -88,6 +88,68 @@
   }
   let themeBtn = null;
 
+  // ---------- localStorage draft mirror ----------
+  // Every autosave is ALSO written to localStorage, keyed by board id. This is
+  // the durability layer the server file alone can't provide: if the connection
+  // drops and the user keeps typing, the in-memory state is mirrored locally, so
+  // even a tab reload / browser restart / a freshly opened tab on the same board
+  // prefills the LATEST input instead of a blank board or a stale server save.
+  // Guards (per design): newest-of-(local,server) wins; the mirror is discarded
+  // if the board's spec rev changed (agent edited it); cleared on submit.
+  const LOCAL_DRAFT_KEY = 'relay-draft-' + (boot.boardId || 'unknown');
+  function writeLocalDraft(p, updatedAt) {
+    try {
+      localStorage.setItem(LOCAL_DRAFT_KEY, JSON.stringify({
+        v: 1,
+        boardId: boot.boardId,
+        rev: bootRev,
+        updatedAt: updatedAt || new Date().toISOString(),
+        payload: p,
+      }));
+    } catch {
+      // localStorage may be full or unavailable (privacy mode) — non-fatal; the
+      // server file remains the primary persistence path.
+    }
+  }
+  function clearLocalDraft() {
+    try { localStorage.removeItem(LOCAL_DRAFT_KEY); } catch { /* non-fatal */ }
+  }
+  // Returns the saved local mirror only if it's valid for THIS board+rev,
+  // otherwise null (and clears a now-stale entry). rev mismatch ⇒ the agent
+  // re-published the board, so old local answers may not map — discard them.
+  function loadLocalDraft() {
+    let raw;
+    try { raw = localStorage.getItem(LOCAL_DRAFT_KEY); } catch { return null; }
+    if (!raw) return null;
+    let obj;
+    try { obj = JSON.parse(raw); } catch { clearLocalDraft(); return null; }
+    if (!obj || obj.boardId !== boot.boardId || !obj.payload || typeof obj.payload !== 'object') {
+      clearLocalDraft();
+      return null;
+    }
+    // rev-guard: a changed spec rev means the local answers may reference a
+    // different question set — don't resurrect them.
+    if (bootRev !== null && obj.rev !== undefined && obj.rev !== null && obj.rev !== bootRev) {
+      clearLocalDraft();
+      return null;
+    }
+    return obj;
+  }
+
+  // Choose the prefill source: the NEWER of the server draft (boot.prefill) and
+  // the local mirror. The server draft shape mirrors a payload() plus updatedAt.
+  function chooseInitialPrefill() {
+    const server = boot.prefill || null;
+    const local = loadLocalDraft();
+    if (!local) return server;
+    if (!server) return { ...local.payload, __from: 'local' };
+    const sT = Date.parse(server.updatedAt || '') || 0;
+    const lT = Date.parse(local.updatedAt || '') || 0;
+    // Newest wins; ties favor local (the tab that was last typing into).
+    return lT >= sT ? { ...local.payload, __from: 'local' } : server;
+  }
+  const initialPrefill = chooseInitialPrefill();
+
   // ---------- state ----------
   // state.answers holds raw control state; state.other holds the "Other"
   // free-text per question; getValue() derives the final answer value.
@@ -97,11 +159,11 @@
     other: {},
     notes: {},
     comment: '',
-    annotations: (boot.prefill && boot.prefill.annotations) || [],
+    annotations: (initialPrefill && initialPrefill.annotations) || [],
     // Editable-mermaid edits: blockId -> edited source. Seeded from the live
     // draft so a reload/reopen restores the user's edited diagram. Mutated via
     // the blocks ctx.onBlockEdit callback below; returned in payload().
-    blockEdits: (boot.prefill && boot.prefill.blockEdits) || {},
+    blockEdits: (initialPrefill && initialPrefill.blockEdits) || {},
   };
   let submitted = false;
 
@@ -125,8 +187,11 @@
       }
     }
   }
-  if (boot.prefill) seedFromPrefill(boot.prefill);
+  if (initialPrefill) seedFromPrefill(initialPrefill);
   else for (const q of QS) if (q.default !== undefined) state.answers[q.id] = q.default;
+  // If the local mirror was newer than the server (or the server had nothing),
+  // the in-memory state now holds input the server hasn't seen — flush it once
+  // the rest of the app is wired (see the post-init flush near the heartbeat).
 
   function getValue(q) {
     const v = state.answers[q.id];
@@ -289,13 +354,21 @@
   // probe → block. Any success resets it.
   let saveFailures = 0;
   function scheduleSave() {
-    if (submitted || persistenceLost) return;
+    if (submitted) return;
+    // Mirror to localStorage SYNCHRONOUSLY on every edit, before (and regardless
+    // of) the network save. This is what survives a tab reload / crash / a new
+    // tab during a connection outage — it must happen even while blocked.
+    writeLocalDraft(payload());
+    if (persistenceLost) return; // network save is futile while disconnected
     if (saveEl) saveEl.textContent = 'saving…';
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveDraft, 450);
   }
   async function saveDraft() {
     const seq = ++saveSeq;
+    // Keep the local mirror current on every flush too (covers programmatic
+    // saveDraft() calls that don't go through scheduleSave, e.g. recovery flush).
+    writeLocalDraft(payload());
     try {
       const r = await fetch('/api/draft', {
         method: 'POST',
@@ -307,8 +380,9 @@
       if (seq === saveSeq && saveEl && !submitted && !persistenceLost) saveEl.textContent = 'draft saved ✓';
     } catch {
       if (seq === saveSeq && saveEl && !submitted && !persistenceLost) saveEl.textContent = 'draft save failed';
-      // A save couldn't be persisted — the core data-loss signal. After two in a
-      // row, confirm with a probe and block so the user stops typing into the void.
+      // A save couldn't be persisted to the SERVER — the core data-loss signal.
+      // (The local mirror above still captured it.) After two in a row, confirm
+      // with a probe and block so the user stops typing into the void.
       if (++saveFailures >= 2) considerPersistenceLost(false);
     }
   }
@@ -786,6 +860,9 @@
       }
       if (!res.ok) throw new Error('submit rejected');
       submitted = true;
+      // Submitted successfully → the local mirror is no longer needed and would
+      // otherwise resurrect stale answers on a future reopen. Clear it.
+      clearLocalDraft();
       // Don't auto-close when the agent had stopped waiting — the user needs to
       // read the "send your agent a message" note and act on it.
       const autoClose = spec.autoClose && !handedBack;
@@ -828,7 +905,7 @@
   // ---------- prefilled load: jump past what's already answered ----------
   // On reload/reopen with saved answers, scroll to the first unanswered
   // question so the user doesn't re-scan questions they already did.
-  if (boot.prefill && QS.length) {
+  if (initialPrefill && QS.length) {
     const answered = QS.filter((q) => getValue(q) !== undefined).length;
     const firstOpen = QS.find((q) => getValue(q) === undefined);
     if (answered > 0 && firstOpen) {
@@ -836,6 +913,14 @@
         cards[firstOpen.id].scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 350);
     }
+  }
+
+  // If the chosen prefill came from the local mirror (newer than the server, or
+  // the server had nothing — e.g. a freshly reopened board the user had typed
+  // into in another tab during an outage), the server doesn't yet have this
+  // input. Flush it once so a brand-new tab's view is also the server's truth.
+  if (initialPrefill && initialPrefill.__from === 'local' && !submitted) {
+    saveDraft();
   }
 
   // ---------- iframe annotate bridge ----------

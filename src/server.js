@@ -113,6 +113,10 @@ function buildPage(record, rev) {
         notes: record.draft.notes || {},
         annotations: record.draft.annotations || [],
         blockEdits: record.draft.blockEdits || {},
+        // The server draft's save time, so the client can pick the NEWER of this
+        // vs. its localStorage mirror (a tab that kept typing while the server
+        // was unreachable holds fresher input than the last server save).
+        updatedAt: record.draft.updatedAt || null,
       }
     : null;
   const boot = { boardId: record.id, spec: clientSpec, prefill, pref: loadPref(), vendor, rev };
@@ -505,6 +509,13 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
   });
   const actualPort = server.address().port;
   const url = `http://127.0.0.1:${actualPort}/`;
+  // Remember the port this board last bound, so `rly rescue <id>` can re-serve
+  // on the SAME port — letting a still-open (but disconnected) browser tab
+  // reconnect to its relative /api/* URLs without the user touching anything.
+  if (record.lastPort !== actualPort) {
+    record.lastPort = actualPort;
+    saveBoard(record);
+  }
   saveRunning({
     id: record.id,
     pid: process.pid,

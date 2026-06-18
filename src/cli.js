@@ -295,6 +295,42 @@ async function cmdReopen(args) {
   return runOrDetach(record, args);
 }
 
+// Rescue a board whose browser tab is still open but disconnected (its server
+// died / the machine slept). Re-serves the SAME board on the SAME port it last
+// used, so the open tab's relative /api/* fetches reconnect on their own — the
+// page's recovery loop lifts its "connection lost" block and re-flushes the
+// draft (incl. anything the user mirrored to localStorage during the outage)
+// with zero action from the user. Defaults to NOT opening a new browser tab
+// (the point is the existing one); pass --open to also open a fresh tab.
+async function cmdRescue(args) {
+  const record = mustLoad(args._[0]);
+  const running = loadRunning(record.id);
+  if (running && isAlive(running.pid)) {
+    if (args.open) openUrl(running.url);
+    printJson({
+      status: 'open',
+      boardId: record.id,
+      url: running.url,
+      port: running.port,
+      note: 'already running — the open tab should be connected; reload it if not',
+    });
+    return 0;
+  }
+  if (!record.lastPort) {
+    throw new CliError(
+      `board "${record.id}" has no known port to reuse (never served in this version). Use \`rly reopen ${record.id}\` instead.`,
+      5
+    );
+  }
+  // Force the original port so the disconnected tab can reconnect; default to
+  // not opening a second tab. seedAgentReplies parity with reopen if provided.
+  if (args.replies !== undefined) {
+    const replies = parseJson(readFileOrThrow(args.replies), args.replies);
+    seedAgentReplies(record, replies);
+  }
+  return runOrDetach(record, { ...args, port: record.lastPort, open: args.open === true });
+}
+
 async function cmdReuse(args) {
   const src = mustLoad(args._[0]);
   if (args.dump) {
@@ -1141,6 +1177,9 @@ USAGE
   rly open [id]                       re-open the browser tab of a running board
   rly reopen <id> [--replies f.json]  serve a saved board again, prefilled with saved answers
                                       (--replies [{annotationId,text}] = agent answers to element comments)
+  rly rescue <id> [--open]            re-serve a board on its ORIGINAL port so a still-open but
+                                      disconnected browser tab auto-reconnects & re-saves (no new tab
+                                      unless --open). Use when a tab shows "connection lost".
   rly reuse <id> [--dump]             re-run a past board as a new board (--dump prints its spec)
   rly update <id> --file spec.json    live-mutate a RUNNING board (or --title/--intro/-q); page reloads
   rly stop <id> | --all               stop running board(s) (status: cancelled, draft preserved)
@@ -1196,6 +1235,8 @@ export async function main(argv) {
         return await cmdAsk(parseArgs(rest), 'show');
       case 'reopen':
         return await cmdReopen(parseArgs(rest));
+      case 'rescue':
+        return await cmdRescue(parseArgs(rest));
       case 'reuse':
         return await cmdReuse(parseArgs(rest));
       case 'update':
