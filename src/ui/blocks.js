@@ -950,6 +950,9 @@
     return fetch(url, { credentials: 'omit', mode: 'cors' })
       .then((r) => {
         if (!r.ok) throw new Error('http ' + r.status);
+        // only trust a declared SVG/XML payload; anything else → <img> fallback
+        const ct = (r.headers.get('content-type') || '').toLowerCase();
+        if (ct && !ct.includes('svg') && !ct.includes('xml')) throw new Error('not svg: ' + ct);
         return r.text();
       })
       .then((text) => {
@@ -962,14 +965,26 @@
       });
   }
 
+  // The SVG comes from a remote, author-set server, so strip everything active
+  // or capable of fetching an external resource before it touches the document.
+  // Script execution is already impossible here (DOMParser doesn't run scripts;
+  // importNode+appendChild never starts an SVG <script>), but we still drop
+  // <script>/<foreignObject>/<style>, on* handlers, non-fragment href/xlink:href
+  // (<use>/<image>/<a>), and any url(...) that doesn't point at a #fragment —
+  // those are client-side SSRF / beacon vectors and there is no CSP backstop.
   function sanitizeSvg(root) {
-    root.querySelectorAll('script, foreignObject').forEach((n) => n.remove());
+    root.querySelectorAll('script, foreignObject, style').forEach((n) => n.remove());
     const walk = (n) => {
       if (n.nodeType === 1) {
         for (const attr of Array.from(n.attributes)) {
           const name = attr.name.toLowerCase();
           const val = (attr.value || '').replace(/\s+/g, '').toLowerCase();
-          if (name.startsWith('on') || ((name === 'href' || name.endsWith(':href')) && val.startsWith('javascript:'))) {
+          const isHref = name === 'href' || name.endsWith(':href');
+          if (
+            name.startsWith('on') ||                 // event handlers
+            (isHref && !val.startsWith('#')) ||       // only same-document fragment refs
+            /url\((?!['"]?#)/.test(val)               // url() to anything but a #fragment
+          ) {
             n.removeAttribute(attr.name);
           }
         }
@@ -1025,7 +1040,7 @@
 
   function mountPlantumlImg(container, url, fail, block, ctx, blockId) {
     const img = el('img', { class: 'blk-plantuml-img', src: url, alt: 'PlantUML diagram', loading: 'lazy' });
-    if (block.height) img.style.height = clampHeight(block.height, 360) + 'px';
+    if (block.height != null) img.style.height = clampHeight(block.height, 360) + 'px';
     img.addEventListener('error', fail);
     container.replaceChildren(img);
     const attachImgViewer = () =>
