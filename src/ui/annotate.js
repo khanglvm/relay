@@ -409,10 +409,19 @@
     }, 0);
   }
 
+  // Hosts (e.g. blocks.js chart badge / comment button) subscribe here to be
+  // notified on every badge refresh — i.e. whenever annotations change — so
+  // their own indicators stay in sync. Returns an unsubscribe fn.
+  const badgeHooks = new Set();
+  function onBadgeRefresh(fn) {
+    if (typeof fn === 'function') badgeHooks.add(fn);
+    return () => badgeHooks.delete(fn);
+  }
+
   function refreshBadges() {
     for (const b of badges) b.remove();
     badges = [];
-    if (torndown) return;
+    if (torndown) { for (const fn of badgeHooks) { try { fn(); } catch (_) {} } return; }
     registered = registered.filter((r) => r.el.isConnected);
     // While a block is expanded full-screen, body-level overlay badges for
     // OTHER blocks would float above the overlay at stale positions — only
@@ -461,6 +470,7 @@
       }
       badges.push(badge);
     }
+    for (const fn of badgeHooks) { try { fn(); } catch (_) {} }
   }
 
   // ---------- popover ----------
@@ -835,5 +845,5 @@
     renderSummaryInto(target);
   }
 
-  window.RelayAnnotate = { init, register, enableTextSelection, openExternal, list, renderSummary, teardown };
+  window.RelayAnnotate = { init, register, enableTextSelection, openExternal, list, renderSummary, onBadgeRefresh, teardown };
 })();

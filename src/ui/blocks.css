@@ -380,6 +380,12 @@ body.blk-full-open { overflow: hidden; }
 .blk-tools .tool-pct.is-btn { cursor: pointer; transition: color 150ms var(--ease); }
 .blk-tools .tool-pct.is-btn:hover { color: var(--accent); }
 .blk-tools .tool-comment svg { display: block; }
+/* the comment button switches to a filled accent state once the block carries
+   a whole-block comment, so it's obvious at a glance */
+.blk-tools .tool-comment.has-comment {
+  background: var(--accent); border-color: var(--accent); color: var(--accent-fg);
+}
+.blk-tools .tool-comment.has-comment:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--accent-fg); }
 
 /* code blocks reuse the viewer toolbar (comment + full-screen); the pre keeps
    its own card, the wrapper only hosts the toolbar strip */

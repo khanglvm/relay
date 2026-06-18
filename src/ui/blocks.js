@@ -306,7 +306,7 @@
     // select-to-comment on the code text (like markdown), plus a whole-block
     // comment + full-screen via the shared viewer toolbar
     ctx && ctx.annotate && ctx.annotate.enableTextSelection(pre, { blockId, questionId: ctx.questionId });
-    attachViewer(wrap, { zoomEl: null, label: 'code', onComment: wholeBlockComment(ctx, blockId, 'code') });
+    attachViewer(wrap, { zoomEl: null, label: 'code', comment: wholeBlockComment(ctx, blockId, 'code') });
     return wrap;
   }
 
@@ -543,11 +543,11 @@
     return config;
   }
 
+  // Count EVERY comment on the chart block — data-point (chart-element) and
+  // whole-chart (block) comments alike — so the badge appears for any comment.
   function chartAnnotationCount(ctx, blockId) {
     if (!ctx.annotate) return 0;
-    return ctx.annotate.list().filter(
-      (a) => a.blockId === blockId && a.target && a.target.kind === 'chart-element'
-    ).length;
+    return ctx.annotate.list().filter((a) => a.blockId === blockId).length;
   }
 
   function renderChart(block, ctx, blockId) {
@@ -564,9 +564,11 @@
       else badge.style.display = 'none';
     }
     syncBadge();
+    // keep the badge live: re-sync on every annotation change (add/remove/reply)
+    if (ctx.annotate && ctx.annotate.onBadgeRefresh) ctx.annotate.onBadgeRefresh(syncBadge);
     wrap.append(badge);
     // full-screen + whole-chart comment only; charts redraw responsively (no pixel zoom)
-    attachViewer(wrap, { zoomEl: null, label: 'chart', onComment: wholeBlockComment(ctx, blockId, 'chart') });
+    attachViewer(wrap, { zoomEl: null, label: 'chart', comment: wholeBlockComment(ctx, blockId, 'chart') });
 
     loadChart().then((Chart) => {
       let config = block.config
@@ -794,7 +796,7 @@
           });
         }
         // re-attach per render: innerHTML replacement above wiped the old bar
-        if (svgEl) attachViewer(container, { zoomEl: svgEl, natural: svgNatural(svgEl), label: 'diagram', onComment: wholeBlockComment(ctx, blockId, 'diagram') });
+        if (svgEl) attachViewer(container, { zoomEl: svgEl, natural: svgNatural(svgEl), label: 'diagram', comment: wholeBlockComment(ctx, blockId, 'diagram') });
         if (onDone) onDone();
       };
       try {
@@ -882,7 +884,7 @@
         const svgEl = viz.renderSVGElement(block.dot || '');
         sizeDiagramSvg(svgEl);
         container.replaceChildren(svgEl);
-        attachViewer(container, { zoomEl: svgEl, natural: svgNatural(svgEl), label: 'graph', onComment: wholeBlockComment(ctx, blockId, 'graph') });
+        attachViewer(container, { zoomEl: svgEl, natural: svgNatural(svgEl), label: 'graph', comment: wholeBlockComment(ctx, blockId, 'graph') });
         if (!ctx.annotate) return;
         const parts = svgEl.querySelectorAll('g.node, g.edge');
         parts.forEach((g) => {
@@ -1022,7 +1024,7 @@
       zoomEl: svg,
       natural: svgNatural(svg),
       label: 'diagram',
-      onComment: wholeBlockComment(ctx, blockId, 'diagram'),
+      comment: wholeBlockComment(ctx, blockId, 'diagram'),
     });
     if (!ctx.annotate) return;
     // register the text labels as annotation targets (participant boxes, message
@@ -1050,7 +1052,7 @@
         zoomEl: img,
         natural: () => (img.naturalWidth > 0 ? { w: img.naturalWidth, h: img.naturalHeight } : null),
         label: 'diagram',
-        onComment: wholeBlockComment(ctx, blockId, 'diagram'),
+        comment: wholeBlockComment(ctx, blockId, 'diagram'),
       });
     if (img.complete && img.naturalWidth > 0) attachImgViewer();
     else img.addEventListener('load', attachImgViewer, { once: true });
@@ -1088,7 +1090,7 @@
         zoomEl: img,
         natural: () => (img.naturalWidth > 0 ? { w: img.naturalWidth, h: img.naturalHeight } : null),
         label: 'image',
-        onComment: wholeBlockComment(ctx, blockId, 'image'),
+        comment: wholeBlockComment(ctx, blockId, 'image'),
       });
     if (img.complete && img.naturalWidth > 0) attachImgViewer();
     else img.addEventListener('load', attachImgViewer, { once: true });
@@ -1198,16 +1200,21 @@
   // on the visual as a whole. null when annotation is off (omits the button).
   function wholeBlockComment(ctx, blockId, label) {
     if (!ctx || !ctx.annotate) return null;
-    return (anchorEl) =>
-      ctx.annotate.openExternal(
-        { blockId, questionId: ctx.questionId, target: { kind: 'block', label } },
-        anchorEl
-      );
+    const a = ctx.annotate;
+    return {
+      open: (anchorEl) =>
+        a.openExternal({ blockId, questionId: ctx.questionId, target: { kind: 'block', label } }, anchorEl),
+      // true once this block carries a whole-block comment
+      active: () => a.list().some((x) => x.blockId === blockId && x.target && x.target.kind === 'block'),
+      // fires on any annotation change; returns an unsubscribe
+      subscribe: (fn) => (a.onBadgeRefresh ? a.onBadgeRefresh(fn) : () => {}),
+    };
   }
 
-  // opts: { zoomEl, natural, onComment, label } — zoomEl null means no pixel
+  // opts: { zoomEl, natural, comment, label } — zoomEl null means no pixel
   // zoom (charts/html/code: full-screen + comment only, no zoom buttons).
-  // onComment (optional) wires the "comment on the whole block" button.
+  // comment (optional) = { open(anchor), active(), subscribe(fn) } wiring the
+  // "comment on the whole block" button + its already-commented style.
   function attachViewer(container, opts) {
     if (container._rlyTools) container._rlyTools.remove();
     container.classList.add('blk-viewer');
@@ -1275,12 +1282,22 @@
     const tools = el('div', { class: 'blk-tools' });
 
     // comment on the whole block (leftmost) — opens the annotation popover with
-    // a block-scoped target so a user can comment without picking an element
-    if (opts && opts.onComment) {
+    // a block-scoped target so a user can comment without picking an element.
+    // The button gains a .has-comment style once the block carries one, kept in
+    // sync via the annotate badge-refresh subscription (bound once per container).
+    if (opts && opts.comment) {
+      const cmt = opts.comment;
       const cBtn = el('button', { class: 'tool-comment', type: 'button', title: 'Comment on this whole ' + label });
       cBtn.innerHTML = ICON_COMMENT;
-      cBtn.addEventListener('click', (e) => { e.stopPropagation(); opts.onComment(container); });
+      cBtn.addEventListener('click', (e) => { e.stopPropagation(); cmt.open(container); });
       tools.append(cBtn);
+      container._rlyCmtSync = () => {
+        const b = container._rlyTools && container._rlyTools.querySelector('.tool-comment');
+        if (b && cmt.active) b.classList.toggle('has-comment', !!cmt.active());
+      };
+      if (!container._rlyCmtHook && cmt.subscribe) {
+        container._rlyCmtHook = cmt.subscribe(() => container._rlyCmtSync && container._rlyCmtSync());
+      }
     }
 
     if (zoomable) {
@@ -1326,6 +1343,7 @@
     // non-zoomable diagrams (tall mermaid, oversized image) can still overflow
     refreshPan();
     container._rlyToolsSync();
+    if (container._rlyCmtSync) container._rlyCmtSync(); // reflect existing comment
   }
 
   function svgNatural(svgEl) {
@@ -1348,7 +1366,7 @@
       loading: 'lazy',
     });
     const wrap = el('div', { class: 'blk-htmlwrap' }, iframe);
-    attachViewer(wrap, { zoomEl: null, label: 'embed', onComment: wholeBlockComment(ctx, blockId, 'embed') });
+    attachViewer(wrap, { zoomEl: null, label: 'embed', comment: wholeBlockComment(ctx, blockId, 'embed') });
     return wrap;
   }
 
