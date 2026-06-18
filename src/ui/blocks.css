@@ -336,3 +336,25 @@ body.blk-full-open { overflow: hidden; }
   height: calc(100vh - 44px) !important; width: 100%;
   margin: 0; border: 0; border-radius: 0;
 }
+
+/* Small frame on charts + mermaid so they read as a deliberate card, matching
+   the graphviz/plantuml/image blocks (already framed). Scoped to the inner
+   .blk-viewer element so the border isn't doubled on the outer .blk dispatch
+   wrapper; :not(.blk-full) drops it in the edge-to-edge full-screen overlay. */
+.blk-chart.blk-viewer:not(.blk-full),
+.blk-mermaid.blk-viewer:not(.blk-full) {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+/* keep the canvas corners inside the rounded frame (mermaid already clips via
+   its overflow:auto) */
+.blk-chart.blk-viewer:not(.blk-full) { overflow: hidden; }
+
+/* drag-to-pan affordance: grab when a visual overflows its box, grabbing while
+   dragging. During an active drag the inner svg/img/canvas ignore the pointer
+   so hover pins/cursors don't flicker and the whole surface shows "grabbing". */
+.blk-pannable { cursor: grab; }
+.blk-panning { cursor: grabbing; user-select: none; }
+.blk-panning svg,
+.blk-panning img,
+.blk-panning canvas { pointer-events: none; }

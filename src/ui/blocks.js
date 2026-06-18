@@ -1030,6 +1030,64 @@
     if (e.key === 'Escape' && fullOpen) exitFull();
   });
 
+  // Drag-to-pan: grab anywhere on a scrollable visual (a tall/zoomed diagram or
+  // oversized image) and drag to move across it, instead of hunting for the
+  // scrollbars. Self-gates on overflow, so charts and html iframes — which are
+  // always sized to fit — never engage. Annotation on diagrams/images is
+  // hover-pin based (not a node click), so a pan can't create a stray
+  // annotation; a real drag still swallows the trailing click as a guard.
+  // Returns a refresh() the viewer calls whenever content size changes (zoom,
+  // full-screen, re-render) so the grab affordance tracks pannability.
+  function enablePan(scrollEl) {
+    let pending = false, active = false;
+    let sx = 0, sy = 0, sl = 0, st = 0, pid = null;
+    const THRESH = 4; // px before a press becomes a drag (keeps clicks clickable)
+
+    const pannable = () =>
+      scrollEl.scrollWidth - scrollEl.clientWidth > 1 ||
+      scrollEl.scrollHeight - scrollEl.clientHeight > 1;
+    const refresh = () => scrollEl.classList.toggle('blk-pannable', pannable());
+
+    scrollEl.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || !pannable()) return;
+      // leave the toolbar, the diagram editor, and real controls interactive
+      if (e.target.closest && e.target.closest('.blk-tools, .blk-editor, button, a, input, textarea, select')) return;
+      pending = true; active = false;
+      sx = e.clientX; sy = e.clientY;
+      sl = scrollEl.scrollLeft; st = scrollEl.scrollTop;
+      pid = e.pointerId;
+    });
+    scrollEl.addEventListener('pointermove', (e) => {
+      if (!pending) return;
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      if (!active) {
+        if (Math.abs(dx) < THRESH && Math.abs(dy) < THRESH) return;
+        active = true;
+        scrollEl.classList.add('blk-panning');
+        try { scrollEl.setPointerCapture(pid); } catch (_) {}
+      }
+      e.preventDefault();
+      scrollEl.scrollLeft = sl - dx;
+      scrollEl.scrollTop = st - dy;
+    });
+    const end = () => {
+      if (active) {
+        scrollEl.classList.remove('blk-panning');
+        try { scrollEl.releasePointerCapture(pid); } catch (_) {}
+        // a drag ends in a click on whatever was under the release — swallow it
+        // once so it can't trigger anything the user didn't mean to click
+        const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+        scrollEl.addEventListener('click', swallow, { capture: true, once: true });
+        setTimeout(() => scrollEl.removeEventListener('click', swallow, true), 0);
+      }
+      pending = false; active = false; pid = null;
+    };
+    scrollEl.addEventListener('pointerup', end);
+    scrollEl.addEventListener('pointercancel', end);
+    window.addEventListener('resize', refresh);
+    return refresh;
+  }
+
   // opts: { zoomEl: svg|img|null, natural: () => ({w,h}|null) } — zoomEl null
   // means full-screen only (charts, html iframes).
   function attachViewer(container, opts) {
@@ -1037,6 +1095,11 @@
     container.classList.add('blk-viewer');
     const zoomable = Boolean(opts && opts.zoomEl);
     let z = null; // null = fit-to-width
+
+    // pan listeners bind once per container; mermaid re-renders re-call
+    // attachViewer, so reuse the existing refresh() instead of re-binding
+    if (!container._rlyPan) container._rlyPan = enablePan(container);
+    const refreshPan = container._rlyPan;
 
     const pct = el('span', { class: 'tool-pct' }, 'fit');
     function apply() {
@@ -1056,6 +1119,8 @@
       }
       // annotation overlay badges reposition on resize
       window.dispatchEvent(new Event('resize'));
+      // zoom changed the content size — re-evaluate the grab affordance
+      refreshPan();
     }
     function currentZ() {
       if (z !== null) return z;
@@ -1100,6 +1165,8 @@
     container.append(tools);
     container._rlyTools = tools;
     if (zoomable) apply();
+    // non-zoomable diagrams (tall mermaid, oversized image) can still overflow
+    refreshPan();
   }
 
   function svgNatural(svgEl) {
