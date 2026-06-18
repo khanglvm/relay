@@ -249,8 +249,27 @@ Rules of thumb:
 }
 // columns may also be plain string array; rows may be parallel arrays [[val,val],...]
 
-// Code — styled pre/code block
-{ "type": "code", "lang": "js", "code": "const x = 1 + 2;" }
+// Code — syntax-highlighted + line-numbered. Inline "code" or load a local
+// file with "codeFile" (lang then defaults from the extension). "filename"
+// shows a header label. Highlighted langs: js ts py go rust java c cpp csharp
+// ruby php swift kotlin sql yaml json sh css html (+ aliases) — others plain.
+{ "type": "code", "lang": "js", "code": "const x = 1 + 2;", "filename": "demo.js" }
+{ "type": "code", "codeFile": "src/server.js" }
+
+// Diff — a unified diff (git diff / `diff -u` output) rendered as a colored,
+// line-numbered comparison: +added / −removed / context, file & hunk headers.
+// No git needed — just write/paste the diff text. "lang" tints each code line;
+// "diffFile" loads it from a local file. Great for showing a proposed change.
+{
+  "type": "diff", "lang": "js", "filename": "src/auth.js",
+  "diff": "@@ -1,3 +1,3 @@\n function login(u) {\n-  return check(u)\n+  return check(u.trim())\n }"
+}
+
+// Video — a YouTube/Vimeo URL embeds a player; an http(s) media URL or a local
+// video file (mp4/webm/ogv/mov/mkv/m4v) plays inline. Local files STREAM from
+// the server (Range-enabled, seekable) and are never embedded in the payload.
+{ "type": "video", "src": "https://youtu.be/dQw4w9WgXcQ", "title": "Demo walkthrough" }
+{ "type": "video", "src": "recordings/demo.mp4", "title": "Local capture", "height": 360 }
 
 // HTML — sandboxed iframe; default height 360
 { "type": "html", "html": "<h1>Hello</h1>", "height": 360 }
@@ -262,6 +281,16 @@ Rules of thumb:
 { "type": "image", "src": "https://example.com/mock.png" }
 ```
 
+### Local file links — clickable, open in the default app
+
+Inside any **markdown** (the intro or a `markdown` block) just write a local
+file path — `~/clip.mp4`, `./src/app.ts`, `/abs/report.pdf`, a `file://` URL,
+or a backtick-wrapped path — and it renders as a click-to-open link. Clicking it
+asks relay to open that file in the user's OS default app (video player, editor,
+viewer, …); a `[label](~/path)` link works too. Only paths you actually wrote on
+the board can be opened (same-origin + allowlist guarded), so prefer surfacing a
+real path over telling the user to paste it into a terminal.
+
 ### When to use which block
 
 | Block | Best for |
@@ -272,7 +301,9 @@ Rules of thumb:
 | `chart` | numbers, trends, comparisons, metrics |
 | `table` | structured comparisons, option matrices, data grids — **use this for any tabular data**: it's sortable and every cell is commentable, unlike a markdown pipe table |
 | `markdown` | prose context, background, instructions, section headings (renders GFM pipe tables too, but reach for a `table` block for real data) |
-| `code` | code snippets, config examples, command output |
+| `code` | code snippets, config examples, command output — syntax-highlighted + line-numbered; load from a file with `codeFile` |
+| `diff` | proposed code changes / before-after — a unified diff rendered as a colored git-style comparison (no git needed) |
+| `video` | demos, screen recordings, walkthroughs — YouTube/Vimeo embeds, a media URL, or a local video file (streamed) |
 | `image` | screenshots, mockup exports, photos — local files embed and work offline |
 | `html` | anything else — pixel-perfect mockups, custom widgets, embeds |
 

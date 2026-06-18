@@ -9,9 +9,15 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = path.join(ROOT, 'bin', 'rly.js');
 const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'rly-test-'));
+// A no-launch opener for POST /api/open: instead of the OS handler, log the
+// path it was asked to open so the test can assert it without launching apps.
+const OPEN_LOG = path.join(HOME, 'opened.log');
+const OPENER = path.join(HOME, 'opener.sh');
+fs.writeFileSync(OPENER, `#!/bin/sh\nprintf '%s\\n' "$1" >> ${JSON.stringify(OPEN_LOG)}\n`);
+fs.chmodSync(OPENER, 0o755);
 // RLY_HOME is the live var; QUEST_BOARD_HOME is set too in case any code path
-// still reads the pre-rename name.
-const ENV = { ...process.env, RLY_HOME: HOME, QUEST_BOARD_HOME: HOME };
+// still reads the pre-rename name. RLY_OPEN_CMD redirects the file opener.
+const ENV = { ...process.env, RLY_HOME: HOME, QUEST_BOARD_HOME: HOME, RLY_OPEN_CMD: OPENER };
 
 let passed = 0;
 function ok(cond, name) {
@@ -957,6 +963,140 @@ console.log('22. single-question note default');
   ok(res.ok, 'submit with a single-question note accepted');
   const result = JSON.parse((await exited).stdout);
   ok(result.notes?.radio === 'picked a because it ships sooner', 'single-question note round-trips in result.notes');
+}
+
+// ---------- 23. POST /api/open: allowlist + same-origin guard + happy path ----------
+console.log('23. file-link open endpoint');
+{
+  const realFile = path.join(HOME, 'open-me.txt');
+  fs.writeFileSync(realFile, 'hello');
+  const missingFile = path.join(HOME, 'gone.txt'); // referenced but does NOT exist
+  const OPEN_SPEC = {
+    title: 'Open board',
+    // both paths are referenced in markdown → both are allowlisted
+    intro: `See [the file](${realFile}) and \`${missingFile}\`.`,
+    blocks: [{ type: 'markdown', md: `Open ${realFile}` }],
+    questions: [{ id: 'ok', type: 'yesno', label: 'OK?' }],
+  };
+  const p = path.join(HOME, 'open-spec.json');
+  fs.writeFileSync(p, JSON.stringify(OPEN_SPEC));
+  const { url, exited } = await spawnBlocking(['ask', '--file', p, '--no-open', '--timeout', '60']);
+
+  // missing path → 400
+  const noPath = await post(url, '/api/open', {});
+  ok(noPath.status === 400, 'POST /api/open with no path → 400');
+
+  // a path NOT referenced on the board → 403 (allowlist)
+  const notRef = await post(url, '/api/open', { path: '/etc/hostname' });
+  ok(notRef.status === 403, 'POST /api/open with an unreferenced path → 403 (allowlist)');
+
+  // a referenced path that does not exist → 404
+  const missing = await post(url, '/api/open', { path: missingFile });
+  ok(missing.status === 404, 'POST /api/open with a referenced-but-missing file → 404');
+
+  // a cross-site Origin → 403 even for a referenced path
+  const foreign = await fetch(new URL('/api/open', url), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: 'https://evil.example.com' },
+    body: JSON.stringify({ path: realFile }),
+  });
+  ok(foreign.status === 403, 'POST /api/open from a foreign Origin → 403');
+
+  // referenced + exists + same-origin → 200, and the opener saw the path
+  const okRes = await post(url, '/api/open', { path: realFile });
+  const okBody = await okRes.json();
+  ok(okRes.status === 200 && okBody.ok === true && okBody.name === 'open-me.txt', 'POST /api/open opens a referenced, existing file → 200');
+  // the opener is a detached grandchild — poll briefly for its log line
+  let log = '';
+  for (let i = 0; i < 30 && !log.includes(realFile); i++) {
+    await sleep(100);
+    log = fs.existsSync(OPEN_LOG) ? fs.readFileSync(OPEN_LOG, 'utf8') : '';
+  }
+  ok(log.includes(realFile), 'the OS opener was invoked with the resolved file path');
+
+  await post(url, '/api/submit', { answers: { ok: 'yes' } });
+  await exited;
+}
+
+// ---------- 24. code (codeFile + lang default) & diff blocks normalize ----------
+console.log('24. code & diff blocks');
+{
+  const srcFile = path.join(HOME, 'sample.go');
+  fs.writeFileSync(srcFile, 'package main\nfunc main() {}\n');
+  const CD_SPEC = {
+    title: 'Code & diff',
+    blocks: [
+      { type: 'code', codeFile: srcFile },                                  // lang defaults to "go"
+      { type: 'code', code: 'const a = 1;', lang: 'js', filename: 'a.js' },
+      { type: 'diff', filename: 'app.py', diff: '@@ -1,2 +1,2 @@\n-old = 1\n+new = 2\n ctx\n' },
+    ],
+    questions: [{ id: 'ok', type: 'yesno', label: 'OK?' }],
+  };
+  const p = path.join(HOME, 'cd-spec.json');
+  fs.writeFileSync(p, JSON.stringify(CD_SPEC));
+  const { url, exited } = await spawnBlocking(['ask', '--file', p, '--no-open', '--timeout', '60']);
+  const board = await (await fetch(new URL('/api/board', url))).json();
+  const bb = board.spec.blocks;
+  ok(bb[0].type === 'code' && bb[0].code.includes('package main'), 'code block loads codeFile contents');
+  ok(bb[0].lang === 'go', 'code block lang defaults from the codeFile extension (.go → go)');
+  ok(bb[1].lang === 'js' && bb[1].filename === 'a.js', 'inline code keeps explicit lang + filename');
+  ok(bb[2].type === 'diff' && bb[2].diff.includes('+new = 2') && bb[2].filename === 'app.py', 'diff block normalizes (diff text + filename)');
+  await post(url, '/api/submit', { answers: { ok: 'yes' } });
+  await exited;
+
+  // empty code/diff → usage errors
+  const noCode = await run(['ask', '--file', '-'], { input: JSON.stringify({ title: 'x', blocks: [{ type: 'code' }] }) });
+  ok(noCode.code === 4 && /code block needs/.test(noCode.stderr), 'code block without code/codeFile → exit 4');
+  const noDiff = await run(['ask', '--file', '-'], { input: JSON.stringify({ title: 'x', blocks: [{ type: 'diff', diff: '   ' }] }) });
+  ok(noDiff.code === 4 && /diff block needs/.test(noDiff.stderr), 'diff block with empty diff → exit 4');
+}
+
+// ---------- 25. video blocks: youtube embed, local stream (Range), URL passthrough ----------
+console.log('25. video blocks');
+{
+  const vid = path.join(HOME, 'clip.mp4');
+  const bytes = Buffer.alloc(2048, 7); // not a real mp4, fine for streaming assertions
+  fs.writeFileSync(vid, bytes);
+  const V_SPEC = {
+    title: 'Videos',
+    blocks: [
+      { type: 'video', src: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42', title: 'yt' },
+      { type: 'video', src: vid, title: 'local' },
+      { type: 'video', src: 'https://cdn.example.com/movie.webm' },
+    ],
+    questions: [{ id: 'ok', type: 'yesno', label: 'OK?' }],
+  };
+  const p = path.join(HOME, 'v-spec.json');
+  fs.writeFileSync(p, JSON.stringify(V_SPEC));
+  const { url, exited } = await spawnBlocking(['ask', '--file', p, '--no-open', '--timeout', '60']);
+  const board = await (await fetch(new URL('/api/board', url))).json();
+  const bb = board.spec.blocks;
+  ok(bb[0].provider === 'youtube' && bb[0].videoId === 'dQw4w9WgXcQ' && bb[0].start === 42, 'youtube URL → provider/videoId/start parsed');
+  ok(bb[1].type === 'video' && bb[1].file === vid && bb[1].mime === 'video/mp4', 'local video stored with absolute file path + mime (server-side)');
+  ok(bb[2].src === 'https://cdn.example.com/movie.webm' && bb[2].mime === 'video/webm', 'direct media URL passthrough + mime guessed from extension');
+
+  // the page payload must NOT leak the local path; it ships hasFile + mime.
+  const page = await (await fetch(url)).text();
+  ok(page.includes('"hasFile":true'), 'local video block ships hasFile flag');
+  ok(!page.includes(vid), 'local video absolute path is NOT in the page payload');
+
+  // /video/b/<id> streams with Range support.
+  const localId = bb[1].id;
+  const full = await fetch(new URL('/video/b/' + localId, url));
+  ok(full.status === 200 && (full.headers.get('content-type') || '').includes('video/mp4'), '/video/b/<id> serves the local video with its mime');
+  ok(full.headers.get('accept-ranges') === 'bytes', '/video/b/<id> advertises Range support');
+  const ranged = await fetch(new URL('/video/b/' + localId, url), { headers: { range: 'bytes=0-99' } });
+  const rangedBuf = Buffer.from(await ranged.arrayBuffer());
+  ok(ranged.status === 206 && /bytes 0-99\/2048/.test(ranged.headers.get('content-range') || ''), 'Range request → 206 with content-range');
+  ok(rangedBuf.length === 100, 'Range request returns exactly the requested byte count');
+  ok((await fetch(new URL('/video/b/nope', url))).status === 404, '/video/b/<unknown> → 404');
+
+  await post(url, '/api/submit', { answers: { ok: 'yes' } });
+  await exited;
+
+  // unsupported local video extension → usage error
+  const badExt = await run(['ask', '--file', '-'], { input: JSON.stringify({ title: 'x', blocks: [{ type: 'video', src: 'movie.flv' }] }) });
+  ok(badExt.code === 4 && /unsupported video extension/.test(badExt.stderr), 'unsupported local video extension → exit 4');
 }
 
 console.log(`\nAll ${passed} assertions passed. (storage: ${HOME})`);

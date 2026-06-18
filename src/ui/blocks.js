@@ -37,21 +37,80 @@
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   }
 
+  // ---------- local file paths → click-to-open links ----------
+  // Agents routinely write a path (~/clip.mp4, ./src/app.js, /abs/file) and the
+  // user expects to click it open, not copy it into a terminal. We turn such
+  // paths into links that POST to /api/open, where the server opens them in the
+  // OS default app. FILE_PATH_RE / looksLikeLocalPath MUST match the same logic
+  // in server.js so the page only links what the server will agree to open.
+  // The body class also excludes \0 (the placeholder delimiter mdInline uses
+  // below) so a path butted against a stashed span can't swallow it; \0 never
+  // appears in real text, so this doesn't change which real paths match.
+  const FILE_PATH_RE =
+    /(?<![\w@:./])(?:file:\/\/\/?[^\s)<>"'`*\0]+|~\/[^\s)<>"'`*\0]+|\.{1,2}\/[^\s)<>"'`*\0]+|\/[^\s)<>"'`*\0]+|[A-Za-z]:[\\/][^\s)<>"'`*\0]+)/g;
+
+  // Note: candidates here are HTML-escaped (esc() ran first), but escaping only
+  // touches & < > " ' — none of which appear in a path's structural prefix, so
+  // these tests are safe to run on the escaped text. Mirrors server.js.
+  function looksLikeLocalPath(s) {
+    if (typeof s !== 'string') return false;
+    const t = s.trim();
+    if (!t || /\s/.test(t)) return false;
+    if (/^file:\/\//i.test(t)) return true;
+    if (/^[A-Za-z]:[\\/]/.test(t)) return true; // windows drive
+    if (t === '~' || /^~\//.test(t)) return true;
+    if (/^\.\.?\//.test(t)) return true; // ./ or ../
+    if (t.startsWith('/')) return /\/[^/]+\/[^/]/.test(t) || /\.[A-Za-z0-9]{1,8}$/.test(t);
+    return false;
+  }
+
+  // Builds the <a> for a file path. `raw` and `label` are already escaped, so
+  // they embed safely inside the attribute and text. codeStyle keeps the
+  // monospace look when the path came from a `backtick` span.
+  function fileLinkHtml(raw, label, codeStyle) {
+    const cls = 'rly-filelink' + (codeStyle ? ' rly-filelink-code' : '');
+    return (
+      `<a class="${cls}" role="link" tabindex="0" data-rly-open="${raw}" ` +
+      `title="Open ${raw} in the default app">` +
+      `<span class="rly-filelink-ico" aria-hidden="true"></span>` +
+      `<span class="rly-filelink-txt">${label}</span></a>`
+    );
+  }
+
   // ---------- markdown mini renderer (NO library) ----------
   // Escape FIRST, then apply transforms on the already-escaped text. Because
   // <, >, & are gone, our generated tags are the only real tags in the output.
   function mdInline(escaped) {
+    // Stash code/link/file-link HTML behind \0-delimited placeholders so the
+    // later path-autolink and bold/italic passes can't re-tokenize inside them.
+    // \0 never appears in real text, so the placeholders can't collide with it.
+    const stash = [];
+    const keep = (html) => '\0' + (stash.push(html) - 1) + '\0';
+
     let s = escaped;
-    // inline code first so its contents aren't treated as bold/italic/links
-    s = s.replace(/`([^`]+)`/g, (_m, c) => `<code>${c}</code>`);
-    // links [text](url) — url is already escaped; guard javascript: schemes
+    // inline code first so its contents aren't treated as bold/italic/links —
+    // a backtick span that is ITSELF a lone path opens instead of just showing.
+    s = s.replace(/`([^`]+)`/g, (_m, c) =>
+      looksLikeLocalPath(c) ? keep(fileLinkHtml(c.trim(), c, true)) : keep(`<code>${c}</code>`)
+    );
+    // links [text](url) — url is already escaped; a local-path target becomes a
+    // click-to-open link, otherwise a normal link (guarding odd schemes).
     s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, text, url) => {
+      if (looksLikeLocalPath(url)) return keep(fileLinkHtml(url, text, false));
       const safe = /^(https?:|mailto:|\/|#|\.)/i.test(url) ? url : '#';
-      return `<a href="${safe}" target="_blank" rel="noopener">${text}</a>`;
+      return keep(`<a href="${safe}" target="_blank" rel="noopener">${text}</a>`);
     });
+    // bare paths in running text (the common case: the agent just typed a path)
+    s = s.replace(FILE_PATH_RE, (m) => (looksLikeLocalPath(m) ? keep(fileLinkHtml(m, m, false)) : m));
     // bold then italic (bold uses ** so must run before single *)
     s = s.replace(/\*\*([^*]+)\*\*/g, (_m, c) => `<strong>${c}</strong>`);
     s = s.replace(/\*([^*]+)\*/g, (_m, c) => `<em>${c}</em>`);
+    // restore the stashed HTML — loop so a placeholder nested inside another
+    // stashed fragment (e.g. a code span inside a link's text) is also resolved.
+    let guard = 0;
+    while (s.indexOf('\0') !== -1 && guard++ < 6) {
+      s = s.replace(/\0(\d+)\0/g, (_m, i) => (stash[Number(i)] !== undefined ? stash[Number(i)] : ''));
+    }
     return s;
   }
 
@@ -220,64 +279,78 @@
     return root;
   }
 
-  // ---------- code tinter (lightweight regex highlighter) ----------
-  const KEYWORDS = {
-    js: 'await async break case catch class const continue default delete do else export extends false finally for from function if import in instanceof let new null of return super switch this throw true try typeof undefined var void while yield',
-    ts: 'await async break case catch class const continue default delete do else enum export extends false finally for from function if implements import in instanceof interface let new null of private protected public readonly return super switch this throw true try type typeof undefined var void while yield',
-    json: 'true false null',
-    py: 'and as assert async await break class continue def del elif else except False finally for from global if import in is lambda None nonlocal not or pass raise return True try while with yield',
-    sh: 'if then else elif fi for while do done case esac function in return export local echo cd',
-    css: '',
-    html: '',
+  // ---------- code tinter (lightweight, zero-dependency, offline) ----------
+  // Per language we record its comment style(s), whether it has backtick
+  // strings, and its keyword set. From those a single alternation regex tints
+  // comments / strings / numbers / keywords in one pass. Unknown languages
+  // render as plain escaped text; css / html / xml get bespoke patterns.
+  // Mirrors the wide-compat goal: no library, works in every browser offline.
+  const LANGS = {
+    js: { c: true, tmpl: true, kw: 'await async break case catch class const continue debugger default delete do else export extends false finally for from function get if import in instanceof let new null of return set static super switch this throw true try typeof undefined var void while yield' },
+    ts: { c: true, tmpl: true, kw: 'abstract any as asserts async await boolean break case catch class const continue declare default delete do else enum export extends false finally for from function get if implements import in infer instanceof interface is keyof let namespace never new null number object of private protected public readonly return satisfies set static string super switch this throw true try type typeof undefined unknown var void while yield' },
+    json: { kw: 'true false null' },
+    py: { hash: true, kw: 'and as assert async await break case class continue def del elif else except False finally for from global if import in is lambda match None nonlocal not or pass raise return self True try while with yield' },
+    sh: { hash: true, kw: 'if then else elif fi for while until do done case esac function in return export local readonly echo cd set unset source eval exec trap exit' },
+    go: { c: true, tmpl: true, kw: 'break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var nil true false iota' },
+    rust: { c: true, kw: 'as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait true type unsafe use where while' },
+    java: { c: true, kw: 'abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new null package private protected public return short static super switch synchronized this throw throws transient true false try void volatile while var record sealed' },
+    c: { c: true, kw: 'auto break case char const continue default do double else enum extern float for goto if inline int long register restrict return short signed sizeof static struct switch typedef union unsigned void volatile while bool true false NULL' },
+    cpp: { c: true, kw: 'alignas alignof auto bool break case catch char class const constexpr continue decltype default delete do double else enum explicit export extern false float for friend goto if inline int long mutable namespace new noexcept nullptr operator private protected public register return short signed sizeof static struct switch template this throw true try typedef typename union unsigned using virtual void volatile while' },
+    csharp: { c: true, kw: 'abstract as base bool break byte case catch char checked class const continue decimal default delegate do double else enum event explicit extern false finally fixed float for foreach goto if implicit in int interface internal is lock long namespace new null object operator out override params private protected public readonly ref return sbyte sealed short sizeof static string struct switch this throw true try typeof uint ulong unchecked unsafe ushort using var virtual void volatile while async await yield' },
+    ruby: { hash: true, kw: 'alias and begin break case class def defined do else elsif end ensure false for if in module next nil not or redo rescue retry return self super then true unless until when while yield require attr_accessor' },
+    php: { c: true, hash: true, kw: 'abstract and array as break callable case catch class clone const continue declare default do echo else elseif empty enddeclare endfor endforeach endif endswitch endwhile enum extends false final finally fn for foreach function global goto if implements include instanceof insteadof interface isset list match namespace new null or print private protected public readonly return static switch throw trait true try unset use var while xor yield' },
+    swift: { c: true, kw: 'associatedtype class deinit enum extension fileprivate func import init inout internal let open operator private protocol public rethrows static struct subscript typealias var break case continue default defer do else fallthrough for guard if in repeat return switch where while as catch false is nil super self throw throws true try' },
+    kotlin: { c: true, kw: 'abstract actual annotation as break by catch class companion const constructor continue crossinline data delegate do dynamic else enum external false final finally for fun get if import in infix init inline inner interface internal is lateinit lazy null object open operator out override package private protected public reified return sealed set super suspend this throw true try typealias val var vararg when where while' },
+    yaml: { hash: true, kw: 'true false null yes no on off' },
+    toml: { hash: true, kw: 'true false' },
+    sql: { c: true, sql: true, kwi: true, kw: 'select from where insert into values update set delete create table alter drop index view join inner left right outer full on as and or not null is in like between group by order having limit offset union all distinct count sum avg min max case when then else end primary key foreign references default unique constraint cascade asc desc returning with' },
+    css: { special: 'css' },
+    html: { special: 'html' },
+  };
+  const LANG_ALIAS = {
+    javascript: 'js', node: 'js', mjs: 'js', cjs: 'js', jsx: 'js',
+    typescript: 'ts', tsx: 'ts',
+    shell: 'sh', bash: 'sh', zsh: 'sh', console: 'sh',
+    python: 'py', py3: 'py',
+    golang: 'go', rs: 'rust', 'c++': 'cpp', cc: 'cpp', cxx: 'cpp', hpp: 'cpp', 'c#': 'csharp', cs: 'csharp',
+    rb: 'ruby', kt: 'kotlin',
+    yml: 'yaml', xml: 'html', svg: 'html', htm: 'html',
+    jsonc: 'json', json5: 'json',
   };
 
   function tintCode(code, lang) {
-    const langKey = (lang || '').toLowerCase();
-    const alias = { javascript: 'js', typescript: 'ts', shell: 'sh', bash: 'sh', python: 'py' };
-    const key = alias[langKey] || langKey;
-    if (!Object.prototype.hasOwnProperty.call(KEYWORDS, key)) {
-      return esc(code); // unknown lang -> plain
-    }
-    // Single-pass tokenizer over the RAW source: one alternation regex, each
-    // match escaped + wrapped as it is emitted. No placeholders — placeholder
-    // text gets re-tokenized by later passes and corrupts the output.
-    const kws = (KEYWORDS[key] || '').split(' ').filter(Boolean);
-    const kwAlt = kws.length ? kws.join('|') : 'A\\bB'; // alternation that never matches
-    let rx;
-    let classes;
-    if (key === 'css') {
-      rx = new RegExp(
-        /(\/\*[\s\S]*?\*\/)/.source +
-          '|' + /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/.source +
-          '|' + /([A-Za-z-]+(?=\s*:))/.source +
-          '|' + /(\b\d+(?:\.\d+)?(?:px|em|rem|%|vh|vw|s|ms|deg)?\b)/.source,
-        'g'
-      );
-      classes = ['com', 'str', 'kw', 'num'];
-    } else if (key === 'html') {
-      rx = new RegExp(
-        /(<!--[\s\S]*?-->)/.source +
-          '|' + /(<\/?[A-Za-z][\w-]*|\/?>)/.source +
-          '|' + /("[^"]*")/.source,
-        'g'
-      );
-      classes = ['com', 'kw', 'str'];
+    const key0 = (lang || '').toLowerCase().trim();
+    const cfg = LANGS[LANG_ALIAS[key0] || key0];
+    if (!cfg) return esc(code); // unknown lang -> plain
+
+    // Build ONE alternation regex with a parallel classes[] so group g (1-based)
+    // maps to classes[g-1]. Each pushed source is wrapped in exactly one
+    // capturing group; the source bodies use only non-capturing groups.
+    const parts = [];
+    const classes = [];
+    const push = (src, cls) => { parts.push('(' + src + ')'); classes.push(cls); };
+    if (cfg.special === 'css') {
+      push(/\/\*[\s\S]*?\*\//.source, 'com');
+      push(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/.source, 'str');
+      push(/[A-Za-z-]+(?=\s*:)/.source, 'kw');
+      push(/\b\d+(?:\.\d+)?(?:px|em|rem|%|vh|vw|s|ms|deg)?\b/.source, 'num');
+    } else if (cfg.special === 'html') {
+      push(/<!--[\s\S]*?-->/.source, 'com');
+      push(/<\/?[A-Za-z][\w-]*|\/?>/.source, 'kw');
+      push(/"[^"]*"/.source, 'str');
     } else {
-      const comment = key === 'py' || key === 'sh'
-        ? /(#[^\n]*)/.source
-        : /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)/.source;
-      const str = key === 'py' || key === 'sh'
-        ? /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/.source
-        : /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)/.source;
-      rx = new RegExp(
-        comment +
-          '|' + str +
-          '|' + /(\b(?:0x[\da-fA-F]+|\d+(?:\.\d+)?)\b)/.source +
-          '|(\\b(?:' + kwAlt + ')\\b)',
-        'g'
-      );
-      classes = ['com', 'str', 'num', 'kw'];
+      if (cfg.c) { push(/\/\*[\s\S]*?\*\//.source, 'com'); push(/\/\/[^\n]*/.source, 'com'); }
+      if (cfg.hash) push(/#[^\n]*/.source, 'com');
+      if (cfg.sql) push(/--[^\n]*/.source, 'com');
+      push((cfg.tmpl
+        ? /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/
+        : /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/).source, 'str');
+      push(/\b(?:0x[\da-fA-F]+|\d+(?:\.\d+)?)\b/.source, 'num');
+      let kws = (cfg.kw || '').split(' ').filter(Boolean);
+      if (cfg.kwi) kws = kws.concat(kws.map((k) => k.toUpperCase())); // SQL: also UPPERCASE
+      if (kws.length) push('\\b(?:' + kws.join('|') + ')\\b', 'kw');
     }
+    const rx = new RegExp(parts.join('|'), 'g');
     let out = '';
     let last = 0;
     let m;
@@ -298,15 +371,133 @@
     return out;
   }
 
+  // A line-number gutter element for `text` (aria-hidden + non-selectable so a
+  // select-to-comment grabs only the code, not the numbers). `startAt` default 1.
+  function lineGutter(text, startAt) {
+    const n = Math.max(1, String(text).replace(/\n+$/, '').split('\n').length);
+    const g = el('div', { class: 'blk-gutter', 'aria-hidden': 'true' });
+    let s = '';
+    for (let i = 0; i < n; i++) s += (startAt || 1) + i + '\n';
+    g.textContent = s;
+    return g;
+  }
+
   function renderCode(block, ctx, blockId) {
+    const raw = block.code || '';
     const code = el('code');
-    code.innerHTML = tintCode(block.code || '', block.lang);
+    code.innerHTML = tintCode(raw, block.lang);
     const pre = el('pre', { class: 'blk-pre', 'data-lang': block.lang || '' }, code);
-    const wrap = el('div', { class: 'blk-codewrap' }, pre);
+    const row = el('div', { class: 'blk-coderow' }, lineGutter(raw), pre);
+    const wrap = el('div', { class: 'blk-codewrap' });
+    // Optional file-name + language header above the code.
+    if (block.filename || block.lang) {
+      wrap.append(el('div', { class: 'blk-codehead' },
+        el('span', { class: 'blk-codename' }, block.filename || ''),
+        el('span', { class: 'blk-codelang' }, block.lang || '')
+      ));
+    }
+    wrap.append(row);
     // select-to-comment on the code text (like markdown), plus a whole-block
     // comment + full-screen via the shared viewer toolbar
     ctx && ctx.annotate && ctx.annotate.enableTextSelection(pre, { blockId, questionId: ctx.questionId });
     attachViewer(wrap, { zoomEl: null, label: 'code', comment: wholeBlockComment(ctx, blockId, 'code') });
+    return wrap;
+  }
+
+  // ---------- diff (unified / git diff) ----------
+  // Renders a unified diff as a colored, dual-line-numbered table: file/hunk
+  // headers and +added / −removed / context rows. No git is involved — the
+  // agent supplies the diff text. Each code line is tinted with the block's
+  // lang; the leading +/-/space marker is shown as a gutter sign, not tinted.
+  function renderDiff(block, ctx, blockId) {
+    const lines = String(block.diff || '').replace(/\r\n?/g, '\n').split('\n');
+    const tbody = el('tbody');
+    let oldNo = 0;
+    let newNo = 0;
+    for (const line of lines) {
+      let kind = 'ctx';
+      let oldCell = '';
+      let newCell = '';
+      let body = line;
+      if (/^@@/.test(line)) {
+        kind = 'hunk';
+        const m = line.match(/@@\s*-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s*@@/);
+        if (m) { oldNo = Number(m[1]); newNo = Number(m[2]); }
+      } else if (/^(diff |index |--- |\+\+\+ |new file|deleted file|old mode|new mode|similarity|rename |copy )/.test(line)) {
+        kind = 'meta';
+      } else if (line[0] === '+') {
+        kind = 'add'; body = line.slice(1); newCell = String(newNo++);
+      } else if (line[0] === '-') {
+        kind = 'del'; body = line.slice(1); oldCell = String(oldNo++);
+      } else {
+        body = line[0] === ' ' ? line.slice(1) : line;
+        oldCell = String(oldNo++);
+        newCell = String(newNo++);
+      }
+      const codeHtml = kind === 'hunk' || kind === 'meta' ? esc(line) : tintCode(body, block.lang);
+      const sign = kind === 'add' ? '+' : kind === 'del' ? '−' : '';
+      const oldTd = el('td', { class: 'diff-no', 'aria-hidden': 'true' });
+      oldTd.textContent = oldCell;
+      const newTd = el('td', { class: 'diff-no', 'aria-hidden': 'true' });
+      newTd.textContent = newCell;
+      const codeSpan = el('code');
+      codeSpan.innerHTML = codeHtml || ' ';
+      const tr = el('tr', { class: 'diff-row diff-' + kind },
+        oldTd, newTd,
+        el('td', { class: 'diff-sign', 'aria-hidden': 'true' }, sign),
+        el('td', { class: 'diff-code' }, codeSpan)
+      );
+      tbody.append(tr);
+    }
+    const scroll = el('div', { class: 'blk-diffscroll' }, el('table', { class: 'blk-difftable' }, tbody));
+    const wrap = el('div', { class: 'blk-codewrap blk-diffwrap' });
+    if (block.filename) wrap.append(el('div', { class: 'blk-codehead' }, el('span', { class: 'blk-codename' }, block.filename)));
+    wrap.append(scroll);
+    ctx && ctx.annotate && ctx.annotate.enableTextSelection(scroll, { blockId, questionId: ctx.questionId });
+    attachViewer(wrap, { zoomEl: null, label: 'diff', comment: wholeBlockComment(ctx, blockId, 'diff') });
+    return wrap;
+  }
+
+  // ---------- video (YouTube/Vimeo embed, local stream, or direct URL) ----------
+  function renderVideo(block, ctx, blockId) {
+    const wrap = el('div', { class: 'blk-videowrap' });
+    let media;
+    if (block.provider === 'youtube') {
+      const q = block.start ? '?start=' + block.start : '';
+      media = el('iframe', {
+        class: 'blk-video-embed',
+        src: 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(block.videoId) + q,
+        title: block.title || 'YouTube video',
+        frameborder: '0',
+        allow: 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share',
+        referrerpolicy: 'strict-origin-when-cross-origin',
+        allowfullscreen: 'true',
+        loading: 'lazy',
+      });
+    } else if (block.provider === 'vimeo') {
+      media = el('iframe', {
+        class: 'blk-video-embed',
+        src: 'https://player.vimeo.com/video/' + encodeURIComponent(block.videoId),
+        title: block.title || 'Vimeo video',
+        frameborder: '0',
+        allow: 'autoplay; fullscreen; picture-in-picture',
+        allowfullscreen: 'true',
+        loading: 'lazy',
+      });
+    } else {
+      // local file (served via /video/b/<id>) or a direct http(s) media URL
+      const src = block.hasFile ? '/video/b/' + encodeURIComponent(blockId) : block.src;
+      media = el('video', { class: 'blk-video', controls: 'true', preload: 'metadata', playsinline: 'true' });
+      if (block.title) media.setAttribute('title', block.title);
+      const source = el('source', { src });
+      if (block.mime) source.setAttribute('type', block.mime);
+      media.append(source);
+      media.append(document.createTextNode('Your browser cannot play this video.'));
+    }
+    wrap.append(media);
+    if (block.title) wrap.append(el('div', { class: 'blk-videocap' }, block.title));
+    // whole-block comment + the comment pin (no zoom/full-screen for media)
+    attachViewer(wrap, { zoomEl: null, label: 'video', comment: wholeBlockComment(ctx, blockId, 'video') });
     return wrap;
   }
 
@@ -1429,6 +1620,14 @@
         inner = renderCode(block, ctx, blockId);
         wrapper.append(inner);
         break;
+      case 'diff':
+        inner = renderDiff(block, ctx, blockId);
+        wrapper.append(inner);
+        break;
+      case 'video':
+        inner = renderVideo(block, ctx, blockId);
+        wrapper.append(inner);
+        break;
       case 'chart':
         inner = renderChart(block, ctx, blockId);
         wrapper.append(inner);
@@ -1478,6 +1677,66 @@
       container.append(renderBlock(block, safeCtx));
     }
   }
+
+  // ---------- file-link open behavior ----------
+  // A small toast pinned top-center (reuses the .toast style from style.css).
+  // tone 'err' adds .toast-err so failures read as a problem, not a success.
+  function fileToast(message, tone) {
+    const t = el('div', { class: 'toast' + (tone === 'err' ? ' toast-err' : '') }, message);
+    document.body.append(t);
+    setTimeout(() => t.remove(), 3500);
+  }
+
+  // POST the clicked path to /api/open; the server opens it in the OS default
+  // app. The link is disabled mid-flight so a double-click can't double-open.
+  async function openFilePath(a) {
+    const p = a.dataset.rlyOpen;
+    if (!p || a.classList.contains('is-opening')) return;
+    a.classList.add('is-opening');
+    try {
+      const r = await fetch('/api/open', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: p }),
+      });
+      let data = {};
+      try {
+        data = await r.json();
+      } catch {
+        data = {};
+      }
+      if (r.ok && data.ok) fileToast('Opened ' + (data.name || p));
+      else fileToast((data.error || 'Could not open') + ' — ' + p, 'err');
+    } catch {
+      fileToast('Could not reach the server to open ' + p, 'err');
+    } finally {
+      a.classList.remove('is-opening');
+    }
+  }
+
+  // Delegated once on the document so it catches file-links anywhere they are
+  // rendered — the intro, any markdown block, or a markdown pipe-table cell.
+  // Keyboard-activatable (Enter/Space) since the links are role="link" anchors
+  // with no href (the open happens via fetch, not navigation).
+  function initFileLinks() {
+    if (window.__relayFileLinksReady) return;
+    window.__relayFileLinksReady = true;
+    const hit = (e) => (e.target.closest ? e.target.closest('a.rly-filelink') : null);
+    document.addEventListener('click', (e) => {
+      const a = hit(e);
+      if (!a) return;
+      e.preventDefault();
+      openFilePath(a);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+      const a = hit(e);
+      if (!a) return;
+      e.preventDefault();
+      openFilePath(a);
+    });
+  }
+  initFileLinks();
 
   window.RelayBlocks = { render, onThemeChange, renderMarkdown };
 })();

@@ -28,6 +28,10 @@ export function createBoard(spec) {
     id: newId(),
     createdAt: new Date().toISOString(),
     title: spec.title,
+    // The directory the board was authored in. Relative file paths an agent
+    // writes into the spec (markdown links, ~/… paths) resolve against this, so
+    // the live server can open them in the user's default app (POST /api/open).
+    cwd: process.cwd(),
     spec,
     draft: null,
     result: null,

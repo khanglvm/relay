@@ -79,6 +79,42 @@
 .blk-markdown .md .md-tablewrap { overflow-x: auto; margin: 12px 0; }
 .blk-markdown .md .md-table { margin: 0; }
 
+/* Click-to-open local file links. Rendered wherever markdown runs (intro, md
+   blocks, table cells). A small file glyph + accent text signals "openable",
+   distinct from a plain web link. The whole chip is the click target. */
+.rly-filelink {
+  display: inline-flex; align-items: baseline; gap: 0.3em;
+  color: var(--accent); cursor: pointer; text-decoration: none;
+  border-bottom: 1px solid transparent;
+  border-radius: 4px;
+  transition: border-color 150ms var(--ease), background 150ms var(--ease);
+}
+.rly-filelink:hover { border-bottom-color: var(--accent); }
+.rly-filelink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rly-filelink .rly-filelink-ico {
+  flex: none; align-self: center;
+  width: 0.92em; height: 0.92em;
+  background: currentColor;
+  /* a document glyph drawn via mask, so it inherits the accent color */
+  -webkit-mask: var(--rly-file-mask) center / contain no-repeat;
+  mask: var(--rly-file-mask) center / contain no-repeat;
+  opacity: 0.85;
+}
+:root {
+  --rly-file-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 2h8l6 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 1.5V8h4.5L14 3.5z'/%3E%3C/svg%3E");
+}
+.rly-filelink.rly-filelink-code .rly-filelink-txt {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.86em;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+.rly-filelink.is-opening { opacity: 0.55; pointer-events: none; }
+/* Error-tone toast for a failed open (success reuses the plain .toast). */
+.toast.toast-err { background: var(--danger); color: var(--danger-fg); }
+
 /* ---------- code block ---------- */
 .blk-pre {
   background: var(--bg-sunken);
@@ -97,13 +133,96 @@
 }
 /* subtle tinter colors via theme vars only */
 .blk-pre .tok-kw,
+.blk-difftable .tok-kw,
 .blk-markdown .md .tok-kw { color: var(--accent); }
 .blk-pre .tok-str,
+.blk-difftable .tok-str,
 .blk-markdown .md .tok-str { color: var(--ok); }
 .blk-pre .tok-com,
+.blk-difftable .tok-com,
 .blk-markdown .md .tok-com { color: var(--muted); font-style: italic; }
 .blk-pre .tok-num,
+.blk-difftable .tok-num,
 .blk-markdown .md .tok-num { color: var(--fg-2); }
+
+/* code block: file-name / language header above the card */
+.blk-codehead {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 6px 12px; margin-bottom: -1px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border); border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  font-size: 0.74rem; color: var(--muted);
+}
+.blk-codehead .blk-codename {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--fg-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.blk-codehead .blk-codelang { text-transform: uppercase; letter-spacing: 0.05em; flex: none; }
+.blk-codehead:empty,
+.blk-codehead .blk-codename:empty,
+.blk-codehead .blk-codelang:empty { display: none; }
+.blk-codehead:has(.blk-codename:empty) { justify-content: flex-end; }
+
+/* code block: line-number gutter + code column share one bordered card */
+.blk-coderow {
+  display: flex; align-items: stretch;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.blk-codehead + .blk-coderow { border-radius: 0 0 10px 10px; }
+.blk-gutter {
+  flex: none; user-select: none; -webkit-user-select: none;
+  padding: 14px 10px 14px 14px; text-align: right;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem; line-height: 1.55;
+  color: var(--muted); white-space: pre;
+  border-right: 1px solid var(--border);
+}
+.blk-coderow .blk-pre {
+  flex: 1 1 auto; border: 0; border-radius: 0; background: none;
+}
+
+/* ---------- diff (unified / git diff) ---------- */
+.blk-diffscroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-sunken); }
+.blk-codehead + .blk-diffscroll { border-radius: 0 0 10px 10px; }
+.blk-difftable {
+  border-collapse: collapse; width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.84rem; line-height: 1.5;
+}
+.blk-difftable td { padding: 0 8px; vertical-align: top; }
+.blk-difftable .diff-no {
+  width: 1%; white-space: nowrap; text-align: right;
+  color: var(--muted); user-select: none; -webkit-user-select: none;
+  padding: 0 6px; border-right: 1px solid var(--border);
+}
+.blk-difftable .diff-sign {
+  width: 1ch; text-align: center; color: var(--muted);
+  user-select: none; -webkit-user-select: none; padding: 0 4px;
+}
+.blk-difftable .diff-code { width: 100%; white-space: pre; }
+.blk-difftable .diff-code code { font: inherit; color: var(--fg); background: none; }
+.blk-difftable .diff-add { background: rgba(77, 138, 102, 0.16); }
+.blk-difftable .diff-add .diff-sign { color: var(--ok); }
+.blk-difftable .diff-del { background: rgba(188, 68, 52, 0.15); }
+.blk-difftable .diff-del .diff-sign { color: var(--danger); }
+.blk-difftable .diff-hunk td { color: var(--accent); background: var(--accent-soft); padding-top: 2px; padding-bottom: 2px; }
+.blk-difftable .diff-meta td { color: var(--muted); font-style: italic; }
+.blk-difftable .diff-hunk .diff-code code,
+.blk-difftable .diff-meta .diff-code code { color: inherit; }
+
+/* ---------- video (iframe embed / local stream / direct URL) ---------- */
+.blk-videowrap { margin: 0; }
+.blk-video, .blk-video-embed {
+  display: block; width: 100%; border: 0;
+  border-radius: 10px; background: #000;
+}
+.blk-video { max-height: 70vh; }
+.blk-video-embed { aspect-ratio: 16 / 9; height: auto; }
+.blk-videocap { margin-top: 8px; font-size: 0.84rem; color: var(--muted); text-align: center; }
 
 /* ---------- table ---------- */
 .blk-table {

@@ -25,8 +25,21 @@ const HTML_HEIGHT = { min: 100, max: 2400, boardDefault: 400, questionDefault: 3
 
 // Block heights clamp to the same window; defaults vary per block type.
 const BLOCK_HEIGHT = { min: 100, max: 2400 };
-export const BLOCK_TYPES = ['markdown', 'mermaid', 'graphviz', 'plantuml', 'chart', 'table', 'code', 'html', 'image'];
+export const BLOCK_TYPES = ['markdown', 'mermaid', 'graphviz', 'plantuml', 'chart', 'table', 'code', 'diff', 'video', 'html', 'image'];
 const CHART_KINDS = ['bar', 'line', 'pie', 'doughnut', 'radar', 'scatter'];
+
+// code/diff blocks may load their text from a local file (like htmlFile). Caps
+// keep a runaway file from bloating the board payload.
+const TEXT_FILE_MAX_BYTES = 512 * 1024;
+
+// video blocks: a YouTube/Vimeo link embeds via iframe; an http(s) media URL or
+// a local file plays in a <video> element (local files stream from the server,
+// never embedded, so large clips don't bloat the board).
+const VIDEO_MIMES = {
+  mp4: 'video/mp4', m4v: 'video/x-m4v', webm: 'video/webm', ogv: 'video/ogg',
+  ogg: 'video/ogg', mov: 'video/quicktime', mkv: 'video/x-matroska',
+};
+const VIDEO_MAX_BYTES = 512 * 1024 * 1024;
 
 // image blocks: local files are embedded as data URIs at spec time (the page
 // then loads them via /img/b/<id>), so boards stay self-contained offline.
@@ -69,6 +82,45 @@ function readBlockHtml(block, cwd, where) {
     }
   }
   return '';
+}
+
+// Reads a code/diff block body from an inline string field or a local file.
+// `inlineKey` is the inline field (e.g. "code"/"diff"); `fileKey` its file
+// twin (e.g. "codeFile"/"diffFile"). Returns '' when neither is present.
+function readTextSource(block, inlineKey, fileKey, cwd, where) {
+  if (typeof block[inlineKey] === 'string' && block[inlineKey] !== '') return block[inlineKey];
+  if (typeof block[fileKey] === 'string' && block[fileKey].trim()) {
+    const p = path.resolve(cwd, block[fileKey]);
+    let buf;
+    try {
+      buf = fs.readFileSync(p);
+    } catch {
+      throw new CliError(`${where}: cannot read ${fileKey} "${block[fileKey]}" (resolved: ${p})`);
+    }
+    if (buf.length > TEXT_FILE_MAX_BYTES) {
+      throw new CliError(`${where}: ${fileKey} "${block[fileKey]}" is ${(buf.length / 1024).toFixed(0)}KB — max ${TEXT_FILE_MAX_BYTES / 1024}KB.`);
+    }
+    return buf.toString('utf8');
+  }
+  return '';
+}
+
+// Recognizes a YouTube / Vimeo URL (or a bare YouTube id) and returns
+// {provider, videoId, start} for an iframe embed, else null. Cross-platform —
+// pure string parsing, no URL host assumptions beyond the known providers.
+function parseVideoEmbed(src) {
+  const s = String(src).trim();
+  // bare 11-char YouTube id
+  if (/^[\w-]{11}$/.test(s)) return { provider: 'youtube', videoId: s, start: 0 };
+  let m;
+  if ((m = s.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|v\/)|youtu\.be\/)([\w-]{11})/i))) {
+    const t = s.match(/[?&](?:t|start)=(\d+)/);
+    return { provider: 'youtube', videoId: m[1], start: t ? Number(t[1]) : 0 };
+  }
+  if ((m = s.match(/vimeo\.com\/(?:video\/)?(\d+)/i))) {
+    return { provider: 'vimeo', videoId: m[1], start: 0 };
+  }
+  return null;
 }
 
 // Normalizes one block object. `id` is the already-assigned block id.
@@ -126,11 +178,70 @@ function normalizeBlock(rawBlock, id, cwd, where) {
   }
 
   if (type === 'code') {
-    const code = asStr(rawBlock.code);
-    if (!code) throw new CliError(`${where}: code block needs a "code" string.`);
+    const code = readTextSource(rawBlock, 'code', 'codeFile', cwd, where);
+    if (!code) throw new CliError(`${where}: code block needs a "code" string or a readable "codeFile".`);
     const block = { id, type: 'code', code };
     if (rawBlock.lang !== undefined) block.lang = asStr(rawBlock.lang);
+    // lang defaults from the codeFile extension when not given explicitly.
+    else if (typeof rawBlock.codeFile === 'string' && rawBlock.codeFile.trim()) {
+      const ext = path.extname(rawBlock.codeFile).slice(1).toLowerCase();
+      if (ext) block.lang = ext;
+    }
+    if (rawBlock.filename !== undefined) block.filename = asStr(rawBlock.filename);
     if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
+    return block;
+  }
+
+  if (type === 'diff') {
+    const diff = readTextSource(rawBlock, 'diff', 'diffFile', cwd, where);
+    if (!diff.trim()) throw new CliError(`${where}: diff block needs a non-empty "diff" string (unified diff) or a readable "diffFile".`);
+    const block = { id, type: 'diff', diff };
+    if (rawBlock.lang !== undefined) block.lang = asStr(rawBlock.lang);
+    if (rawBlock.filename !== undefined) block.filename = asStr(rawBlock.filename);
+    if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
+    return block;
+  }
+
+  if (type === 'video') {
+    const src = asStr(rawBlock.src ?? rawBlock.file ?? rawBlock.url).trim();
+    if (!src) throw new CliError(`${where}: video block needs a "src" (YouTube/Vimeo URL, http(s) media URL, or local file path).`);
+    const block = { id, type: 'video' };
+    if (rawBlock.title !== undefined) block.title = asStr(rawBlock.title);
+    if (rawBlock.alt !== undefined) block.title = asStr(rawBlock.alt);
+    if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
+    const embed = parseVideoEmbed(src);
+    if (embed) {
+      block.provider = embed.provider;
+      block.videoId = embed.videoId;
+      if (embed.start) block.start = embed.start;
+      return block;
+    }
+    if (/^https?:/i.test(src)) {
+      block.src = src;
+      const ext = path.extname(src.split(/[?#]/)[0]).slice(1).toLowerCase();
+      if (VIDEO_MIMES[ext]) block.mime = VIDEO_MIMES[ext];
+      return block;
+    }
+    // local file — kept as an absolute path the server streams (never embedded
+    // in the payload). The client only learns a flag + mime via /video/b/<id>.
+    const p = path.resolve(cwd, src);
+    const ext = path.extname(p).slice(1).toLowerCase();
+    const mime = VIDEO_MIMES[ext];
+    if (!mime) {
+      throw new CliError(`${where}: unsupported video extension ".${ext}" — use ${Object.keys(VIDEO_MIMES).join('/')}, a YouTube/Vimeo URL, or an http(s) media URL.`);
+    }
+    let stat;
+    try {
+      stat = fs.statSync(p);
+    } catch {
+      throw new CliError(`${where}: cannot read video "${src}" (resolved: ${p})`);
+    }
+    if (stat.size > VIDEO_MAX_BYTES) {
+      throw new CliError(`${where}: video "${src}" is ${(stat.size / 1024 / 1024).toFixed(0)}MB — max ${VIDEO_MAX_BYTES / 1024 / 1024}MB.`);
+    }
+    block.file = p;
+    block.mime = mime;
+    if (!block.title) block.title = path.basename(p);
     return block;
   }
 
@@ -412,11 +523,15 @@ const BLOCK_SCHEMA = {
     properties: {
       type: { type: 'string', enum: BLOCK_TYPES },
       md: { type: 'string', description: 'markdown: built-in mini renderer (no external library) — headings, lists, code, quotes, links, and GFM pipe tables. Text selections are commentable. For real tabular data prefer a "table" block (sortable + per-cell comments).' },
-      code: { type: 'string', description: 'mermaid: diagram source (e.g. "graph TD; A-->B"); plantuml: the @startuml…@enduml source; code: the source to display.' },
+      code: { type: 'string', description: 'mermaid: diagram source (e.g. "graph TD; A-->B"); plantuml: the @startuml…@enduml source; code: the source to display (syntax-highlighted with line numbers).' },
+      codeFile: { type: 'string', description: 'code: path to a local source file to load + display instead of inline "code". Resolved against the CWD; lang defaults from the file extension.' },
+      filename: { type: 'string', description: 'code/diff: optional file name/path shown as a header label above the block.' },
       editable: { type: 'boolean', description: 'mermaid: when true, render an "Edit diagram" toggle so the user can edit the diagram source live. The edited source is returned in result.blockEdits[<blockId>].' },
       dot: { type: 'string', description: 'graphviz: DOT source (e.g. "digraph { a -> b }"). Rendered offline via vendored Viz.js; nodes and edges are individually commentable.' },
       server: { type: 'string', description: 'plantuml: PlantUML server base URL (http(s)). Defaults to https://www.plantuml.com/plantuml. Diagrams render via this server (needs network).' },
-      lang: { type: 'string', description: 'code block: language hint for display.' },
+      lang: { type: 'string', description: 'code/diff block: language hint for syntax highlighting (js, ts, py, go, rust, java, c, cpp, csharp, ruby, php, swift, kotlin, sql, yaml, json, sh, css, html, …).' },
+      diff: { type: 'string', description: 'diff: a unified diff (git diff / diff -u output) — rendered as a colored, line-numbered comparison with +added / −removed / context rows and file/hunk headers. No git needed; just write/paste the diff text.' },
+      diffFile: { type: 'string', description: 'diff: path to a local file containing a unified diff (alternative to "diff"). Resolved against the CWD.' },
       config: { type: 'object', description: 'chart: a full Chart.js config object.' },
       kind: { type: 'string', enum: CHART_KINDS, description: 'chart shorthand: chart kind (alternative to "config").' },
       labels: { type: 'array', description: 'chart shorthand: x-axis / category labels.' },
@@ -425,7 +540,7 @@ const BLOCK_SCHEMA = {
         description: 'chart shorthand: [{label, data:[...], color?}]. Chart data points are individually commentable.',
         items: { type: 'object', properties: { label: { type: 'string' }, data: { type: 'array' }, color: { type: 'string' } } },
       },
-      title: { type: 'string', description: 'chart shorthand: chart title.' },
+      title: { type: 'string', description: 'chart shorthand: chart title. video: title/caption shown under the player.' },
       columns: {
         type: 'array',
         description: 'table: strings, or {key, label, align?}. Cells are commentable.',
@@ -435,8 +550,8 @@ const BLOCK_SCHEMA = {
       sortable: { type: 'boolean', description: 'table: enable click-to-sort headers.' },
       html: { type: 'string', description: 'html: custom markup rendered in a sandboxed iframe.' },
       htmlFile: { type: 'string', description: 'html: path to an HTML file (alternative to "html").' },
-      src: { type: 'string', description: 'image: http(s)/data URL, or a local file path (png/jpg/gif/webp/svg/avif/bmp — embedded at spec time, served offline).' },
-      alt: { type: 'string', description: 'image: alt text / annotation label.' },
+      src: { type: 'string', description: 'image: http(s)/data URL, or a local file path (png/jpg/gif/webp/svg/avif/bmp — embedded at spec time, served offline). video: a YouTube/Vimeo URL (embeds an iframe player), an http(s) media URL, or a local video file (mp4/webm/ogv/mov/mkv/m4v — streamed from the server, never embedded).' },
+      alt: { type: 'string', description: 'image: alt text / annotation label. video: accessible title for the player.' },
       height: { type: 'integer', minimum: BLOCK_HEIGHT.min, maximum: BLOCK_HEIGHT.max, description: 'Block height in px. Defaults: chart 320, html 360; markdown/table/code flow naturally; mermaid/graphviz/plantuml/image natural (max 1200, scrolls).' },
     },
   },
