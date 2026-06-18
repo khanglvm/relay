@@ -267,6 +267,47 @@ textarea { min-height: 90px; resize: vertical; }
   .scale button { width: 40px; height: 40px; }
 }
 
+/* Persistence-lost block: when the board can no longer save the user's input
+   (server gone / port taken / machine slept) AND recovery probes have failed,
+   we disable every control and overlay this unmissable scrim so the user is
+   physically prevented from typing feedback that would be silently discarded.
+   Sits above everything (full-screen overlay z 49 / popover / rail / toast). */
+.relay-blocked #app { filter: grayscale(0.4) blur(1px); pointer-events: none; user-select: none; }
+.lost-overlay {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+}
+.lost-card {
+  max-width: 460px; width: 100%;
+  background: var(--card); color: var(--fg);
+  border: 1px solid var(--border-strong); border-radius: 14px;
+  box-shadow: var(--shadow-lift);
+  padding: 28px 26px; text-align: center;
+}
+.lost-card .lost-mark {
+  width: 52px; height: 52px; border-radius: 50%;
+  background: var(--danger); color: var(--danger-fg);
+  font-size: 1.6rem; line-height: 52px; margin: 0 auto 16px;
+}
+.lost-card h2 {
+  font-family: var(--serif); font-weight: 500; letter-spacing: -0.015em;
+  font-size: 1.3rem; margin: 0 0 10px;
+}
+.lost-card p { color: var(--fg-2); font-size: 0.92rem; line-height: 1.55; margin: 0 0 8px; }
+.lost-card .lost-sub { color: var(--muted); font-size: 0.82rem; margin: 12px 0 18px; }
+.lost-card .lost-retry {
+  background: var(--accent); color: var(--accent-fg);
+  border: none; border-radius: 10px;
+  padding: 11px 26px; font: inherit; font-size: 0.95rem; font-weight: 600; cursor: pointer;
+  transition: background 150ms var(--ease);
+}
+.lost-card .lost-retry:hover { background: var(--accent-hover); }
+.lost-card .lost-retry:disabled { opacity: 0.6; cursor: default; }
+.lost-card .lost-retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }

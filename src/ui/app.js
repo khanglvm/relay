@@ -176,12 +176,120 @@
     };
   }
 
+  // ---------- persistence-lost block ----------
+  // The dead-end this guards against: the client can lose its connection to the
+  // board's local HTTP server (server gone, port taken over, socket dropped,
+  // machine slept). Autosaves then fail silently and the user keeps typing
+  // answers/comments that are never persisted, then Submit fails too — all of it
+  // thrown away. When persistence is CONFIRMED lost we hard-block: disable every
+  // control and overlay an unmissable scrim with a Retry. Local `state` is never
+  // touched, so the moment the connection recovers we flush it and unblock —
+  // nothing the user typed during the outage is lost.
+  let persistenceLost = false;
+  let probing = false;
+  let lostOverlay = null;
+  let lostRetryBtn = null;
+
+  // A direct, side-effect-free reachability probe. Resolves true when the local
+  // server answers /api/status, false on any network/HTTP failure. Used to
+  // CONFIRM loss before blocking (so a single dropped request never blocks) and
+  // to detect recovery from the Retry button / heartbeat.
+  async function probeServer() {
+    try {
+      const r = await fetch('/api/status', { cache: 'no-store' });
+      return r.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  function buildLostOverlay() {
+    if (lostOverlay) return lostOverlay;
+    lostRetryBtn = el('button', { class: 'lost-retry', type: 'button' }, 'Retry connection');
+    lostRetryBtn.addEventListener('click', retryConnection);
+    lostOverlay = el('div', { class: 'lost-overlay', role: 'alertdialog', 'aria-modal': 'true', 'aria-label': 'Connection lost' },
+      el('div', { class: 'lost-card' },
+        el('div', { class: 'lost-mark' }, '⚠'),
+        el('h2', {}, 'Connection lost — input isn’t being saved'),
+        el('p', {}, 'This board can no longer reach your agent’s session, so anything you type now won’t be saved. Editing is paused to keep you from losing work.'),
+        el('p', { class: 'lost-sub' }, 'Your input up to this point is kept in this tab. Click Retry once the agent’s session is back, or prompt the agent to reopen this board — your draft and unsaved edits will be restored.'),
+        lostRetryBtn
+      )
+    );
+    return lostOverlay;
+  }
+
+  // Enter the blocked state: disable controls, mount the overlay. Idempotent.
+  function blockForLostPersistence() {
+    if (persistenceLost || submitted) return;
+    persistenceLost = true;
+    document.documentElement.classList.add('relay-blocked');
+    // Disable every interactive control inside the form (inputs the user could
+    // otherwise keep typing into) plus Submit.
+    for (const node of app.querySelectorAll('input, textarea, button, select')) {
+      node.disabled = true;
+    }
+    document.body.append(buildLostOverlay());
+    if (saveEl) saveEl.textContent = 'connection lost — not saving';
+  }
+
+  // Leave the blocked state: re-enable controls, remove the overlay, and flush
+  // whatever the user typed during the outage so it's persisted right away.
+  function unblockAfterRecovery() {
+    if (!persistenceLost) return;
+    persistenceLost = false;
+    document.documentElement.classList.remove('relay-blocked');
+    for (const node of app.querySelectorAll('input, textarea, button, select')) {
+      node.disabled = false;
+    }
+    if (lostOverlay) lostOverlay.remove();
+    // Re-arm the heartbeat (it stops itself when it confirms loss) and persist
+    // everything typed during the outage. saveDraft() updates the save label.
+    startHeartbeat();
+    misses = 0;
+    saveFailures = 0;
+    saveDraft();
+  }
+
+  // Retry button: probe once; recover on success, otherwise tell the user it's
+  // still down (without un-blocking).
+  async function retryConnection() {
+    if (probing) return;
+    probing = true;
+    if (lostRetryBtn) { lostRetryBtn.disabled = true; lostRetryBtn.textContent = 'Checking…'; }
+    const ok = await probeServer();
+    probing = false;
+    if (lostRetryBtn) { lostRetryBtn.disabled = false; lostRetryBtn.textContent = 'Retry connection'; }
+    if (ok) unblockAfterRecovery();
+    else if (lostRetryBtn) {
+      lostRetryBtn.textContent = 'Still unreachable — try again';
+      setTimeout(() => { if (lostRetryBtn && persistenceLost) lostRetryBtn.textContent = 'Retry connection'; }, 2500);
+    }
+  }
+
+  // Called when a save/heartbeat fails. Confirms loss with a probe (so one
+  // dropped request never blocks) before hard-blocking. `force` skips the probe
+  // for callers (the heartbeat) that already represent repeated failures.
+  async function considerPersistenceLost(force) {
+    if (persistenceLost || submitted || probing) return;
+    if (!force) {
+      probing = true;
+      const ok = await probeServer();
+      probing = false;
+      if (ok || persistenceLost || submitted) return; // recovered or already handled
+    }
+    blockForLostPersistence();
+  }
+
   // ---------- real-time autosave ----------
   let saveTimer = null;
   let saveSeq = 0;
   let saveEl = null;
+  // Consecutive failed /api/draft saves. Two in a row triggers a confirming
+  // probe → block. Any success resets it.
+  let saveFailures = 0;
   function scheduleSave() {
-    if (submitted) return;
+    if (submitted || persistenceLost) return;
     if (saveEl) saveEl.textContent = 'saving…';
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveDraft, 450);
@@ -189,14 +297,19 @@
   async function saveDraft() {
     const seq = ++saveSeq;
     try {
-      await fetch('/api/draft', {
+      const r = await fetch('/api/draft', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload()),
       });
-      if (seq === saveSeq && saveEl && !submitted) saveEl.textContent = 'draft saved ✓';
+      if (!r.ok) throw new Error('draft rejected');
+      saveFailures = 0;
+      if (seq === saveSeq && saveEl && !submitted && !persistenceLost) saveEl.textContent = 'draft saved ✓';
     } catch {
-      if (seq === saveSeq && saveEl && !submitted) saveEl.textContent = 'draft save failed';
+      if (seq === saveSeq && saveEl && !submitted && !persistenceLost) saveEl.textContent = 'draft save failed';
+      // A save couldn't be persisted — the core data-loss signal. After two in a
+      // row, confirm with a probe and block so the user stops typing into the void.
+      if (++saveFailures >= 2) considerPersistenceLost(false);
     }
   }
 
@@ -656,12 +769,21 @@
     submitBtn.disabled = true;
     submitBtn.textContent = 'Submitting…';
     clearTimeout(saveTimer);
+    let reached = true;
     try {
-      const res = await fetch('/api/submit', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload()),
-      });
+      let res;
+      try {
+        res = await fetch('/api/submit', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload()),
+        });
+      } catch (netErr) {
+        // A thrown fetch (vs. an HTTP error response) means we never reached the
+        // server — the connection is gone, so this submit was never delivered.
+        reached = false;
+        throw netErr;
+      }
       if (!res.ok) throw new Error('submit rejected');
       submitted = true;
       // Don't auto-close when the agent had stopped waiting — the user needs to
@@ -680,15 +802,26 @@
         }, 700);
       }
     } catch {
-      // The server is gone, so this submit couldn't be delivered. Keep the
-      // button live and tell the user how to get their input to the agent —
-      // their draft was autosaved up to the last edit.
+      // Restore the button so the user can retry.
       submitBtn.disabled = false;
       submitBtn.textContent = spec.submitLabel;
-      showNotice(
-        'Couldn’t reach the agent to submit just now — your draft is saved. Prompt the agent to reopen this board so your input isn’t lost.',
-        'warn'
-      );
+      if (!reached) {
+        // The connection is gone — the submit (and any further input) can't be
+        // persisted. Block hard so the user stops adding feedback that would be
+        // lost; the block's probe loop / heartbeat lifts it on recovery, and the
+        // user can then submit. force=true: the failed submit already confirms
+        // the server is unreachable.
+        stopHeartbeat();
+        considerPersistenceLost(true);
+        startBlockedProbeLoop();
+      } else {
+        // The server answered with an error (e.g. 409 board already finished) —
+        // it's reachable, so don't show the scary block; just guide the user.
+        showNotice(
+          'Couldn’t submit — the board may have already closed. Prompt the agent to reopen this board so your input isn’t lost.',
+          'warn'
+        );
+      }
     }
   });
 
@@ -772,13 +905,20 @@
   // ---------- heartbeat ----------
   let misses = 0;
   let reloading = false;
-  let hb = setInterval(async () => {
+  let hb = null;
+  async function heartbeatTick() {
     // Piggyback presence on the heartbeat (best-effort; no-ops after submit).
     pingPresence();
     try {
       const r = await fetch('/api/status', { cache: 'no-store' });
       if (!r.ok) throw new Error('bad status');
       misses = 0;
+      // The heartbeat reaching the server is itself proof persistence is back —
+      // if we were blocked (saves had been failing), recover now and flush.
+      if (persistenceLost) {
+        unblockAfterRecovery();
+        return;
+      }
       // Live update: the agent ran `rly update`, advancing the server rev.
       // Flush whatever the user has typed so far (the reload re-prefills from
       // the live draft — answers for now-removed question ids are ignored),
@@ -812,22 +952,55 @@
         location.reload();
       }
     } catch {
-      // Lost the live connection (the session ended, or the machine slept).
-      // Keep the board usable — do NOT disable Submit — and show a calm note
-      // rather than the old red "closed" banner. A submit attempt that can't
-      // reach the server falls back to the same guidance below.
-      if (++misses >= 2 && !submitted) {
+      // Lost the live connection (the session ended, or the machine slept). Two
+      // consecutive misses means the local server is unreachable — so input can
+      // no longer be persisted. Hard-block: disable editing and overlay the
+      // unmissable "connection lost" scrim, so the user can't keep typing
+      // feedback that would be silently discarded. The block re-arms its own
+      // probe loop and the heartbeat recovers it once the server answers again.
+      if (++misses >= 2 && !submitted && !persistenceLost) {
         handedBack = true;
-        showNotice(
-          'Lost the live connection to your agent’s session — your latest edits were saved. You can still try Submit; if it doesn’t go through, prompt the agent to reopen this board.',
-          'warn'
-        );
         stopHeartbeat();
+        // force=true: two heartbeat misses already confirm the server is gone,
+        // so block immediately without a redundant probe.
+        considerPersistenceLost(true);
+        // While blocked, keep probing so an automatic recovery (server back,
+        // machine woke) lifts the block even if the user never clicks Retry.
+        startBlockedProbeLoop();
       }
     }
-  }, 3000);
+  }
+  function startHeartbeat() {
+    if (hb || submitted) return;
+    hb = setInterval(heartbeatTick, 3000);
+  }
   function stopHeartbeat() {
     if (hb) clearInterval(hb);
     hb = null;
   }
+
+  // While blocked, the heartbeat is stopped — so run a lightweight probe loop
+  // that lifts the block automatically the moment the server is reachable again
+  // (no Retry click needed). Stops itself on recovery or after submit.
+  let blockedProbe = null;
+  function startBlockedProbeLoop() {
+    if (blockedProbe) return;
+    blockedProbe = setInterval(async () => {
+      if (!persistenceLost || submitted) {
+        clearInterval(blockedProbe);
+        blockedProbe = null;
+        return;
+      }
+      if (probing) return;
+      probing = true;
+      const ok = await probeServer();
+      probing = false;
+      if (ok) {
+        clearInterval(blockedProbe);
+        blockedProbe = null;
+        unblockAfterRecovery();
+      }
+    }, 3000);
+  }
+  startHeartbeat();
 })();
