@@ -543,7 +543,13 @@
     Annotate?.register(titleEl, { blockId: null, questionId: null, target: { kind: 'html-element', label: spec.title } });
   }
   if (spec.intro) {
-    const intro = el('p', { class: 'intro' }, spec.intro);
+    // Render the intro as markdown (bold/italic/code/links/lists) — agents write
+    // markdown here by default. Falls back to plain text if blocks.js is absent.
+    // The .blk-markdown class scopes the shared markdown typography to it.
+    const md = typeof window.RelayBlocks !== 'undefined' && window.RelayBlocks.renderMarkdown;
+    const intro = md
+      ? el('div', { class: 'intro blk-markdown' }, window.RelayBlocks.renderMarkdown(spec.intro))
+      : el('p', { class: 'intro' }, spec.intro);
     app.append(intro);
     Annotate?.enableTextSelection(intro, { blockId: null, questionId: null });
   }

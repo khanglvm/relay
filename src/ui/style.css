@@ -87,7 +87,12 @@ h1 {
   line-height: 1.25;
   text-wrap: balance;
 }
-.intro { color: var(--fg-2); white-space: pre-wrap; margin: 10px 0 18px; }
+.intro { color: var(--fg-2); margin: 10px 0 18px; }
+/* the intro renders markdown; keep it muted (out-specificity .blk-markdown .md)
+   and trim its block margins so it reads as a lead paragraph, not a content block */
+.intro.blk-markdown .md { color: var(--fg-2); }
+.intro.blk-markdown .md > :first-child { margin-top: 0; }
+.intro.blk-markdown .md > :last-child { margin-bottom: 0; }
 .theme-btn {
   background: transparent; color: var(--fg-2);
   border: 1px solid var(--border-strong); border-radius: 999px;

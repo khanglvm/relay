@@ -1479,5 +1479,5 @@
     }
   }
 
-  window.RelayBlocks = { render, onThemeChange };
+  window.RelayBlocks = { render, onThemeChange, renderMarkdown };
 })();
