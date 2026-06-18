@@ -358,3 +358,29 @@ body.blk-full-open { overflow: hidden; }
 .blk-panning svg,
 .blk-panning img,
 .blk-panning canvas { pointer-events: none; }
+
+/* The diagram type-class is shared by the dispatch wrapper (.blk.blk-graphviz)
+   and the inner card, so a bordered rule on the bare class paints TWO concentric
+   borders (the wrapper's padding:10px makes the gap). Strip the card off the
+   dispatch wrapper so only the inner element is framed — single clean border. */
+.blk.blk-graphviz,
+.blk.blk-plantuml {
+  border: 0;
+  background: none;
+  padding: 0;
+  overflow: visible;
+  max-height: none;
+}
+
+/* zoom −/+ buttons and the % (which doubles as reset-to-fit) */
+.blk-tools .tool-zoom {
+  font-size: 0.95rem; font-weight: 600; line-height: 1;
+  min-width: 24px; text-align: center;
+}
+.blk-tools .tool-pct.is-btn { cursor: pointer; transition: color 150ms var(--ease); }
+.blk-tools .tool-pct.is-btn:hover { color: var(--accent); }
+.blk-tools .tool-comment svg { display: block; }
+
+/* code blocks reuse the viewer toolbar (comment + full-screen); the pre keeps
+   its own card, the wrapper only hosts the toolbar strip */
+.blk-codewrap { position: relative; }

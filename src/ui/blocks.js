@@ -298,10 +298,16 @@
     return out;
   }
 
-  function renderCode(block) {
+  function renderCode(block, ctx, blockId) {
     const code = el('code');
     code.innerHTML = tintCode(block.code || '', block.lang);
-    return el('pre', { class: 'blk-pre', 'data-lang': block.lang || '' }, code);
+    const pre = el('pre', { class: 'blk-pre', 'data-lang': block.lang || '' }, code);
+    const wrap = el('div', { class: 'blk-codewrap' }, pre);
+    // select-to-comment on the code text (like markdown), plus a whole-block
+    // comment + full-screen via the shared viewer toolbar
+    ctx && ctx.annotate && ctx.annotate.enableTextSelection(pre, { blockId, questionId: ctx.questionId });
+    attachViewer(wrap, { zoomEl: null, label: 'code', onComment: wholeBlockComment(ctx, blockId, 'code') });
+    return wrap;
   }
 
   // ---------- table ----------
@@ -559,7 +565,8 @@
     }
     syncBadge();
     wrap.append(badge);
-    attachViewer(wrap, { zoomEl: null }); // full-screen only; charts redraw responsively
+    // full-screen + whole-chart comment only; charts redraw responsively (no pixel zoom)
+    attachViewer(wrap, { zoomEl: null, label: 'chart', onComment: wholeBlockComment(ctx, blockId, 'chart') });
 
     loadChart().then((Chart) => {
       let config = block.config
@@ -628,6 +635,10 @@
 
   function renderMermaid(block, ctx, blockId) {
     const container = el('div', { class: 'blk-mermaid' });
+    // Honor an authored height as the scrollable viewport: a diagram taller than
+    // this overflows and becomes drag-pannable in place (was silently ignored —
+    // diagrams only ever fit-to-width). No height keeps the 1200px CSS cap.
+    if (block.height != null) container.style.maxHeight = clampHeight(block.height, 1200) + 'px';
     const entry = { container, block, ctx, blockId };
     entry.code = effectiveMermaidCode(entry);
     mermaidRegistry.push(entry);
@@ -783,7 +794,7 @@
           });
         }
         // re-attach per render: innerHTML replacement above wiped the old bar
-        if (svgEl) attachViewer(container, { zoomEl: svgEl, natural: svgNatural(svgEl) });
+        if (svgEl) attachViewer(container, { zoomEl: svgEl, natural: svgNatural(svgEl), label: 'diagram', onComment: wholeBlockComment(ctx, blockId, 'diagram') });
         if (onDone) onDone();
       };
       try {
@@ -863,13 +874,15 @@
 
   function renderGraphviz(block, ctx, blockId) {
     const container = el('div', { class: 'blk-graphviz' });
+    // honor authored height as the scrollable viewport (see renderMermaid)
+    if (block.height != null) container.style.maxHeight = clampHeight(block.height, 1200) + 'px';
     loadViz()
       .then((Viz) => Viz.instance())
       .then((viz) => {
         const svgEl = viz.renderSVGElement(block.dot || '');
         sizeDiagramSvg(svgEl);
         container.replaceChildren(svgEl);
-        attachViewer(container, { zoomEl: svgEl, natural: svgNatural(svgEl) });
+        attachViewer(container, { zoomEl: svgEl, natural: svgNatural(svgEl), label: 'graph', onComment: wholeBlockComment(ctx, blockId, 'graph') });
         if (!ctx.annotate) return;
         const parts = svgEl.querySelectorAll('g.node, g.edge');
         parts.forEach((g) => {
@@ -928,6 +941,44 @@
     return encode64(new Uint8Array(compressed));
   }
 
+  // Fetch a remote SVG and return a sanitized inline <svg> element, so its parts
+  // become annotatable. Rejects on network/CORS failure (caller falls back to an
+  // <img>). The SVG is sanitized — it comes from a remote, author-set server, so
+  // strip scripts / foreignObject / on* handlers / javascript: links before it
+  // ever touches the document.
+  function fetchInlineSvg(url) {
+    return fetch(url, { credentials: 'omit', mode: 'cors' })
+      .then((r) => {
+        if (!r.ok) throw new Error('http ' + r.status);
+        return r.text();
+      })
+      .then((text) => {
+        const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+        if (doc.querySelector('parsererror')) throw new Error('bad svg');
+        const svg = doc.querySelector('svg');
+        if (!svg) throw new Error('no svg');
+        sanitizeSvg(svg);
+        return document.importNode(svg, true);
+      });
+  }
+
+  function sanitizeSvg(root) {
+    root.querySelectorAll('script, foreignObject').forEach((n) => n.remove());
+    const walk = (n) => {
+      if (n.nodeType === 1) {
+        for (const attr of Array.from(n.attributes)) {
+          const name = attr.name.toLowerCase();
+          const val = (attr.value || '').replace(/\s+/g, '').toLowerCase();
+          if (name.startsWith('on') || ((name === 'href' || name.endsWith(':href')) && val.startsWith('javascript:'))) {
+            n.removeAttribute(attr.name);
+          }
+        }
+      }
+      n.childNodes.forEach(walk);
+    };
+    walk(root);
+  }
+
   function renderPlantuml(block, ctx, blockId) {
     const container = el('div', { class: 'blk-plantuml' });
     const fail = () =>
@@ -937,32 +988,62 @@
     encodePlantUml(block.code || '')
       .then((encoded) => {
         const server = block.server || 'https://www.plantuml.com/plantuml';
-        const img = el('img', {
-          class: 'blk-plantuml-img',
-          src: server + '/svg/' + encoded,
-          alt: 'PlantUML diagram',
-          loading: 'lazy',
-        });
-        if (block.height) img.style.height = clampHeight(block.height, 360) + 'px';
-        img.addEventListener('error', fail);
-        container.replaceChildren(img);
-        const attachImgViewer = () =>
-          attachViewer(container, {
-            zoomEl: img,
-            natural: () => (img.naturalWidth > 0 ? { w: img.naturalWidth, h: img.naturalHeight } : null),
-          });
-        if (img.complete && img.naturalWidth > 0) attachImgViewer();
-        else img.addEventListener('load', attachImgViewer, { once: true });
-        if (ctx.annotate) {
-          ctx.annotate.register(img, {
-            blockId,
-            questionId: ctx.questionId,
-            target: { kind: 'image', label: 'PlantUML diagram' },
-          });
-        }
+        const url = server + '/svg/' + encoded;
+        // Prefer inline SVG (per-element annotation); fall back to an opaque
+        // <img> if the server blocks cross-origin fetch or anything fails.
+        fetchInlineSvg(url)
+          .then((svg) => mountPlantumlSvg(container, svg, block, ctx, blockId))
+          .catch(() => mountPlantumlImg(container, url, fail, block, ctx, blockId));
       })
       .catch(fail);
     return container;
+  }
+
+  function mountPlantumlSvg(container, svg, block, ctx, blockId) {
+    if (block.height != null) container.style.maxHeight = clampHeight(block.height, 1200) + 'px';
+    sizeDiagramSvg(svg);
+    container.replaceChildren(svg);
+    attachViewer(container, {
+      zoomEl: svg,
+      natural: svgNatural(svg),
+      label: 'diagram',
+      onComment: wholeBlockComment(ctx, blockId, 'diagram'),
+    });
+    if (!ctx.annotate) return;
+    // register the text labels as annotation targets (participant boxes, message
+    // labels, …) — the meaningful, clickable parts of a PlantUML diagram
+    svg.querySelectorAll('text').forEach((t) => {
+      const text = (t.textContent || '').trim();
+      if (!text) return;
+      ctx.annotate.register(t, {
+        blockId,
+        questionId: ctx.questionId,
+        target: { kind: 'plantuml-node', text: text.slice(0, 120) },
+      });
+    });
+  }
+
+  function mountPlantumlImg(container, url, fail, block, ctx, blockId) {
+    const img = el('img', { class: 'blk-plantuml-img', src: url, alt: 'PlantUML diagram', loading: 'lazy' });
+    if (block.height) img.style.height = clampHeight(block.height, 360) + 'px';
+    img.addEventListener('error', fail);
+    container.replaceChildren(img);
+    const attachImgViewer = () =>
+      attachViewer(container, {
+        zoomEl: img,
+        natural: () => (img.naturalWidth > 0 ? { w: img.naturalWidth, h: img.naturalHeight } : null),
+        label: 'diagram',
+        onComment: wholeBlockComment(ctx, blockId, 'diagram'),
+      });
+    if (img.complete && img.naturalWidth > 0) attachImgViewer();
+    else img.addEventListener('load', attachImgViewer, { once: true });
+    if (ctx.annotate) {
+      ctx.annotate.register(img, {
+        blockId,
+        questionId: ctx.questionId,
+        target: { kind: 'image', label: 'PlantUML diagram' },
+      });
+    }
   }
 
   // ---------- image ----------
@@ -989,6 +1070,8 @@
       attachViewer(container, {
         zoomEl: img,
         natural: () => (img.naturalWidth > 0 ? { w: img.naturalWidth, h: img.naturalHeight } : null),
+        label: 'image',
+        onComment: wholeBlockComment(ctx, blockId, 'image'),
       });
     if (img.complete && img.naturalWidth > 0) attachImgViewer();
     else img.addEventListener('load', attachImgViewer, { once: true });
@@ -1010,21 +1093,26 @@
   // <body>, which native fullscreen would hide).
   let fullOpen = null; // container currently expanded
 
-  // 4-corner expand icon. The toolbar deliberately holds ONLY the full-screen
-  // button (user feedback: the zoom button row was noise) — zooming stays
-  // available via cmd/ctrl+wheel on zoomable blocks.
+  // Toolbar icons: full-screen (4-corner expand) and a speech-bubble for the
+  // "comment on the whole block" button. Zoom is both cmd/ctrl+wheel AND
+  // explicit −/+ buttons (the % doubles as a reset-to-fit button).
   const ICON_EXPAND =
     '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
     '<path d="M3 9V3h6M10 10 3 3M15 3h6v6M14 10l7-7M9 21H3v-6M10 14l-7 7M21 15v6h-6M14 14l7 7"/></svg>';
+  const ICON_COMMENT =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"/></svg>';
 
   function exitFull() {
     if (!fullOpen) return;
-    fullOpen.classList.remove('blk-full');
+    const c = fullOpen;
+    c.classList.remove('blk-full');
     document.body.classList.remove('blk-full-open');
-    const btn = fullOpen.querySelector('.blk-tools .tool-full');
+    const btn = c.querySelector('.blk-tools .tool-full');
     if (btn) btn.innerHTML = ICON_EXPAND;
     fullOpen = null;
     window.dispatchEvent(new Event('resize'));
+    if (c._rlyToolsSync) c._rlyToolsSync(); // re-pin toolbar to its scrolled corner
   }
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && fullOpen) exitFull();
@@ -1088,24 +1176,57 @@
     return refresh;
   }
 
-  // opts: { zoomEl: svg|img|null, natural: () => ({w,h}|null) } — zoomEl null
-  // means full-screen only (charts, html iframes).
+  // Build the onComment thunk for attachViewer: opens the annotation popover
+  // with a block-scoped target ("Whole chart/diagram/…") so a user can comment
+  // on the visual as a whole. null when annotation is off (omits the button).
+  function wholeBlockComment(ctx, blockId, label) {
+    if (!ctx || !ctx.annotate) return null;
+    return (anchorEl) =>
+      ctx.annotate.openExternal(
+        { blockId, questionId: ctx.questionId, target: { kind: 'block', label } },
+        anchorEl
+      );
+  }
+
+  // opts: { zoomEl, natural, onComment, label } — zoomEl null means no pixel
+  // zoom (charts/html/code: full-screen + comment only, no zoom buttons).
+  // onComment (optional) wires the "comment on the whole block" button.
   function attachViewer(container, opts) {
     if (container._rlyTools) container._rlyTools.remove();
     container.classList.add('blk-viewer');
     const zoomable = Boolean(opts && opts.zoomEl);
-    let z = null; // null = fit-to-width
+    const label = (opts && opts.label) || 'visual';
 
     // pan listeners bind once per container; mermaid re-renders re-call
     // attachViewer, so reuse the existing refresh() instead of re-binding
     if (!container._rlyPan) container._rlyPan = enablePan(container);
     const refreshPan = container._rlyPan;
 
+    // The toolbar is absolute inside the scroll box, so it scrolls away when the
+    // user pans/scrolls. Counter-translate it by the scroll offset to pin it to
+    // the visible corner (off in full-screen, where it is position:fixed). Bound
+    // once; always re-reads the current toolbar (mermaid rebuilds it on render).
+    if (!container._rlyToolsSync) {
+      const sync = () => {
+        const tb = container._rlyTools;
+        if (!tb) return;
+        if (container.classList.contains('blk-full')) { tb.style.transform = ''; return; }
+        const x = container.scrollLeft, y = container.scrollTop;
+        tb.style.transform = x || y ? 'translate(' + x + 'px,' + y + 'px)' : '';
+      };
+      container.addEventListener('scroll', sync);
+      container._rlyToolsSync = sync;
+    }
+
+    // zoom level persists across re-renders; the wheel handler (bound once)
+    // delegates through container._rlyZoom so it never holds a stale zoomEl
+    if (container._rlyZ === undefined) container._rlyZ = null; // null = fit-to-width
     const pct = el('span', { class: 'tool-pct' }, 'fit');
     function apply() {
       if (!zoomable) return;
       const target = opts.zoomEl;
       const nat = opts.natural();
+      const z = container._rlyZ;
       if (z === null || !nat || !nat.w) {
         target.style.width = '100%';
         target.style.maxWidth = nat && nat.w ? Math.ceil(nat.w) + 'px' : '100%';
@@ -1117,56 +1238,77 @@
         target.style.height = 'auto';
         pct.textContent = Math.round(z * 100) + '%';
       }
-      // annotation overlay badges reposition on resize
-      window.dispatchEvent(new Event('resize'));
-      // zoom changed the content size — re-evaluate the grab affordance
-      refreshPan();
+      window.dispatchEvent(new Event('resize')); // annotation badges reposition
+      refreshPan();                              // content size → grab affordance
+      container._rlyToolsSync();                 // keep the toolbar pinned
     }
     function currentZ() {
-      if (z !== null) return z;
+      if (container._rlyZ !== null) return container._rlyZ;
       const nat = opts.natural();
       if (!nat || !nat.w) return 1;
       const shown = opts.zoomEl.getBoundingClientRect().width;
       return shown > 0 ? shown / nat.w : 1;
     }
     function setZoom(next) {
-      z = next === null ? null : Math.min(5, Math.max(0.2, next));
+      container._rlyZ = next === null ? null : Math.min(5, Math.max(0.2, next));
       apply();
     }
+    container._rlyZoom = { setZoom, currentZ };
 
     const tools = el('div', { class: 'blk-tools' });
-    if (zoomable) {
-      // zoom lives on cmd/ctrl+wheel only — the toolbar is full-screen-only
-      container.addEventListener(
-        'wheel',
-        (e) => {
-          if (!(e.ctrlKey || e.metaKey)) return;
-          e.preventDefault();
-          setZoom(currentZ() * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
-        },
-        { passive: false }
-      );
+
+    // comment on the whole block (leftmost) — opens the annotation popover with
+    // a block-scoped target so a user can comment without picking an element
+    if (opts && opts.onComment) {
+      const cBtn = el('button', { class: 'tool-comment', type: 'button', title: 'Comment on this whole ' + label });
+      cBtn.innerHTML = ICON_COMMENT;
+      cBtn.addEventListener('click', (e) => { e.stopPropagation(); opts.onComment(container); });
+      tools.append(cBtn);
     }
-    const fullBtn = el('button', { class: 'tool-full', type: 'button', title: 'Full screen (Esc closes; cmd/ctrl+wheel zooms)' });
-    fullBtn.innerHTML = ICON_EXPAND;
-    fullBtn.addEventListener('click', () => {
-      if (fullOpen === container) {
-        exitFull();
-        return;
+
+    if (zoomable) {
+      // cmd/ctrl+wheel zoom, bound ONCE (re-binding per render would stack);
+      // delegates to the current controller so it never uses a stale zoomEl
+      if (!container._rlyWheel) {
+        const onWheel = (e) => {
+          if (!(e.ctrlKey || e.metaKey) || !container._rlyZoom) return;
+          e.preventDefault();
+          container._rlyZoom.setZoom(container._rlyZoom.currentZ() * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
+        };
+        container.addEventListener('wheel', onWheel, { passive: false });
+        container._rlyWheel = onWheel;
       }
+      const zoomOut = el('button', { class: 'tool-zoom', type: 'button', title: 'Zoom out' }, '−');
+      const zoomIn = el('button', { class: 'tool-zoom', type: 'button', title: 'Zoom in' }, '+');
+      zoomOut.addEventListener('click', (e) => { e.stopPropagation(); setZoom(currentZ() / 1.2); });
+      zoomIn.addEventListener('click', (e) => { e.stopPropagation(); setZoom(currentZ() * 1.2); });
+      pct.classList.add('is-btn');
+      pct.title = 'Reset to fit';
+      pct.addEventListener('click', (e) => { e.stopPropagation(); setZoom(null); });
+      tools.append(zoomOut, pct, zoomIn);
+    }
+
+    const fullBtn = el('button', { class: 'tool-full', type: 'button', title: 'Full screen (Esc closes; ⌘/Ctrl+wheel zooms)' });
+    fullBtn.innerHTML = ICON_EXPAND;
+    fullBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (fullOpen === container) { exitFull(); return; }
       exitFull();
       container.classList.add('blk-full');
       document.body.classList.add('blk-full-open');
       fullOpen = container;
       fullBtn.textContent = '✕';
       window.dispatchEvent(new Event('resize'));
+      container._rlyToolsSync();
     });
     tools.append(fullBtn);
+
     container.append(tools);
     container._rlyTools = tools;
     if (zoomable) apply();
     // non-zoomable diagrams (tall mermaid, oversized image) can still overflow
     refreshPan();
+    container._rlyToolsSync();
   }
 
   function svgNatural(svgEl) {
@@ -1189,7 +1331,7 @@
       loading: 'lazy',
     });
     const wrap = el('div', { class: 'blk-htmlwrap' }, iframe);
-    attachViewer(wrap, { zoomEl: null });
+    attachViewer(wrap, { zoomEl: null, label: 'embed', onComment: wholeBlockComment(ctx, blockId, 'embed') });
     return wrap;
   }
 
@@ -1210,7 +1352,7 @@
         wrapper.append(inner);
         break;
       case 'code':
-        inner = renderCode(block);
+        inner = renderCode(block, ctx, blockId);
         wrapper.append(inner);
         break;
       case 'chart':

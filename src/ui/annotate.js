@@ -42,6 +42,8 @@
         return 'Diagram · ' + truncate(t.text || t.nodeId || 'node', 50);
       case 'graphviz-node':
         return 'Graph · ' + truncate(t.text || t.nodeId || 'node', 50);
+      case 'plantuml-node':
+        return 'Diagram · ' + truncate(t.text || 'element', 50);
       case 'image':
         return truncate(t.label || 'Image', 50);
       case 'table-cell': {
@@ -53,6 +55,8 @@
         return `“${truncate(t.quote || '', 60)}”`;
       case 'html-element':
         return truncate(t.label || 'Element', 50) + (t.detail ? ` — ${truncate(t.detail, 40)}` : '');
+      case 'block':
+        return 'Whole ' + truncate(t.label || 'block', 40);
       default:
         return t.kind || 'Element';
     }
