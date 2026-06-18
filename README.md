@@ -45,6 +45,7 @@ refreshes the skill in one step, leaving any boards you have open untouched.
 | "Option B is the one with caching (see my last message)" | Each answer option carries its own image / chart / diagram — pick by looking |
 | ASCII architecture art | Mermaid, Graphviz, PlantUML — zoomable, full-screen, even user-editable |
 | Numbers buried in prose | Charts and sortable tables; screenshots and HTML prototypes in a sandbox |
+| "Here's the diff — paste it in your editor" | Side-by-side **diff** blocks, syntax-highlighted **code**, **video** walkthroughs, and **file paths you click to open** in the default app |
 | "Type *done* when finished reviewing" | A Submit button; answers, notes, and inline comments returned as JSON |
 | Feedback = another wall of text | Click any chart point, diagram node, table cell, or sentence to comment — the agent replies and the thread grows on the board |
 
@@ -70,6 +71,34 @@ npm test     # zero-dep smoke tests (spawns real servers, fake-submits)
 ```
 
 ## Changelog
+
+### 0.10.0 — open files, richer code, diffs & video
+- **Clickable local file-links.** Write a path in any markdown (`~/clip.mp4`,
+  `./src/app.ts`, `/abs/report.pdf`, a `file://` URL, a backtick-wrapped path,
+  or `[label](path)`) and it renders as a link that opens the file in the OS
+  default app — guarded by a same-origin check + an allowlist of paths the
+  board actually references. `RLY_OPEN_CMD` overrides the opener.
+- **`code` blocks leveled up** — syntax highlighting for ~20 languages (js, ts,
+  py, go, rust, java, c, cpp, csharp, ruby, php, swift, kotlin, sql, yaml, json,
+  sh, css, html…), a line-number gutter, a filename/lang header, and `codeFile`
+  to load source straight from a local file.
+- **`diff` block** — render a unified git diff as a colored, line-numbered
+  comparison with a live **Unified ⇄ Split (side-by-side)** toggle. No git
+  required; the agent supplies the diff text (`diff`/`diffFile`, `view`).
+- **`video` block** — YouTube/Vimeo embeds, a direct media URL, or a local
+  video file streamed from the server with HTTP Range (seekable), never
+  embedded in the payload.
+- **Durable drafts / rescue** — every autosave mirrors to `localStorage`; a
+  board whose connection drops blocks further input instead of losing it, and
+  `rly rescue <id>` re-serves on the same port so an open tab reconnects.
+- Still **zero runtime dependencies**, offline, and cross-platform.
+
+### 0.9.1
+- The board **intro renders as markdown** (bold/italic/code/links/lists).
+
+### 0.9.0 — interactive visual annotations
+- Drag/zoom/full-screen viewer, per-element **and** whole-block comments, chart
+  data-point comment badges, and inline-SVG PlantUML rendering.
 
 ### 0.8.1
 - `rly install` adds **OpenCode** (`~/.config/opencode/AGENTS.md`) and **Droid /

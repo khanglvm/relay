@@ -383,7 +383,9 @@
   }
 
   function renderCode(block, ctx, blockId) {
-    const raw = block.code || '';
+    // Drop a single trailing newline so the last source line isn't rendered as
+    // an empty row the gutter has no number for (files usually end in "\n").
+    const raw = (block.code || '').replace(/\n$/, '');
     const code = el('code');
     code.innerHTML = tintCode(raw, block.lang);
     const pre = el('pre', { class: 'blk-pre', 'data-lang': block.lang || '' }, code);
@@ -405,59 +407,145 @@
   }
 
   // ---------- diff (unified / git diff) ----------
-  // Renders a unified diff as a colored, dual-line-numbered table: file/hunk
-  // headers and +added / −removed / context rows. No git is involved — the
-  // agent supplies the diff text. Each code line is tinted with the block's
-  // lang; the leading +/-/space marker is shown as a gutter sign, not tinted.
-  function renderDiff(block, ctx, blockId) {
-    const lines = String(block.diff || '').replace(/\r\n?/g, '\n').split('\n');
-    const tbody = el('tbody');
+  // No git is involved — the agent supplies the diff text. Parsed once into
+  // rows, then rendered either UNIFIED (one column, +/- signs) or SPLIT (old |
+  // new side-by-side). A header toggle flips between the two live; the block's
+  // "view" sets the initial mode. Each code line is tinted by lang.
+
+  // Parse a unified diff into a flat row list: {kind, text, oldNo, newNo}
+  // (line numbers stored 0-based; rendered +1).
+  function parseDiff(text) {
+    const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+    const rows = [];
     let oldNo = 0;
     let newNo = 0;
     for (const line of lines) {
-      let kind = 'ctx';
-      let oldCell = '';
-      let newCell = '';
-      let body = line;
       if (/^@@/.test(line)) {
-        kind = 'hunk';
         const m = line.match(/@@\s*-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s*@@/);
-        if (m) { oldNo = Number(m[1]); newNo = Number(m[2]); }
+        if (m) { oldNo = Number(m[1]) - 1; newNo = Number(m[2]) - 1; }
+        rows.push({ kind: 'hunk', text: line });
       } else if (/^(diff |index |--- |\+\+\+ |new file|deleted file|old mode|new mode|similarity|rename |copy )/.test(line)) {
-        kind = 'meta';
+        rows.push({ kind: 'meta', text: line });
       } else if (line[0] === '+') {
-        kind = 'add'; body = line.slice(1); newCell = String(newNo++);
+        rows.push({ kind: 'add', text: line.slice(1), newNo: newNo++ });
       } else if (line[0] === '-') {
-        kind = 'del'; body = line.slice(1); oldCell = String(oldNo++);
+        rows.push({ kind: 'del', text: line.slice(1), oldNo: oldNo++ });
       } else {
-        body = line[0] === ' ' ? line.slice(1) : line;
-        oldCell = String(oldNo++);
-        newCell = String(newNo++);
+        rows.push({ kind: 'ctx', text: line[0] === ' ' ? line.slice(1) : line, oldNo: oldNo++, newNo: newNo++ });
       }
-      const codeHtml = kind === 'hunk' || kind === 'meta' ? esc(line) : tintCode(body, block.lang);
-      const sign = kind === 'add' ? '+' : kind === 'del' ? '−' : '';
-      const oldTd = el('td', { class: 'diff-no', 'aria-hidden': 'true' });
-      oldTd.textContent = oldCell;
-      const newTd = el('td', { class: 'diff-no', 'aria-hidden': 'true' });
-      newTd.textContent = newCell;
-      const codeSpan = el('code');
-      codeSpan.innerHTML = codeHtml || ' ';
-      const tr = el('tr', { class: 'diff-row diff-' + kind },
-        oldTd, newTd,
-        el('td', { class: 'diff-sign', 'aria-hidden': 'true' }, sign),
-        el('td', { class: 'diff-code' }, codeSpan)
-      );
-      tbody.append(tr);
     }
-    const scroll = el('div', { class: 'blk-diffscroll' }, el('table', { class: 'blk-difftable' }, tbody));
+    return rows;
+  }
+
+  function diffNoTd(n, extraClass) {
+    const td = el('td', { class: 'diff-no' + (extraClass ? ' ' + extraClass : ''), 'aria-hidden': 'true' });
+    if (n !== undefined && n !== null) td.textContent = String(n + 1);
+    return td;
+  }
+  function diffCodeTd(html, extraClass) {
+    const c = el('code');
+    c.innerHTML = html || ' ';
+    return el('td', { class: 'diff-code' + (extraClass ? ' ' + extraClass : '') }, c);
+  }
+
+  // Unified: oldNo | newNo | sign | code
+  function buildUnifiedDiff(rows, lang) {
+    const tbody = el('tbody');
+    for (const r of rows) {
+      const full = r.kind === 'hunk' || r.kind === 'meta';
+      const codeHtml = full ? esc(r.text) : tintCode(r.text, lang);
+      const sign = r.kind === 'add' ? '+' : r.kind === 'del' ? '−' : '';
+      tbody.append(el('tr', { class: 'diff-row diff-' + r.kind },
+        diffNoTd(r.oldNo),
+        diffNoTd(r.newNo),
+        el('td', { class: 'diff-sign', 'aria-hidden': 'true' }, sign),
+        diffCodeTd(codeHtml)
+      ));
+    }
+    return el('table', { class: 'blk-difftable' }, tbody);
+  }
+
+  // Split: oldNo | old code || newNo | new code. A run of removed lines is
+  // paired row-by-row with the following run of added lines; the shorter side
+  // gets filler cells. Context shows identically on both sides.
+  function buildSplitDiff(rows, lang) {
+    const tbody = el('tbody');
+    const fullRow = (cls, text) => {
+      const c = el('code');
+      c.innerHTML = esc(text) || ' ';
+      tbody.append(el('tr', { class: 'diff-row diff-' + cls }, el('td', { class: 'diff-code', colspan: '4' }, c)));
+    };
+    let dels = [];
+    let adds = [];
+    const flush = () => {
+      const n = Math.max(dels.length, adds.length);
+      for (let i = 0; i < n; i++) {
+        const d = dels[i];
+        const a = adds[i];
+        const left = d
+          ? [diffNoTd(d.oldNo, 'diff-del'), diffCodeTd(tintCode(d.text, lang), 'diff-del')]
+          : [diffNoTd(null, 'diff-fill'), diffCodeTd(' ', 'diff-fill')];
+        const right = a
+          ? [diffNoTd(a.newNo, 'diff-newside diff-add'), diffCodeTd(tintCode(a.text, lang), 'diff-add')]
+          : [diffNoTd(null, 'diff-fill diff-newside'), diffCodeTd(' ', 'diff-fill')];
+        tbody.append(el('tr', { class: 'diff-row' }, left[0], left[1], right[0], right[1]));
+      }
+      dels = [];
+      adds = [];
+    };
+    for (const r of rows) {
+      if (r.kind === 'del') { dels.push(r); continue; }
+      if (r.kind === 'add') { adds.push(r); continue; }
+      flush();
+      if (r.kind === 'hunk') fullRow('hunk', r.text);
+      else if (r.kind === 'meta') fullRow('meta', r.text);
+      else {
+        const html = tintCode(r.text, lang);
+        tbody.append(el('tr', { class: 'diff-row diff-ctx' },
+          diffNoTd(r.oldNo), diffCodeTd(html),
+          diffNoTd(r.newNo, 'diff-newside'), diffCodeTd(html)
+        ));
+      }
+    }
+    flush();
+    return el('table', { class: 'blk-difftable blk-difftable-split' }, tbody);
+  }
+
+  function renderDiff(block, ctx, blockId) {
+    const rows = parseDiff(block.diff);
+    let view = block.view === 'split' ? 'split' : 'unified';
+    const scroll = el('div', { class: 'blk-diffscroll' });
+    const paint = () => {
+      scroll.innerHTML = '';
+      scroll.append(view === 'split' ? buildSplitDiff(rows, block.lang) : buildUnifiedDiff(rows, block.lang));
+    };
+    paint();
+
     const wrap = el('div', { class: 'blk-codewrap blk-diffwrap' });
-    if (block.filename) wrap.append(el('div', { class: 'blk-codehead' }, el('span', { class: 'blk-codename' }, block.filename)));
+    // header: file name (left) + a Unified/Split view toggle (right)
+    const toggle = el('button', { class: 'blk-difftoggle', type: 'button', title: 'Toggle side-by-side view' });
+    const syncToggle = () => { toggle.textContent = view === 'split' ? 'Unified view' : 'Split view'; };
+    syncToggle();
+    toggle.addEventListener('mousedown', (e) => e.stopPropagation());
+    toggle.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      view = view === 'split' ? 'unified' : 'split';
+      wrap.classList.toggle('is-split', view === 'split');
+      syncToggle();
+      paint();
+    });
+    wrap.append(el('div', { class: 'blk-codehead' },
+      el('span', { class: 'blk-codename' }, block.filename || ''),
+      toggle
+    ));
+    wrap.classList.toggle('is-split', view === 'split');
     wrap.append(scroll);
+    // select-to-comment stays bound to the stable scroll container across toggles
     ctx && ctx.annotate && ctx.annotate.enableTextSelection(scroll, { blockId, questionId: ctx.questionId });
     attachViewer(wrap, { zoomEl: null, label: 'diff', comment: wholeBlockComment(ctx, blockId, 'diff') });
     return wrap;
   }
-
   // ---------- video (YouTube/Vimeo embed, local stream, or direct URL) ----------
   function renderVideo(block, ctx, blockId) {
     const wrap = el('div', { class: 'blk-videowrap' });

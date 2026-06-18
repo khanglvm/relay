@@ -123,11 +123,17 @@
   padding: 14px 16px;
   overflow-x: auto;
   margin: 0;
-}
-.blk-pre code {
+  /* Pin font metrics on the <pre> itself: its line-box strut uses the pre's
+     own font-size, so leaving it inherited (≈16px) makes lines taller than the
+     0.85rem gutter and the numbers drift. Match them exactly. */
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.85rem;
   line-height: 1.55;
+}
+.blk-pre code {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
   color: var(--fg);
   white-space: pre;
 }
@@ -213,6 +219,23 @@
 .blk-difftable .diff-meta td { color: var(--muted); font-style: italic; }
 .blk-difftable .diff-hunk .diff-code code,
 .blk-difftable .diff-meta .diff-code code { color: inherit; }
+
+/* diff: side-by-side (split) view — old | new. Long lines grow the table and
+   the wrapper scrolls horizontally; short code splits ~50/50. */
+.blk-difftable-split .diff-code { width: 50%; }
+.blk-difftable-split .diff-newside { border-left: 2px solid var(--border-strong); }
+.blk-difftable .diff-fill {
+  background-color: var(--bg-sunken);
+  background-image: repeating-linear-gradient(45deg, transparent 0, transparent 6px, rgba(128, 128, 128, 0.07) 6px, rgba(128, 128, 128, 0.07) 12px);
+}
+/* Unified/Split view toggle in the diff header */
+.blk-difftoggle {
+  flex: none; cursor: pointer; font: inherit; font-size: 0.72rem;
+  color: var(--fg-2); background: var(--card);
+  border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px;
+  transition: color 150ms var(--ease), border-color 150ms var(--ease);
+}
+.blk-difftoggle:hover { color: var(--accent); border-color: var(--accent); }
 
 /* ---------- video (iframe embed / local stream / direct URL) ---------- */
 .blk-videowrap { margin: 0; }

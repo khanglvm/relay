@@ -198,6 +198,8 @@ function normalizeBlock(rawBlock, id, cwd, where) {
     const block = { id, type: 'diff', diff };
     if (rawBlock.lang !== undefined) block.lang = asStr(rawBlock.lang);
     if (rawBlock.filename !== undefined) block.filename = asStr(rawBlock.filename);
+    const view = asStr(rawBlock.view).trim().toLowerCase();
+    if (view === 'split' || view === 'unified') block.view = view;
     if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
     return block;
   }
@@ -532,6 +534,7 @@ const BLOCK_SCHEMA = {
       lang: { type: 'string', description: 'code/diff block: language hint for syntax highlighting (js, ts, py, go, rust, java, c, cpp, csharp, ruby, php, swift, kotlin, sql, yaml, json, sh, css, html, …).' },
       diff: { type: 'string', description: 'diff: a unified diff (git diff / diff -u output) — rendered as a colored, line-numbered comparison with +added / −removed / context rows and file/hunk headers. No git needed; just write/paste the diff text.' },
       diffFile: { type: 'string', description: 'diff: path to a local file containing a unified diff (alternative to "diff"). Resolved against the CWD.' },
+      view: { type: 'string', enum: ['unified', 'split'], description: 'diff: initial layout — "unified" (default, one column) or "split" (side-by-side old vs new). The viewer also has a live toggle either way.' },
       config: { type: 'object', description: 'chart: a full Chart.js config object.' },
       kind: { type: 'string', enum: CHART_KINDS, description: 'chart shorthand: chart kind (alternative to "config").' },
       labels: { type: 'array', description: 'chart shorthand: x-axis / category labels.' },

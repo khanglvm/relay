@@ -259,9 +259,10 @@ Rules of thumb:
 // Diff — a unified diff (git diff / `diff -u` output) rendered as a colored,
 // line-numbered comparison: +added / −removed / context, file & hunk headers.
 // No git needed — just write/paste the diff text. "lang" tints each code line;
-// "diffFile" loads it from a local file. Great for showing a proposed change.
+// "diffFile" loads it from a local file. "view":"split" starts side-by-side
+// (old vs new); the viewer has a live Unified⇄Split toggle either way.
 {
-  "type": "diff", "lang": "js", "filename": "src/auth.js",
+  "type": "diff", "lang": "js", "filename": "src/auth.js", "view": "split",
   "diff": "@@ -1,3 +1,3 @@\n function login(u) {\n-  return check(u)\n+  return check(u.trim())\n }"
 }
 

@@ -1029,6 +1029,7 @@ console.log('24. code & diff blocks');
       { type: 'code', codeFile: srcFile },                                  // lang defaults to "go"
       { type: 'code', code: 'const a = 1;', lang: 'js', filename: 'a.js' },
       { type: 'diff', filename: 'app.py', diff: '@@ -1,2 +1,2 @@\n-old = 1\n+new = 2\n ctx\n' },
+      { type: 'diff', diff: '@@ -1 +1 @@\n-a\n+b\n', view: 'split' },
     ],
     questions: [{ id: 'ok', type: 'yesno', label: 'OK?' }],
   };
@@ -1041,6 +1042,7 @@ console.log('24. code & diff blocks');
   ok(bb[0].lang === 'go', 'code block lang defaults from the codeFile extension (.go → go)');
   ok(bb[1].lang === 'js' && bb[1].filename === 'a.js', 'inline code keeps explicit lang + filename');
   ok(bb[2].type === 'diff' && bb[2].diff.includes('+new = 2') && bb[2].filename === 'app.py', 'diff block normalizes (diff text + filename)');
+  ok(bb[2].view === undefined && bb[3].view === 'split', 'diff "view" defaults unset (unified) and honors "split"');
   await post(url, '/api/submit', { answers: { ok: 'yes' } });
   await exited;
 
