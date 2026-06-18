@@ -543,13 +543,6 @@
     return config;
   }
 
-  // Count EVERY comment on the chart block — data-point (chart-element) and
-  // whole-chart (block) comments alike — so the badge appears for any comment.
-  function chartAnnotationCount(ctx, blockId) {
-    if (!ctx.annotate) return 0;
-    return ctx.annotate.list().filter((a) => a.blockId === blockId).length;
-  }
-
   function renderChart(block, ctx, blockId) {
     const height = clampHeight(block.height, 320);
     const wrap = el('div', { class: 'blk-chart' });
@@ -557,16 +550,61 @@
     const canvas = el('canvas');
     wrap.append(canvas);
 
-    const badge = el('span', { class: 'blk-chart-badge' }, '');
-    function syncBadge() {
-      const n = chartAnnotationCount(ctx, blockId);
-      if (n > 0) { badge.textContent = String(n); badge.style.display = ''; }
-      else badge.style.display = 'none';
+    let chartInst = null;
+    let chartBadges = [];
+
+    const openFor = (target) => (anchor) =>
+      ctx.annotate.openExternal({ blockId, questionId: ctx.questionId, target }, anchor);
+    function makeBadge(count, cls, onClick) {
+      const b = el('span', { class: 'blk-chart-badge ' + cls }, String(count));
+      b.addEventListener('mousedown', (e) => e.stopPropagation());
+      b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); onClick(b); });
+      return b;
     }
-    syncBadge();
-    // keep the badge live: re-sync on every annotation change (add/remove/reply)
-    if (ctx.annotate && ctx.annotate.onBadgeRefresh) ctx.annotate.onBadgeRefresh(syncBadge);
-    wrap.append(badge);
+    // Rebuild the chart's comment badges: one at each annotated DATA POINT
+    // (positioned from the Chart.js element geometry) plus a top-right badge for
+    // whole-chart comments. Each badge opens that comment's popover on click.
+    // Runs on annotation change (onBadgeRefresh) and on chart (re)render/resize
+    // (afterRender plugin), so badges stay pinned to their points.
+    function syncChartBadges() {
+      if (!ctx.annotate) return;
+      for (const b of chartBadges) b.remove();
+      chartBadges = [];
+      const groups = new Map(); // "di:index" -> { target, count }
+      let blockCount = 0, blockTarget = null;
+      for (const a of ctx.annotate.list()) {
+        if (a.blockId !== blockId) continue;
+        const t = a.target || {};
+        if (t.kind === 'chart-element' && typeof t.datasetIndex === 'number' && typeof t.index === 'number') {
+          const k = t.datasetIndex + ':' + t.index;
+          const g = groups.get(k) || { target: t, count: 0 };
+          g.count++; groups.set(k, g);
+        } else {
+          blockCount++; blockTarget = blockTarget || t;
+        }
+      }
+      if (chartInst) {
+        for (const { target, count } of groups.values()) {
+          let elem;
+          try { const m = chartInst.getDatasetMeta(target.datasetIndex); elem = m && m.data[target.index]; } catch (_) {}
+          if (!elem) continue;
+          let pos; try { pos = elem.tooltipPosition(); } catch (_) { pos = { x: elem.x, y: elem.y }; }
+          if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) continue;
+          const badge = makeBadge(count, 'blk-chart-badge-pt', openFor(target));
+          badge.style.left = (canvas.offsetLeft + pos.x) + 'px';
+          badge.style.top = (canvas.offsetTop + pos.y) + 'px';
+          wrap.append(badge);
+          chartBadges.push(badge);
+        }
+      }
+      if (blockCount > 0) {
+        const badge = makeBadge(blockCount, 'blk-chart-badge-corner', openFor(blockTarget || { kind: 'block', label: 'chart' }));
+        wrap.append(badge);
+        chartBadges.push(badge);
+      }
+    }
+
+    if (ctx.annotate && ctx.annotate.onBadgeRefresh) ctx.annotate.onBadgeRefresh(syncChartBadges);
     // full-screen + whole-chart comment only; charts redraw responsively (no pixel zoom)
     attachViewer(wrap, { zoomEl: null, label: 'chart', comment: wholeBlockComment(ctx, blockId, 'chart') });
 
@@ -575,22 +613,24 @@
         ? JSON.parse(JSON.stringify(block.config))
         : simplifiedToConfig(block, ctx);
       config = applyChartTheme(config, ctx);
-      let chart;
+      // reposition our DOM badges after every (re)render/resize of the chart
+      config.plugins = Array.isArray(config.plugins) ? config.plugins : [];
+      config.plugins.push({ id: 'relayChartBadges', afterRender: () => syncChartBadges() });
       try {
-        chart = new Chart(canvas.getContext('2d'), config);
-        chartRegistry.push({ chart });
+        chartInst = new Chart(canvas.getContext('2d'), config);
+        chartRegistry.push({ chart: chartInst });
       } catch (err) {
         wrap.replaceChildren(el('div', { class: 'blk-error' }, 'Chart error: ' + (err && err.message ? err.message : String(err))));
         return;
       }
       // hover -> pointer cursor on a hit
       canvas.addEventListener('mousemove', (e) => {
-        const hits = chart.getElementsAtEventForMode(e, 'nearest', { intersect: true }, true);
+        const hits = chartInst.getElementsAtEventForMode(e, 'nearest', { intersect: true }, true);
         canvas.style.cursor = hits.length ? 'pointer' : 'default';
       });
       canvas.addEventListener('click', (e) => {
         if (!ctx.annotate) return;
-        const hits = chart.getElementsAtEventForMode(e, 'nearest', { intersect: true }, true);
+        const hits = chartInst.getElementsAtEventForMode(e, 'nearest', { intersect: true }, true);
         if (!hits.length) return;
         const { datasetIndex, index } = hits[0];
         const ds = config.data.datasets[datasetIndex] || {};
@@ -605,12 +645,11 @@
           wrap
         );
       });
+      syncChartBadges();
     }).catch((err) => {
       wrap.replaceChildren(el('div', { class: 'blk-error' }, 'Chart error: ' + (err && err.message ? err.message : String(err))));
     });
 
-    // expose a refresh hook so the list can update the badge after changes
-    wrap._relaySyncBadge = syncBadge;
     return wrap;
   }
 

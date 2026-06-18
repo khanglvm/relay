@@ -734,6 +734,11 @@
           const marks = highlightMap.get(sigOf(a.blockId, a.target));
           jump = marks && marks.find((m) => m.isConnected);
         }
+        // Fallback for targets with no registered element (e.g. chart data
+        // points / whole-block comments): flash the whole block container.
+        if (!jump && a.blockId != null) {
+          jump = document.querySelector('[data-block-id="' + String(a.blockId).replace(/"/g, '\\"') + '"]');
+        }
         if (!jump) return;
         // On narrow screens the rail overlays the page — close it so the
         // flashed target is actually visible.

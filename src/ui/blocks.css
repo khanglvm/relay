@@ -160,6 +160,15 @@
   font-weight: 600;
   font-family: var(--sans);
   box-shadow: var(--shadow-card);
+  cursor: pointer;
+  z-index: 4; /* above the canvas, below the toolbar(5)/footer(30) */
+}
+.blk-chart-badge:hover { background: var(--accent-hover); }
+/* per-data-point badge: positioned via inline left/top, centered on the point */
+.blk-chart-badge-pt {
+  top: auto; right: auto;
+  transform: translate(-50%, -50%);
+  border: 1.5px solid var(--card);
 }
 
 /* ---------- mermaid ---------- */
