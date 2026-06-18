@@ -1026,14 +1026,16 @@
     });
     if (!ctx.annotate) return;
     // register the text labels as annotation targets (participant boxes, message
-    // labels, …) — the meaningful, clickable parts of a PlantUML diagram
-    svg.querySelectorAll('text').forEach((t) => {
+    // labels, …) — the meaningful, clickable parts of a PlantUML diagram.
+    // `idx` disambiguates: PlantUML repeats participant labels top AND bottom,
+    // so without a unique key one comment would badge BOTH identical-text nodes.
+    svg.querySelectorAll('text').forEach((t, idx) => {
       const text = (t.textContent || '').trim();
       if (!text) return;
       ctx.annotate.register(t, {
         blockId,
         questionId: ctx.questionId,
-        target: { kind: 'plantuml-node', text: text.slice(0, 120) },
+        target: { kind: 'plantuml-node', idx, text: text.slice(0, 120) },
       });
     });
   }
