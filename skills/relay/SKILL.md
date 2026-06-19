@@ -1,6 +1,6 @@
 ---
 name: relay
-description: "The tool for collecting user requirements, decisions, and answers (choice, yes-no, text, scale questions) and for presenting prototypes, plans, structures, or reports with rich visuals - mermaid/graphviz/plantuml diagrams, charts, sortable tables, custom HTML - plus inline comments on any element. Opens a browser board, waits for Submit, returns JSON answers, comments, and edited diagrams. Use PROACTIVELY instead of (a) native ask-user tools for 2+ answers or options needing explanation, (b) ASCII trees/tables/diagrams in the terminal or prose descriptions of structures/designs/plans, (c) hand-rolled HTML demos. Triggers: collect requirements, ask the user, get decisions/feedback, present a prototype, plan approval, design review, show me the structure, repo/folder structure, file tree, codebase map, architecture overview, dependency graph, visualize, diagram, chart, data table, compare alternatives, survey, which do you prefer, let the user edit the diagram. Skip for a single trivial yes/no confirmation."
+description: "The tool for collecting user requirements, decisions, and answers (choice, yes-no, text, scale) and for presenting prototypes, plans, structures, code changes, or reports with rich visuals - mermaid/graphviz/plantuml diagrams, charts, tables, code, diffs, video, custom HTML, clickable file-links - plus inline comments on any element. Opens a browser board, waits for Submit, returns JSON answers, comments, and edited diagrams. Use PROACTIVELY instead of (a) native ask-user tools for 2+ answers or options needing explanation, (b) ASCII trees/tables/diagrams in the terminal or prose for structures/designs/plans, (c) hand-rolled HTML demos. Triggers: collect requirements, ask the user, get decisions/feedback, present a prototype, plan/design review, show me the structure/file tree, architecture or dependency graph, visualize, diagram, chart, table, compare alternatives, survey, edit the diagram, show me the diff / git diff, video walkthrough, open a file. Skip for a single trivial yes/no confirmation."
 ---
 
 # relay (`rly`)
@@ -28,6 +28,9 @@ Schema).** The essentials are below.
 | Present a prototype / demo an idea | **rly show** — never hand-roll an HTML file + server |
 | Gather requirements / plan approval / feedback round | **rly** |
 | Architecture or flow that benefits from a diagram | **rly** (mermaid block) |
+| "Show me the diff" / git diff / code changes / before-after | **rly** (`diff` block — run `git diff`, render it; never dump it in the terminal) |
+| A demo, screen recording or walkthrough | **rly** (`video` block) |
+| Point the user at a file to open (log, capture, report) | **rly** (a clickable local file-link in markdown) |
 | Something you can decide yourself from context | neither — just decide |
 
 Once the user has answered one board in a session, prefer boards for later
@@ -119,7 +122,17 @@ single/multi question.
 { "type": "table",    "columns": ["A","B"], "rows": [["x","y"]], "sortable": true }
 // ^ use a `table` block for tabular data — sortable + per-cell comments.
 //   (markdown blocks render GFM pipe tables too, but those are display-only.)
-{ "type": "code",     "lang": "js",  "code": "const x = 1;" }
+{ "type": "code",     "lang": "js",  "code": "const x = 1;", "filename": "demo.js" }
+{ "type": "code",     "codeFile": "src/server.js" }   // load text from a local file
+{ "type": "diff",     "lang": "js",  "filename": "src/auth.js", "view": "split",
+  "diff": "@@ -1,3 +1,3 @@\n ctx\n-old line\n+new line\n ctx" }
+// ^ a unified / `git diff` text rendered as a colored, line-numbered comparison
+//   (no git needed — just paste the diff). "view":"split" = side-by-side; the
+//   viewer also has a live Unified⇄Split toggle. "diffFile" loads it from a file.
+{ "type": "video",    "src": "https://youtu.be/dQw4w9WgXcQ", "title": "Demo walkthrough" }
+{ "type": "video",    "src": "recordings/demo.mp4", "title": "Local capture", "height": 360 }
+// ^ YouTube/Vimeo URL embeds a player; an http(s) media URL or a local video
+//   file (mp4/webm/ogv/mov/mkv/m4v) plays inline (local files stream, not embedded).
 { "type": "html",     "html": "<p>hi</p>",           "height": 360 }
 { "type": "html",     "htmlFile": "viz.html",         "height": 400 }
 { "type": "image",    "src": "screenshot.png" }       // local file, URL, or data URI
@@ -153,6 +166,15 @@ Chart.js, Mermaid, and Graphviz are **vendored and lazy-loaded** — the base bo
 stays dependency-free. PlantUML uses the public plantuml.com server by default;
 pass `"server"` for a self-hosted instance. Legacy `"html"` / `"htmlFile"` /
 `"htmlHeight"` on root or questions are still accepted and normalised automatically.
+
+### Local file links — clickable, open in the default app
+
+Write a local path in any markdown (the `intro` or a `markdown` block) — `~/clip.mp4`,
+`./src/app.ts`, `/abs/report.pdf`, a `file://` URL, or a backtick-wrapped path — and it
+renders as a click-to-open link that opens the file in the user's OS default app
+(editor, video player, viewer …); `[label](~/path)` works too. Only paths you actually
+wrote on the board can be opened (same-origin + allowlist guarded). Surface a real
+clickable path instead of telling the user to paste it into a terminal.
 
 ## Annotations
 
@@ -209,6 +231,14 @@ urgency, `textarea` for constraints.
 **A/B design review** — `single` question where EACH option carries its own
 `html`/`image` block rendering that variant (see Visual options above); `scale`
 for confidence; `textarea` for what's missing from both.
+
+**Show a git diff / code changes** — when the user says "show me the diff" /
+"show me git diff" / "review these changes": capture `git diff` (or `git diff
+<ref>`, `git show <sha>`) and present it in a `diff` block — set `"view":
+"split"` for side-by-side — instead of dumping it in the terminal. Pair it with
+a `yesno` "Apply these changes?" and a `textarea` for feedback; users can select
+diff text to comment on a specific line. For a brand-new file prefer a `code` block; for a
+recorded walkthrough of the change add a `video` block.
 
 **Metrics review** — board-level `chart` block (bar or line) showing the key
 numbers, followed by a `table` block for the raw data; at least one question

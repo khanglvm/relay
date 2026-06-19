@@ -544,7 +544,14 @@ call rather than calling it repeatedly in a loop.
   comments and reopen the board as a conversation thread.
 - Use `rly update <id>` to push spec changes to a running board — the page
   reloads and answers survive via draft autosave. Batch updates; do not spam.
+- When the user asks to *see* code changes — "show me the diff", "show me git
+  diff", "review these changes" — capture `git diff` (or `git show <sha>`) and
+  render it in a `diff` block instead of printing it to the terminal; for a
+  brand-new file use a `code` block. Point them at a file to inspect with a
+  clickable local path in markdown.
 - For sensitive PlantUML diagrams, set `"server": "https://your-server"` to avoid
   sending source to the public plantuml.com server.
 - Bundled universal skill (Claude Code, Codex, any SKILL.md-aware agent):
   `rly skill install` — or `npx skills add khanglvm/relay --skill relay --all`.
+  `rly upgrade` refreshes the CLI **and** the skill (via npx skills, falling back
+  to the bundled copy) in one step.

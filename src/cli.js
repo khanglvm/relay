@@ -773,6 +773,25 @@ function removeLegacySkills() {
   return removed;
 }
 
+// Stamps the current CLI version into every installed skill dir's .rly-version.
+// `rly skill install` writes this itself, but an `npx skills add` refresh does
+// not — so after any refresh we re-stamp the dirs that now have a SKILL.md,
+// keeping skillFreshnessWarning() from nagging about a just-refreshed skill.
+function stampSkillVersion() {
+  const stamped = [];
+  for (const dir of Object.values(KNOWN_SKILL_DIRS())) {
+    try {
+      if (fs.existsSync(path.join(dir, 'SKILL.md'))) {
+        fs.writeFileSync(path.join(dir, '.rly-version'), VERSION);
+        stamped.push(dir);
+      }
+    } catch {
+      // best effort — a marker we couldn't write just re-triggers the nudge
+    }
+  }
+  return stamped;
+}
+
 // Short instruction block for an agent's main instruction file (CLAUDE.md,
 // AGENTS.md, …). A skill is only a tier-1 hint that agents can ignore; these
 // rules, appended to the instructions the agent always reads, enforce usage.
@@ -783,8 +802,12 @@ const SKILL_RULES = `## relay — ask & show in the browser, not the terminal
   beyond one trivial yes/no)? Do NOT ask in plain terminal text. Build a board
   spec and run: \`rly ask --file spec.json --detach\`, then \`rly wait <boardId>\`.
 - Presenting a plan, structure, architecture, data, or a prototype? Show a
-  relay board with mermaid/graphviz/chart/table/image/html blocks — never
-  ASCII diagrams or walls of prose.
+  relay board with mermaid/graphviz/chart/table/code/diff/video/image/html
+  blocks — never ASCII diagrams or walls of prose.
+- "Show me the diff / git diff / these changes"? Run \`git diff\` (or \`git show\`)
+  and render the output in a \`diff\` block — never paste a raw diff in the
+  terminal. Point the user at a file with a clickable local path in a markdown
+  block, and embed a screen recording with a \`video\` block.
 - When answer choices are visual (designs, layouts, variants), give each
   option its own visual (\`options[].blocks\`) so the user picks by looking.
 - Read the result JSON from stdout; treat \`comment\` and \`annotations\` as
@@ -1031,8 +1054,9 @@ function cmdAgent() {
   return 0;
 }
 
-// `rly upgrade` — install the latest CLI globally AND refresh the bundled skill
-// in one shot. (`update` is taken by the live-mutate command, so this is
+// `rly upgrade` — install the latest CLI globally AND refresh the skill (via the
+// npx-skills package manager, falling back to the bundled copy) in one shot.
+// (`update` is taken by the live-mutate command, so this is
 // `upgrade` / `self-update`.) Running boards are surfaced and handled: a global
 // reinstall overwrites relay's files, but live detached servers snapshot their
 // UI at first request and serve from memory, so they keep working on their own
@@ -1051,7 +1075,7 @@ async function cmdUpgrade(args) {
   if (args.dryRun === true) {
     printJson({
       dryRun: true,
-      wouldRun: [wantCli && `npm install -g ${PKG_NAME}@latest`, wantSkill && 'rly skill install'].filter(Boolean),
+      wouldRun: [wantCli && `npm install -g ${PKG_NAME}@latest`, wantSkill && 'npx skills add khanglvm/relay --skill relay --all'].filter(Boolean),
       runningBoards: running.map((r) => r.id),
       runningHandling: running.length
         ? doStop
@@ -1108,17 +1132,30 @@ async function cmdUpgrade(args) {
   }
 
   if (wantSkill) {
-    // Spawn the freshly installed binary (on PATH) so the NEW bundled skill is
-    // what lands — this process still holds the previous bundle in memory.
-    process.stderr.write('\nRefreshing the bundled skill  (rly skill install)\n');
-    const r = spawnSync('rly', ['skill', 'install'], { stdio: 'inherit', shell: true });
+    // Refresh the skill through the npx-skills package manager — the same channel
+    // the skill is normally managed by (skills-lock.json, ~/.agents, ~/.claude, …)
+    // — so the global install stays in sync and pulls the freshest skill for
+    // khanglvm/relay. `npx -y` so the one-off download needs no prompt.
+    process.stderr.write('\nRefreshing the relay skill  (npx skills add khanglvm/relay --skill relay --all)\n');
+    let r = spawnSync('npx', ['-y', 'skills', 'add', 'khanglvm/relay', '--skill', 'relay', '--all'], { stdio: 'inherit', shell: true });
+    let how = 'npx-skills';
+    if (r.error || r.status !== 0) {
+      // Fallback: install the skill bundled with the CLI we just upgraded. Works
+      // offline / when the skills CLI is unreachable, and matches this version.
+      process.stderr.write('\nnpx skills unavailable — falling back to the bundled skill  (rly skill install)\n');
+      r = spawnSync('rly', ['skill', 'install'], { stdio: 'inherit', shell: true });
+      how = 'bundled';
+    }
     if (r.error || r.status !== 0) {
       process.stderr.write(
         `Skill refresh did not complete${r.error ? ` (${r.error.message})` : ` (exit ${r.status})`} — ` +
-          'run `rly skill install` yourself (or `npx skills add khanglvm/relay --skill relay --all`).\n'
+          'run `npx skills add khanglvm/relay --skill relay --all` (or `rly skill install`) yourself.\n'
       );
     } else {
-      did.skill = 'installed';
+      // Keep the freshness marker accurate however the skill landed, so the next
+      // `rly` run doesn't nag that the just-refreshed skill is stale.
+      stampSkillVersion();
+      did.skill = how;
     }
   }
 

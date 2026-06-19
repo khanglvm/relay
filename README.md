@@ -35,7 +35,8 @@ That's it. Next time your agent needs a decision or wants to show you a plan,
 it opens a board like the ones above and waits for your Submit.
 
 Keep relay current with **`rly upgrade`** — it installs the latest CLI and
-refreshes the skill in one step, leaving any boards you have open untouched.
+refreshes the skill (via `npx skills`, falling back to the bundled copy) in one
+step, leaving any boards you have open untouched.
 
 ## What it improves
 
