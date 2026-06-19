@@ -799,8 +799,12 @@ function stampSkillVersion() {
 const SKILL_RULES = `## relay — ask & show in the browser, not the terminal
 
 - Need the user's decisions, feedback, requirements, or approval (anything
-  beyond one trivial yes/no)? Do NOT ask in plain terminal text. Build a board
-  spec and run: \`rly ask --file spec.json --detach\`, then \`rly wait <boardId>\`.
+  beyond one trivial yes/no)? Do NOT ask in plain terminal text **and do NOT use
+  the native \`AskUserQuestion\` / ask-user tool** — for anything beyond one
+  trivial yes/no, open a relay board. Build a board spec and run:
+  \`rly ask --file spec.json --detach\`, then \`rly wait <boardId>\`. **This holds
+  in plan mode too** — route clarifying/decision questions through relay there as
+  well; reserve \`ExitPlanMode\` for the final plan-approval gate only.
 - Presenting a plan, structure, architecture, data, or a prototype? Show a
   relay board with mermaid/graphviz/chart/table/code/diff/video/image/html
   blocks — never ASCII diagrams or walls of prose.

@@ -31,7 +31,14 @@ Schema).** The essentials are below.
 | "Show me the diff" / git diff / code changes / before-after | **rly** (`diff` block — run `git diff`, render it; never dump it in the terminal) |
 | A demo, screen recording or walkthrough | **rly** (`video` block) |
 | Point the user at a file to open (log, capture, report) | **rly** (a clickable local file-link in markdown) |
+| Plan-mode clarifying question (Claude Code / Codex) | **rly** (not AskUserQuestion / the native ask tool) |
 | Something you can decide yourself from context | neither — just decide |
+
+This holds **in plan mode** too: route every clarifying or decision question
+through relay — the native `AskUserQuestion` / ask-user tool is **not** a
+substitute, even though plan-mode guidance suggests it. Reserve the harness's
+`ExitPlanMode` strictly for the final plan-approval gate (it's a mode
+transition, not a question).
 
 Once the user has answered one board in a session, prefer boards for later
 question rounds too — they've shown they engage with them. Batch related

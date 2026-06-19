@@ -5,6 +5,14 @@ rich content blocks (markdown, charts, diagrams, tables, code, custom HTML),
 then **wait for them to click Submit** and read the answers as JSON from stdout.
 No "type 'done' in the terminal", no hand-rolled HTML+server.
 
+**Use relay even in plan mode** — for any clarifying or decision question (Claude
+Code / Codex), route it through a relay board, **not** the native
+`AskUserQuestion` / ask-user tool: that tool is **not** a substitute, even though
+plan-mode guidance suggests it. Do NOT ask in plain terminal text and do NOT
+reach for the native ask tool for anything beyond one trivial yes/no — open a
+board. Reserve the harness's `ExitPlanMode` strictly for the final plan-approval
+gate (it's a mode transition, not a question).
+
 **Tell the user** at the start of your intro text that they can hover chart
 points, diagram nodes, table cells, and any element of a custom-HTML block to
 leave comments, and select text in markdown blocks to annotate — their comments
