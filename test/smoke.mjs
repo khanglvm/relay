@@ -154,6 +154,7 @@ let detachedId;
   ok(w.code === 0, 'wait exits 0 on submit');
   const wr = JSON.parse(w.stdout);
   ok(wr.status === 'submitted' && wr.answers.ship === 'no', 'wait prints the result');
+  ok(wr.notes && typeof wr.notes === 'object' && !Array.isArray(wr.notes), 'notes is always present (empty {} object) so consumers never miss the channel');
 }
 
 // ---------- 3. reopen with saved answers (prefill) ----------

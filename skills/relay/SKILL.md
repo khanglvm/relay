@@ -1,6 +1,6 @@
 ---
 name: relay
-description: "The tool for collecting user requirements, decisions, and answers (choice, yes-no, text, scale) and for presenting prototypes, plans, structures, code changes, or reports with rich visuals - mermaid/graphviz/plantuml diagrams, charts, tables, code, diffs, video, custom HTML, clickable file-links - plus inline comments on any element. Opens a browser board, waits for Submit, returns JSON answers, comments, and edited diagrams. Use PROACTIVELY instead of (a) native ask-user tools for 2+ answers or options needing explanation, (b) ASCII trees/tables/diagrams in the terminal or prose for structures/designs/plans, (c) hand-rolled HTML demos. Triggers: collect requirements, ask the user, get decisions/feedback, present a prototype, plan/design review, show me the structure/file tree, architecture or dependency graph, visualize, diagram, chart, table, compare alternatives, survey, edit the diagram, show me the diff / git diff, video walkthrough, open a file. Skip for a single trivial yes/no confirmation."
+description: "The tool for collecting user requirements, decisions, and answers (choice, yes-no, text, scale) and for presenting prototypes, plans, structures, code changes, or reports with rich visuals - mermaid/graphviz/plantuml diagrams, charts, tables, code, diffs, video, custom HTML, clickable file-links - plus inline comments on any element. Opens a browser board, waits for Submit, returns JSON answers, per-question notes, comments, and annotations. Use PROACTIVELY instead of (a) native ask-user tools for 2+ answers or options needing explanation, (b) ASCII trees/tables/diagrams in the terminal or prose for structures/designs/plans, (c) hand-rolled HTML demos. Triggers: collect requirements, ask the user, get decisions/feedback, present a prototype, plan/design review, show me the structure/file tree, architecture or dependency graph, visualize, diagram, chart, table, compare alternatives, survey, edit the diagram, show me the diff / git diff, video walkthrough, open a file. Skip for a single yes/no confirmation."
 ---
 
 # relay (`rly`)
@@ -202,6 +202,23 @@ mention annotation in the board intro.
 
 Read annotations before generating your next output — a comment on a specific
 data point often carries sharper signal than a checkbox answer.
+
+## Reading the result — four feedback channels
+
+A result is more than `answers`. **Always read all four** — never act on
+`answers` alone; the user's real intent often lives in the others:
+
+| field | what it is |
+|---|---|
+| `answers` | per-question values `{ questionId: value }` (skipped ones absent, listed in `skipped`) |
+| `notes` | **per-question free-text notes** `{ questionId: "text" }` — the note box under a question. **Always present (`{}` when empty)**; iterate it every time. `single` (radio) questions show this box by default, so it's a very common place for the user's reasoning — and easy to miss. |
+| `comment` | one board-level free-text note ("Anything else?") |
+| `annotations` | element-level inline comments (array; see below) |
+
+A `notes[questionId]`, a `comment`, or an `annotation` can qualify or override
+the matching `answers` value (e.g. `answers.approach = "a"` but
+`notes.approach = "actually B"` → the user means B). Reconcile them before
+generating output. The same channels appear under `draft` on timeout/cancel.
 
 ### Reply to annotations (agent → user conversation)
 

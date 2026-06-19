@@ -740,7 +740,11 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
       answers: partial.answers ?? null,
       skipped: partial.skipped ?? null,
       comment: partial.comment ?? '',
-      notes: partial.notes ?? null,
+      // Per-question notes are first-class feedback. Always emit the key (even
+      // empty {}) so a consumer can SEE it exists and never silently misses a
+      // note the user left under a question. Falls back to the autosaved draft
+      // on timeout/cancel.
+      notes: partial.notes ?? (record.draft?.notes || {}),
       annotations: partial.annotations ?? (record.draft?.annotations || []),
       blockEdits,
       createdAt: record.createdAt,

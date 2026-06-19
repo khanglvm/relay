@@ -11,6 +11,22 @@ leave comments, and select text in markdown blocks to annotate — their comment
 come back in `result.annotations` alongside their answers. Treat annotations as
 first-class feedback.
 
+**Read ALL four feedback channels, not just `answers`.** A result carries the
+user's input across **four** places, each first-class — never act on `answers`
+alone:
+
+- `answers` — the per-question values (what they picked/typed).
+- `notes` — per-question free-text notes (`result.notes[questionId]`): the small
+  note box under a question, where users qualify or override a pick. **Single
+  (radio) questions show this box by default**, so it is a very common place for
+  the real reasoning to land. Easy to miss because empty notes are omitted —
+  **always inspect `result.notes`.**
+- `comment` — one board-level free-text note ("Anything else?").
+- `annotations` — element-level inline comments on specific blocks/data points.
+
+If any of `notes`, `comment`, or `annotations` is non-empty, it can override or
+contradict an `answers` value — reconcile them before generating output.
+
 Everything machine-relevant is on **stdout as JSON**; human-facing logs go to
 stderr. Exit codes: `0` submitted/acknowledged · `2` timeout · `3` cancelled ·
 `4` usage error · `5` not found.
@@ -137,12 +153,18 @@ boolean/bool/yn→yesno, input→text, longtext→textarea, rating/likert→scal
 ```
 
 Unanswered questions are absent from `answers` and listed in `skipped`.
-Questions with `"note": true` show a small optional free-text field; non-empty
-notes come back in `notes` keyed by question id. **`single` (radio) questions
-show this note by default** so the user can qualify their pick — set
-`"note": false` to hide it. On `timeout`/`cancelled`, a
-`draft` field carries the autosaved partial answers and any annotations written
-so far.
+
+`notes` (a `{ questionId: "text" }` map) is **always present** in a result —
+`{}` when empty — so you can never miss that the channel exists; iterate it
+even when you only expected `answers`. Questions with `"note": true` show a
+small optional free-text field, and only **non-empty** notes appear as keys.
+**`single` (radio) questions show this note by default** so the user can
+qualify or override their pick — set `"note": false` to hide it. A note like
+`notes.approach = "actually B, not A"` is the user's real intent and outranks
+the `answers.approach` radio value — always check `notes` before acting.
+
+On `timeout`/`cancelled`, a `draft` field carries the autosaved partial
+answers, notes, and any annotations written so far.
 
 ## Blocks
 
@@ -538,8 +560,11 @@ call rather than calling it repeatedly in a loop.
   check whether the user has started answering.
 - In the board `intro`, tell users they can hover chart points / select text to
   leave inline comments — they won't discover it otherwise.
-- Check `result.annotations` before generating your next output; a comment on a
-  specific data point or a quoted sentence often overrides the checkbox answer.
+- Check `result.notes` AND `result.annotations` before generating your next
+  output — not just `answers`. A per-question note (e.g. `notes.scope = "docs can
+  wait"`) or a comment on a specific data point / quoted sentence often qualifies
+  or overrides the checkbox answer. `notes` is always present (`{}` when empty),
+  so iterate it every time.
 - Use `rly reopen <id> --replies replies.json` to answer the user's element
   comments and reopen the board as a conversation thread.
 - Use `rly update <id>` to push spec changes to a running board — the page
