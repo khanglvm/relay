@@ -440,6 +440,10 @@
   object-fit: contain;
   object-position: left top;
 }
+/* In full-screen a per-block height must never keep the image small — that
+   height only shapes the inline preview; the detail view needs every pixel.
+   (Belt-and-suspenders alongside the viewer's reapply() on full-screen toggle.) */
+.blk-imagewrap.blk-full .blk-img { max-height: none !important; }
 
 /* ---------- viewer controls (full-screen) ---------- */
 /* The full-screen button lives in a reserved strip ABOVE the visual (user

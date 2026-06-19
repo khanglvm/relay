@@ -299,7 +299,10 @@ Rules of thumb:
 { "type": "html", "htmlFile": "viz.html",   "height": 400 }
 
 // Image — local file path (embedded at spec time, works offline), http(s) URL,
-// or data URI. "height" caps the displayed height; zoom/full-screen included.
+// or data URI. "height" sets only the COMPACT inline preview — every image keeps
+// a full-screen + zoom (⌘/Ctrl+wheel or −/+, up to 8× native) + drag-to-pan
+// viewer, so a small height never hides detail. Local images embed up to 8 MB;
+// for a huge / high-resolution image pass an http(s) URL (streamed, no size cap).
 { "type": "image", "src": "screenshots/variant-a.png", "alt": "Variant A", "height": 220 }
 { "type": "image", "src": "https://example.com/mock.png" }
 ```
@@ -336,7 +339,7 @@ real path over telling the user to paste it into a terminal.
 - `mermaid`: natural flow, max-height 1200 px with internal scroll. Override with `"height"`.
 - `chart`: default 320 px. Override with `"height"`.
 - `html`: default 360 px. Override with `"height"`.
-- `image`: natural size (never upscaled), max-height 1200 px with scroll. `"height"` caps it.
+- `image`: natural size (never upscaled), max-height 1200 px with scroll. `"height"` caps the **inline preview only** — full-screen + zoom (up to 8× native) always reach full detail. Local images embed up to 8 MB; use an http(s) URL for larger.
 - `table`: natural flow.
 - All heights clamp to 100–2400 px.
 - Inside OPTION cards, always set a compact `"height"` (~140–260) on

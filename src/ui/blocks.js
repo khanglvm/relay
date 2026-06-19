@@ -1398,7 +1398,10 @@
       alt: block.alt || 'image',
       loading: 'lazy',
     });
-    if (block.height) img.style.maxHeight = clampHeight(block.height, 360) + 'px';
+    // The per-block height only caps the COMPACT inline preview — the viewer
+    // lifts it on zoom / full-screen so the user can always reach full detail.
+    const fitMaxHeight = block.height ? clampHeight(block.height, 360) : null;
+    if (fitMaxHeight) img.style.maxHeight = fitMaxHeight + 'px';
     img.addEventListener('error', () => {
       container.replaceChildren(el('div', { class: 'blk-error' }, 'Image failed to load'));
     });
@@ -1409,6 +1412,7 @@
         natural: () => (img.naturalWidth > 0 ? { w: img.naturalWidth, h: img.naturalHeight } : null),
         label: 'image',
         comment: wholeBlockComment(ctx, blockId, 'image'),
+        fitMaxHeight,
       });
     if (img.complete && img.naturalWidth > 0) attachImgViewer();
     else img.addEventListener('load', attachImgViewer, { once: true });
@@ -1450,6 +1454,7 @@
     fullOpen = null;
     window.dispatchEvent(new Event('resize'));
     if (c._rlyToolsSync) c._rlyToolsSync(); // re-pin toolbar to its scrolled corner
+    if (c._rlyZoom) c._rlyZoom.reapply(); // restore the compact inline height cap
   }
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && fullOpen) exitFull();
@@ -1569,6 +1574,13 @@
       const target = opts.zoomEl;
       const nat = opts.natural();
       const z = container._rlyZ;
+      // A per-block height caps only the compact inline preview. The moment the
+      // user zooms in (z !== null) or goes full-screen they want pixel detail, so
+      // lift the cap there; restore it when back to the inline fit view.
+      if (opts.fitMaxHeight != null) {
+        const fit = z === null && !container.classList.contains('blk-full');
+        target.style.maxHeight = fit ? opts.fitMaxHeight + 'px' : 'none';
+      }
       if (z === null || !nat || !nat.w) {
         target.style.width = '100%';
         target.style.maxWidth = nat && nat.w ? Math.ceil(nat.w) + 'px' : '100%';
@@ -1592,10 +1604,10 @@
       return shown > 0 ? shown / nat.w : 1;
     }
     function setZoom(next) {
-      container._rlyZ = next === null ? null : Math.min(5, Math.max(0.2, next));
+      container._rlyZ = next === null ? null : Math.min(8, Math.max(0.2, next));
       apply();
     }
-    container._rlyZoom = { setZoom, currentZ };
+    container._rlyZoom = { setZoom, currentZ, reapply: apply };
 
     const tools = el('div', { class: 'blk-tools' });
 
@@ -1652,6 +1664,7 @@
       fullBtn.textContent = '✕';
       window.dispatchEvent(new Event('resize'));
       container._rlyToolsSync();
+      if (container._rlyZoom) container._rlyZoom.reapply(); // lift any inline height cap
     });
     tools.append(fullBtn);
 

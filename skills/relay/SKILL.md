@@ -137,6 +137,10 @@ single/multi question.
 { "type": "html",     "htmlFile": "viz.html",         "height": 400 }
 { "type": "image",    "src": "screenshot.png" }       // local file, URL, or data URI
 { "type": "image",    "src": "https://…/mock.png", "alt": "Mockup B", "height": 220 }
+// ^ `height` only sets the COMPACT inline preview — every image keeps a full-
+//   screen + zoom (⌘/Ctrl+wheel or −/+, up to 8× native) + drag-to-pan viewer,
+//   so detail is always reachable regardless of height. Local images embed up
+//   to 8 MB; for a huge/high-detail image pass an http(s) URL (streamed, no cap).
 ```
 
 ### Visual options — show each choice, don't describe it
