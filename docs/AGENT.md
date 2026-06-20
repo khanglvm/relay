@@ -62,6 +62,26 @@ Answers **autosave in real time** as the user fills the board — a page reload
 restores them, and a draft survives timeouts/cancellation (included in those
 results), so partial input is never lost.
 
+## Inline mode — relay as an MCP App (Claude & Codex apps)
+
+Everything above is the **CLI** surface (you run `rly` in a terminal and read
+JSON from stdout). relay is **also** an MCP App: when the host registers
+`rly mcp` (see `rly mcp config` / `rly mcp install --target claude|codex`), you
+get two tools that render the board **inline in the conversation** instead of a
+browser tab — on Claude desktop **and mobile**, and Codex:
+
+- **`relay_ask`** — collect decisions/feedback with real form controls.
+- **`relay_show`** — present a plan, diagram, diff, table, or prototype.
+
+Both take **the exact same board spec** documented below (the tool `inputSchema`
+*is* this spec). Call the tool with your spec; the host shows the board, the user
+fills it in, and their answers come back to you (answers, per-question notes,
+comment) — read them just as you would the CLI's result JSON. There is no
+`--detach`/`rly wait` dance and no stdout parsing in this mode; the host delivers
+the submission. File-backed blocks (local images, `codeFile`, local `video`) and
+element-level annotations are CLI-board features — the inline board covers
+questions plus markdown/code/diff/table/chart/mermaid/graphviz/image/html.
+
 ## Creating boards
 
 From a JSON spec file (`--file spec.json`), stdin (`--file -`), or quick

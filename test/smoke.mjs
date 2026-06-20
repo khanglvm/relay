@@ -17,7 +17,10 @@ fs.writeFileSync(OPENER, `#!/bin/sh\nprintf '%s\\n' "$1" >> ${JSON.stringify(OPE
 fs.chmodSync(OPENER, 0o755);
 // RLY_HOME is the live var; QUEST_BOARD_HOME is set too in case any code path
 // still reads the pre-rename name. RLY_OPEN_CMD redirects the file opener.
-const ENV = { ...process.env, RLY_HOME: HOME, QUEST_BOARD_HOME: HOME, RLY_OPEN_CMD: OPENER };
+// HOME points at the temp dir too, so anything resolved from os.homedir()
+// (skill dirs, the `rly mcp install` host-config paths) stays inside the
+// sandbox and never touches the real user's ~/.codex / ~/.claude.
+const ENV = { ...process.env, HOME, USERPROFILE: HOME, RLY_HOME: HOME, QUEST_BOARD_HOME: HOME, RLY_OPEN_CMD: OPENER };
 
 let passed = 0;
 function ok(cond, name) {
@@ -1100,6 +1103,103 @@ console.log('25. video blocks');
   // unsupported local video extension → usage error
   const badExt = await run(['ask', '--file', '-'], { input: JSON.stringify({ title: 'x', blocks: [{ type: 'video', src: 'movie.flv' }] }) });
   ok(badExt.code === 4 && /unsupported video extension/.test(badExt.stderr), 'unsupported local video extension → exit 4');
+}
+
+// ---------- 26. MCP App server (stdio JSON-RPC) ----------
+// Drive `rly mcp` over stdio exactly as an MCP host would: a batch of
+// newline-delimited JSON-RPC messages in, the responses collected by id.
+console.log('26. mcp app server (stdio)');
+function mcpRoundtrip(messages) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [BIN, 'mcp'], { env: ENV });
+    let out = '';
+    let err = '';
+    child.stdout.on('data', (d) => (out += d));
+    child.stderr.on('data', (d) => (err += d));
+    child.on('close', () => {
+      const byId = {};
+      const notifications = [];
+      for (const line of out.split('\n')) {
+        const t = line.trim();
+        if (!t) continue;
+        let m;
+        try { m = JSON.parse(t); } catch { continue; }
+        if (m.id !== undefined && m.id !== null) byId[m.id] = m;
+        else notifications.push(m);
+      }
+      resolve({ byId, notifications, out, err });
+    });
+    child.on('error', reject);
+    for (const m of messages) child.stdin.write(JSON.stringify(m) + '\n');
+    child.stdin.end(); // closing stdin ends the server
+  });
+}
+{
+  const { byId, out } = await mcpRoundtrip([
+    { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } } },
+    { jsonrpc: '2.0', method: 'notifications/initialized' },
+    { jsonrpc: '2.0', id: 2, method: 'tools/list' },
+    { jsonrpc: '2.0', id: 3, method: 'resources/list' },
+    { jsonrpc: '2.0', id: 4, method: 'ping' },
+    { jsonrpc: '2.0', id: 5, method: 'resources/read', params: { uri: 'ui://relay/board' } },
+    { jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'relay_ask', arguments: { title: 'Inline', questions: [{ id: 'go', type: 'yesno', label: 'Ship it?' }], blocks: [{ type: 'markdown', md: '## hi' }] } } },
+    { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'relay_ask', arguments: { questions: [{ type: 'nope', label: 'x' }] } } },
+    { jsonrpc: '2.0', id: 8, method: 'resources/read', params: { uri: 'ui://relay/vendor/../package.json' } },
+    { jsonrpc: '2.0', id: 9, method: 'no/such/method' },
+  ]);
+
+  // stdout must be pure protocol — every non-blank line is valid JSON-RPC.
+  ok(out.trim().split('\n').every((l) => { try { return JSON.parse(l).jsonrpc === '2.0'; } catch { return false; } }), 'every stdout line is a JSON-RPC message (no log noise on stdout)');
+
+  const init = byId[1].result;
+  ok(init.protocolVersion === '2025-06-18' && init.serverInfo.name === 'relay', 'initialize echoes protocol + serverInfo');
+  ok(init.capabilities.extensions && init.capabilities.extensions['io.modelcontextprotocol/ui'], 'initialize advertises the io.modelcontextprotocol/ui extension');
+
+  const toolNames = byId[2].result.tools.map((t) => t.name);
+  ok(toolNames.includes('relay_ask') && toolNames.includes('relay_show'), 'tools/list exposes relay_ask + relay_show');
+  const ask = byId[2].result.tools.find((t) => t.name === 'relay_ask');
+  ok(ask._meta.ui.resourceUri === 'ui://relay/board', 'relay_ask links the ui resource via _meta.ui.resourceUri');
+  ok(ask._meta['openai/outputTemplate'] === 'ui://relay/board', 'relay_ask also carries openai/outputTemplate for ChatGPT/Codex');
+  ok(ask.inputSchema && ask.inputSchema.properties && ask.inputSchema.properties.questions, 'relay_ask input schema is the board spec');
+
+  const resList = byId[3].result.resources;
+  ok(resList[0].uri === 'ui://relay/board' && resList[0].mimeType === 'text/html;profile=mcp-app', 'resources/list declares the ui:// board with the mcp-app mime');
+
+  ok(JSON.stringify(byId[4].result) === '{}', 'ping → {}');
+
+  const board = byId[5].result.contents[0];
+  ok(board.mimeType === 'text/html;profile=mcp-app' && board.text.length > 1000, 'resources/read returns the board HTML with the profile mime');
+  ok(board.text.includes('ui/update-model-context') && board.text.includes('RelayBlocks'), 'board HTML inlines the MCP client + the shared block renderer');
+  ok(!board.text.includes('/api/draft') && !board.text.includes('/api/submit'), 'board HTML has no HTTP-server endpoints (pure postMessage)');
+
+  const call = byId[6].result;
+  ok(!call.isError && call.structuredContent.spec.questions.length === 1, 'tools/call returns the normalized spec as structuredContent');
+  ok(call.structuredContent.spec.blocks[0].id === 'b1', 'tools/call spec is fully normalized (block ids assigned)');
+  ok(call.content[0].type === 'text' && /displayed to the user/.test(call.content[0].text), 'tools/call result text tells the model the board is shown');
+
+  ok(byId[7].result.isError && /invalid board spec/.test(byId[7].result.content[0].text), 'a bad spec comes back as an isError tool result (not a protocol crash)');
+  ok(byId[8].error && byId[8].error.code === -32002, 'vendor path traversal is rejected (-32002)');
+  ok(byId[9].error && byId[9].error.code === -32601, 'unknown method → -32601 method not found');
+}
+
+// ---------- 27. rly mcp config / install ----------
+console.log('27. mcp config + install');
+{
+  const cfg = await run(['mcp', 'config']);
+  ok(cfg.code === 0, 'rly mcp config exits 0');
+  const parsed = JSON.parse(cfg.stdout);
+  ok(parsed.claudeDesktop.add.mcpServers.relay.args.join(' ') === 'mcp', 'mcp config prints the claude-desktop server entry (rly mcp)');
+  ok(/\[mcp_servers\.relay\]/.test(parsed.codex.add), 'mcp config prints the codex TOML block');
+
+  // install --target codex writes ~/.codex/config.toml under the test HOME.
+  const inst = await run(['mcp', 'install', '--target', 'codex']);
+  ok(inst.code === 0 && JSON.parse(inst.stdout).installed === 'codex', 'rly mcp install --target codex writes the config');
+  const codexCfg = fs.readFileSync(path.join(HOME, '.codex', 'config.toml'), 'utf8');
+  ok(/\[mcp_servers\.relay\]/.test(codexCfg) && /command = "rly"/.test(codexCfg), 'codex config.toml now registers the relay server');
+  const again = await run(['mcp', 'install', '--target', 'codex']);
+  ok(/already present/.test(JSON.parse(again.stdout).note), 'a second install is idempotent (left as-is)');
+  const badTarget = await run(['mcp', 'install', '--target', 'nope']);
+  ok(badTarget.code === 4, 'mcp install --target <unknown> → exit 4');
 }
 
 console.log(`\nAll ${passed} assertions passed. (storage: ${HOME})`);

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>__TITLE__</title>
+<style>/*__CSS__*/
+/*__BLOCKS_CSS__*/
+/* MCP-app inline tweaks: the host owns the outer chrome, so the board paints
+   edge-to-edge with no min-height / page background of its own. */
+:root{ color-scheme: light dark; }
+html,body{ background:transparent; }
+body{ margin:0; }
+.wrap{ max-width:none; margin:0; padding:14px 16px 18px; }
+.mcp-status{ font:13px/1.5 var(--sans, -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif); color:var(--muted,#8a8580); padding:18px 16px; }
+.mcp-done{ text-align:center; padding:34px 16px; }
+.mcp-done .mark{ font-size:34px; color:var(--accent,#c2674b); }
+.mcp-done h2{ margin:6px 0 4px; }
+.mcp-done p{ color:var(--muted,#8a8580); margin:0; }
+</style>
+</head>
+<body>
+<script id="boot" type="application/json">__BOOT_JSON__</script>
+<div id="app" class="wrap"><div class="mcp-status" id="mcp-status">Loading the relay board…</div></div>
+<script>/*__BLOCKS_JS__*/</script>
+<script>/*__BOARD_JS__*/</script>
+</body>
+</html>

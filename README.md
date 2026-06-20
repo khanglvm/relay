@@ -38,6 +38,34 @@ Keep relay current with **`rly upgrade`** — it installs the latest CLI and
 refreshes the skill (via `npx skills`, falling back to the bundled copy) in one
 step, leaving any boards you have open untouched.
 
+## Inside the Claude & Codex apps (MCP App)
+
+relay also runs as an **MCP App** ([SEP-1865](https://modelcontextprotocol.io/seps/1865-mcp-apps-interactive-user-interfaces-for-mcp))
+— so the same board renders **inline, right in the conversation**, on Claude
+desktop **and mobile** and in Codex, no browser tab. `rly mcp` is a
+zero-dependency stdio MCP server; register it once and the agent gets two tools,
+`relay_ask` (collect decisions/feedback with real form controls) and
+`relay_show` (present a plan, diagram, diff, table, or prototype):
+
+```sh
+# Claude Code
+claude mcp add relay -- rly mcp
+
+# Claude Desktop / Codex — write the host config for you
+rly mcp install --target claude     # claude_desktop_config.json
+rly mcp install --target codex      # ~/.codex/config.toml
+
+# or print the snippet for any MCP host (incl. the raw JSON/TOML)
+rly mcp config
+```
+
+When the agent calls a relay tool, the host renders relay's `ui://relay/board`
+resource in a sandboxed iframe, hands it the board spec, and the user's answers
+flow back to the agent over the bridge (`ui/update-model-context`) — markdown,
+code, diffs, tables, charts, mermaid/graphviz diagrams, images, and forms, all
+in-chat. The classic browser board (`rly ask` / `rly show`) is unchanged; pick
+whichever surface fits.
+
 ## What it improves
 
 | Without relay | With relay |
@@ -61,6 +89,7 @@ Node ≥ 18; Chart.js / Mermaid / Graphviz are vendored and lazy-loaded offline.
 | `rly help` | every command at a glance |
 | `rly install --target <agent>` | write relay's rules into an agent's instruction file — `claude` `codex` `cursor` `copilot` `kiro` `windsurf` `cline` `gemini` `opencode` `droid` `agents`; `--all`, `--scope`, `--print`, `--list` |
 | `rly upgrade` | update the CLI **and** refresh the skill in one step (safe around open boards; `--dry-run`, `--cli-only`, `--skill-only`) |
+| `rly mcp` | run relay as an MCP App server (stdio) so boards render **inline** in Claude (desktop/mobile) & Codex; `rly mcp config` / `rly mcp install --target claude\|codex` to register it |
 | `rly agent` | the full agent guide — spec format, all block types, annotations, patterns ([docs/AGENT.md](docs/AGENT.md)) |
 | `rly schema` | board spec JSON Schema |
 | [skills/relay/SKILL.md](skills/relay/SKILL.md) | the bundled skill |
@@ -72,6 +101,25 @@ npm test     # zero-dep smoke tests (spawns real servers, fake-submits)
 ```
 
 ## Changelog
+
+### 0.11.0 — render inline inside the Claude & Codex apps (MCP App)
+- **`rly mcp` — relay as an MCP App** ([SEP-1865](https://modelcontextprotocol.io/seps/1865-mcp-apps-interactive-user-interfaces-for-mcp),
+  extension `io.modelcontextprotocol/ui`). A zero-dependency stdio MCP server
+  that declares a `ui://relay/board` resource (`text/html;profile=mcp-app`) and
+  two tools, **`relay_ask`** and **`relay_show`**, linked to it via
+  `_meta.ui.resourceUri` (plus `openai/outputTemplate` for ChatGPT/Codex). The
+  host renders the board **inline in the conversation** — Claude desktop **and
+  mobile**, Codex — instead of opening a browser tab.
+- **Same board, postMessage transport.** The inline board reuses relay's block
+  renderer (markdown, code, diff, table, chart, mermaid, graphviz, image, html)
+  over the MCP Apps JSON-RPC bridge: the spec arrives as the tool result, the
+  user's answers go back via `ui/update-model-context`, the iframe auto-sizes
+  via `ui/notifications/size-changed`, and vendored Chart.js / Mermaid / Viz.js
+  load on demand through the host's `resources/read` (no `/vendor` route, no
+  server in the sandbox).
+- **One-command setup** — `rly mcp install --target claude|codex` writes the
+  host config; `rly mcp config` prints the snippet for any MCP host. The classic
+  browser board is untouched.
 
 ### 0.10.0 — open files, richer code, diffs & video
 - **Clickable local file-links.** Write a path in any markdown (`~/clip.mp4`,

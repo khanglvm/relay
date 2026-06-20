@@ -13,6 +13,13 @@ time; the tab auto-closes after submit.
 If `rly` is not installed: `npm i -g @khanglvm/relay` or invoke via
 `npx -y @khanglvm/relay <command …>`.
 
+**Inside the Claude or Codex app?** relay is also an MCP App: if the
+`relay_ask` / `relay_show` tools are available, call them with the same board
+spec (below) and the board renders **inline in the chat** — no terminal, no
+browser tab; the user's answers come straight back to you. Set it up once with
+`rly mcp install --target claude|codex` (or `rly mcp config`). Everything below
+describes the spec both surfaces share.
+
 **Full reference: run `rly agent` (complete guide) and `rly schema` (spec JSON
 Schema).** The essentials are below.
 
