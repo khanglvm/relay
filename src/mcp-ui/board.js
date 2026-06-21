@@ -112,6 +112,25 @@
     }
   }
 
+  // Blend into the host: adopt its font family + any @font-face/@import the host
+  // ships in hostContext.styles, so board text matches the surrounding app.
+  // ponytail: typography only — relay keeps its own accent/surface palette so it
+  // stays recognizable; map host color variables here too if a full blend is wanted.
+  let hostFontStyleEl = null;
+  function adoptHostStyles() {
+    const styles = host && host.styles;
+    if (!styles || typeof styles !== 'object') return;
+    const v = styles.variables && typeof styles.variables === 'object' ? styles.variables : {};
+    const root = document.documentElement.style;
+    if (v['--font-sans']) root.setProperty('--sans', v['--font-sans']);
+    if (v['--font-serif']) root.setProperty('--serif', v['--font-serif']);
+    const fonts = styles.css && typeof styles.css.fonts === 'string' ? styles.css.fonts : '';
+    if (fonts) {
+      if (!hostFontStyleEl) { hostFontStyleEl = document.createElement('style'); document.head.appendChild(hostFontStyleEl); }
+      hostFontStyleEl.textContent = fonts;
+    }
+  }
+
   let sizeTimer = null;
   function reportSize() {
     if (sizeTimer) return;
@@ -675,11 +694,17 @@
   onNotify('ui/notifications/host-context-changed', (p) => {
     if (p && typeof p === 'object') {
       if ('theme' in p) host.theme = p.theme;
+      if ('styles' in p) host.styles = p.styles;
+      adoptHostStyles();
       applyTheme();
     }
   });
 
   // Kick off the handshake. Proceed even if the host doesn't answer init.
+  // SEP-1865 lifecycle: ui/initialize → (host reply) → ui/notifications/initialized.
+  // The host MUST NOT send tool-input / tool-result (i.e. the board spec) until
+  // it receives `initialized`, so this notification is mandatory — without it the
+  // board never gets its spec and never renders.
   (async () => {
     try {
       const res = await request('ui/initialize', {
@@ -692,6 +717,8 @@
     } catch {
       host = {};
     }
+    notify('ui/notifications/initialized', {});
+    adoptHostStyles();
     applyTheme();
     setStatus('Waiting for the board…');
     reportSize();

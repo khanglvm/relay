@@ -1170,6 +1170,7 @@ function mcpRoundtrip(messages) {
   const board = byId[5].result.contents[0];
   ok(board.mimeType === 'text/html;profile=mcp-app' && board.text.length > 1000, 'resources/read returns the board HTML with the profile mime');
   ok(board.text.includes('ui/update-model-context') && board.text.includes('RelayBlocks'), 'board HTML inlines the MCP client + the shared block renderer');
+  ok(board.text.includes('ui/notifications/initialized'), 'board sends ui/notifications/initialized (the host withholds the spec until it does)');
   ok(!board.text.includes('/api/draft') && !board.text.includes('/api/submit'), 'board HTML has no HTTP-server endpoints (pure postMessage)');
 
   const call = byId[6].result;
