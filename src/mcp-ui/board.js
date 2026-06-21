@@ -105,25 +105,53 @@
   }
   function applyTheme() {
     const t = host.theme;
-    if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
-    else delete document.documentElement.dataset.theme;
+    if (t === 'dark' || t === 'light') {
+      document.documentElement.dataset.theme = t;
+      // Pin color-scheme so the host's light-dark() style variables resolve to
+      // the side the host actually picked (not whatever the OS prefers).
+      document.documentElement.style.colorScheme = t;
+    } else {
+      delete document.documentElement.dataset.theme;
+      document.documentElement.style.colorScheme = 'light dark';
+    }
     if (window.RelayBlocks && typeof RelayBlocks.onThemeChange === 'function') {
       try { RelayBlocks.onThemeChange(effectiveTheme()); } catch { /* not rendered yet */ }
     }
   }
 
-  // Blend into the host: adopt its font family + any @font-face/@import the host
-  // ships in hostContext.styles, so board text matches the surrounding app.
-  // ponytail: typography only — relay keeps its own accent/surface palette so it
-  // stays recognizable; map host color variables here too if a full blend is wanted.
+  // Full color-blend: map the host's standardized style variables (SEP-1865
+  // theming) onto relay's own custom properties so the board adopts the app's
+  // surfaces, text, borders, primary-action color and fonts — reading as part of
+  // Claude/Codex rather than a foreign page. Every mapping is conditional: a
+  // token the host omits keeps relay's own default, so it degrades gracefully on
+  // leaner hosts (where the warm terracotta identity simply stays).
+  const HOST_VAR_MAP = {
+    '--bg': '--color-background-primary',
+    '--card': '--color-background-secondary',
+    '--bg-sunken': '--color-background-tertiary',
+    '--fg': '--color-text-primary',
+    '--fg-2': '--color-text-secondary',
+    '--muted': '--color-text-tertiary',
+    '--border': '--color-border-primary',
+    '--border-strong': '--color-border-secondary',
+    '--accent': '--color-background-inverse',
+    '--accent-hover': '--color-background-inverse',
+    '--accent-fg': '--color-text-inverse',
+    '--accent-soft': '--color-background-tertiary',
+    '--danger': '--color-text-danger',
+    '--ok': '--color-text-success',
+    '--sans': '--font-sans',
+    '--mono': '--font-mono',
+  };
   let hostFontStyleEl = null;
   function adoptHostStyles() {
     const styles = host && host.styles;
     if (!styles || typeof styles !== 'object') return;
     const v = styles.variables && typeof styles.variables === 'object' ? styles.variables : {};
     const root = document.documentElement.style;
-    if (v['--font-sans']) root.setProperty('--sans', v['--font-sans']);
-    if (v['--font-serif']) root.setProperty('--serif', v['--font-serif']);
+    for (const [ours, theirs] of Object.entries(HOST_VAR_MAP)) {
+      if (typeof v[theirs] === 'string' && v[theirs]) root.setProperty(ours, v[theirs]);
+    }
     const fonts = styles.css && typeof styles.css.fonts === 'string' ? styles.css.fonts : '';
     if (fonts) {
       if (!hostFontStyleEl) { hostFontStyleEl = document.createElement('style'); document.head.appendChild(hostFontStyleEl); }
@@ -348,6 +376,34 @@
   const cards = {};
   const app = document.getElementById('app');
 
+  // ---------- display mode (inline ⇄ fullscreen) ----------
+  // Big diagrams / diffs / prototypes can take over the host window via
+  // ui/request-display-mode, then snap back. We only offer it when the host
+  // advertises 'fullscreen' (or stays silent about its modes).
+  let displayMode = 'inline';
+  let fsBtn = null;
+  function fullscreenOffered() {
+    const modes = host && Array.isArray(host.availableDisplayModes) ? host.availableDisplayModes : null;
+    return modes ? modes.includes('fullscreen') : true;
+  }
+  function syncFsBtn() {
+    if (!fsBtn) return;
+    const full = displayMode === 'fullscreen';
+    fsBtn.textContent = full ? '⤡' : '⤢';
+    fsBtn.title = full ? 'Exit full screen' : 'Full screen';
+    fsBtn.setAttribute('aria-label', fsBtn.title);
+  }
+  async function toggleFullscreen() {
+    const target = displayMode === 'fullscreen' ? 'inline' : 'fullscreen';
+    try {
+      const res = await request('ui/request-display-mode', { mode: target });
+      const m = res && res.mode;
+      if (m === 'inline' || m === 'fullscreen' || m === 'pip') displayMode = m;
+    } catch { /* host declined / unsupported — leave mode as-is */ }
+    syncFsBtn();
+    reportSize();
+  }
+
   function seedDefaults() {
     for (const q of QS) if (q.default !== undefined) state.answers[q.id] = q.default;
   }
@@ -527,7 +583,14 @@
   // ======================================================================
   function render() {
     app.replaceChildren();
-    app.append(el('header', { class: 'qb-header' }, el('h1', {}, spec.title)));
+    const header = el('header', { class: 'qb-header' }, el('h1', {}, spec.title));
+    if (fullscreenOffered()) {
+      fsBtn = el('button', { class: 'mcp-fs', type: 'button' });
+      fsBtn.addEventListener('click', toggleFullscreen);
+      syncFsBtn();
+      header.append(fsBtn);
+    }
+    app.append(header);
     if (spec.intro) {
       const md = window.RelayBlocks && RelayBlocks.renderMarkdown;
       app.append(md
@@ -695,6 +758,10 @@
     if (p && typeof p === 'object') {
       if ('theme' in p) host.theme = p.theme;
       if ('styles' in p) host.styles = p.styles;
+      if (p.displayMode === 'inline' || p.displayMode === 'fullscreen' || p.displayMode === 'pip') {
+        displayMode = p.displayMode;
+        syncFsBtn();
+      }
       adoptHostStyles();
       applyTheme();
     }
@@ -717,6 +784,7 @@
     } catch {
       host = {};
     }
+    if (host.displayMode === 'fullscreen' || host.displayMode === 'pip') displayMode = host.displayMode;
     notify('ui/notifications/initialized', {});
     adoptHostStyles();
     applyTheme();

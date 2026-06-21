@@ -65,10 +65,12 @@ results), so partial input is never lost.
 ## Inline mode — relay as an MCP App (Claude & Codex apps)
 
 Everything above is the **CLI** surface (you run `rly` in a terminal and read
-JSON from stdout). relay is **also** an MCP App: when the host registers
+JSON from stdout). relay is **also** an MCP App (SEP-1865): when a host registers
 `rly mcp` (see `rly mcp config` / `rly mcp install --target claude|codex`), you
 get two tools that render the board **inline in the conversation** instead of a
-browser tab — on Claude desktop **and mobile**, and Codex:
+browser tab. `rly mcp` speaks the MCP **stdio** transport, so it pairs with a
+**local desktop** host — Claude Desktop and Codex today (web/mobile hosts reach a
+server over HTTP, not stdio):
 
 - **`relay_ask`** — collect decisions/feedback with real form controls.
 - **`relay_show`** — present a plan, diagram, diff, table, or prototype.
@@ -76,11 +78,20 @@ browser tab — on Claude desktop **and mobile**, and Codex:
 Both take **the exact same board spec** documented below (the tool `inputSchema`
 *is* this spec). Call the tool with your spec; the host shows the board, the user
 fills it in, and their answers come back to you (answers, per-question notes,
-comment) — read them just as you would the CLI's result JSON. There is no
-`--detach`/`rly wait` dance and no stdout parsing in this mode; the host delivers
-the submission. File-backed blocks (local images, `codeFile`, local `video`) and
-element-level annotations are CLI-board features — the inline board covers
-questions plus markdown/code/diff/table/chart/mermaid/graphviz/image/html.
+comment) — read them just as you would the CLI's result JSON. There is **no
+`--detach`/`rly wait` dance, no stdout parsing, and no timeout** in this mode; the
+board stays live until the user submits and the host delivers the result.
+
+**Near-full parity with the browser board.** Local `codeFile` / `htmlFile` /
+`diffFile` and local **image** files work inline too — the server inlines them
+(images as data URIs) while normalizing your spec, so the sandboxed board needs
+no file access. The board also adopts the host's **theme, fonts and colors** and
+offers a **full-screen** toggle. The only inline-mode gaps vs. the browser board:
+**local video files** (use a YouTube/Vimeo/`https` URL instead — those play) and
+**element-level annotations** (comment-on-any-element) — per-question notes and
+the overall comment still carry feedback back to you. Everything else —
+questions plus markdown/code/diff/table/chart/mermaid/graphviz/plantuml/image/html
+— renders identically.
 
 ## Creating boards
 

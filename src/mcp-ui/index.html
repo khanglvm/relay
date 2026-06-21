@@ -18,6 +18,10 @@ body{ margin:0; }
 .mcp-done .mark{ font-size:34px; color:var(--accent,#c2674b); }
 .mcp-done h2{ margin:6px 0 4px; }
 .mcp-done p{ color:var(--muted,#8a8580); margin:0; }
+/* header carries the full-screen toggle next to the title */
+.qb-header{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.mcp-fs{ flex:none; margin-top:2px; border:1px solid var(--border,#e0dcd5); background:var(--card,#fff); color:var(--fg-2,#57534e); border-radius:8px; padding:6px 9px; cursor:pointer; font-size:15px; line-height:1; transition:background .15s var(--ease,ease); }
+.mcp-fs:hover{ background:var(--bg-sunken,#f6f4f0); color:var(--fg,#1c1b19); }
 </style>
 </head>
 <body>
