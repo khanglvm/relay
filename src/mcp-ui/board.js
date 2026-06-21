@@ -160,16 +160,21 @@
   }
 
   let sizeTimer = null;
+  function measureHeight() {
+    return Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0);
+  }
+  function sendSize() {
+    notify('ui/notifications/size-changed', { width: document.documentElement.scrollWidth, height: measureHeight() });
+  }
   function reportSize() {
     if (sizeTimer) return;
-    sizeTimer = setTimeout(() => {
-      sizeTimer = null;
-      const height = Math.max(
-        document.documentElement.scrollHeight,
-        document.body ? document.body.scrollHeight : 0
-      );
-      notify('ui/notifications/size-changed', { width: document.documentElement.scrollWidth, height });
-    }, 60);
+    sizeTimer = setTimeout(() => { sizeTimer = null; sendSize(); }, 60);
+  }
+  // Immediate, un-debounced report — used when the board shrinks (e.g. after
+  // submit) so the host collapses the iframe right away instead of waiting.
+  function reportSizeNow() {
+    if (sizeTimer) { clearTimeout(sizeTimer); sizeTimer = null; }
+    sendSize();
   }
   window.addEventListener('resize', reportSize);
   if (typeof ResizeObserver !== 'undefined') {
@@ -376,31 +381,14 @@
   const cards = {};
   const app = document.getElementById('app');
 
-  // ---------- display mode (inline ⇄ fullscreen) ----------
-  // Big diagrams / diffs / prototypes can take over the host window via
-  // ui/request-display-mode, then snap back. We only offer it when the host
-  // advertises 'fullscreen' (or stays silent about its modes).
+  // ---------- display mode (host-driven) ----------
+  // GUI hosts (Claude, Codex) render their OWN full-screen control, so relay
+  // adds no redundant button. We still declare fullscreen support in
+  // ui/initialize and react to the host's mode change: in fullscreen the iframe
+  // fills the window, so we center the content to a readable column.
   let displayMode = 'inline';
-  let fsBtn = null;
-  function fullscreenOffered() {
-    const modes = host && Array.isArray(host.availableDisplayModes) ? host.availableDisplayModes : null;
-    return modes ? modes.includes('fullscreen') : true;
-  }
-  function syncFsBtn() {
-    if (!fsBtn) return;
-    const full = displayMode === 'fullscreen';
-    fsBtn.textContent = full ? '⤡' : '⤢';
-    fsBtn.title = full ? 'Exit full screen' : 'Full screen';
-    fsBtn.setAttribute('aria-label', fsBtn.title);
-  }
-  async function toggleFullscreen() {
-    const target = displayMode === 'fullscreen' ? 'inline' : 'fullscreen';
-    try {
-      const res = await request('ui/request-display-mode', { mode: target });
-      const m = res && res.mode;
-      if (m === 'inline' || m === 'fullscreen' || m === 'pip') displayMode = m;
-    } catch { /* host declined / unsupported — leave mode as-is */ }
-    syncFsBtn();
+  function applyDisplayMode() {
+    document.documentElement.classList.toggle('mcp-fullscreen', displayMode === 'fullscreen');
     reportSize();
   }
 
@@ -583,14 +571,7 @@
   // ======================================================================
   function render() {
     app.replaceChildren();
-    const header = el('header', { class: 'qb-header' }, el('h1', {}, spec.title));
-    if (fullscreenOffered()) {
-      fsBtn = el('button', { class: 'mcp-fs', type: 'button' });
-      fsBtn.addEventListener('click', toggleFullscreen);
-      syncFsBtn();
-      header.append(fsBtn);
-    }
-    app.append(header);
+    app.append(el('header', { class: 'qb-header' }, el('h1', {}, spec.title)));
     if (spec.intro) {
       const md = window.RelayBlocks && RelayBlocks.renderMarkdown;
       app.append(md
@@ -705,13 +686,20 @@
   }
 
   function showDone(delivered) {
+    // Collapse: leave fullscreen, drop the whole form for a one-line confirmation
+    // so the host shrinks the iframe to a small footprint in the transcript.
+    document.documentElement.classList.remove('mcp-fullscreen');
     app.replaceChildren(el('div', { class: 'mcp-done' },
-      el('div', { class: 'mark' }, '✓'),
-      el('h2', {}, QS.length ? 'Submitted' : 'Acknowledged'),
-      el('p', {}, delivered
-        ? 'Your answers were sent back to the agent.'
-        : 'Saved — tell the agent you’ve responded so it can continue.')));
-    reportSize();
+      el('span', { class: 'mark' }, '✓'),
+      el('span', { class: 'lead' }, QS.length ? 'Submitted' : 'Acknowledged'),
+      el('span', { class: 'sub' }, delivered
+        ? '· sent back to the agent'
+        : '· tell the agent you’ve responded')));
+    // Report the small height immediately, then again next frame / after layout
+    // settles — beats hosts that only grow on debounced size events.
+    reportSizeNow();
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(reportSizeNow);
+    setTimeout(reportSizeNow, 150);
   }
 
   // ======================================================================
@@ -736,6 +724,7 @@
     setStatus('Preparing…');
     try { await preloadVendors(spec); } catch { /* render anyway; blocks degrade individually */ }
     render();
+    applyDisplayMode();
   }
 
   // The spec can arrive as the tool RESULT (preferred — server-normalized) or,
@@ -760,7 +749,7 @@
       if ('styles' in p) host.styles = p.styles;
       if (p.displayMode === 'inline' || p.displayMode === 'fullscreen' || p.displayMode === 'pip') {
         displayMode = p.displayMode;
-        syncFsBtn();
+        applyDisplayMode();
       }
       adoptHostStyles();
       applyTheme();

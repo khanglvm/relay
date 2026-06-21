@@ -14,14 +14,13 @@ html,body{ background:transparent; }
 body{ margin:0; }
 .wrap{ max-width:none; margin:0; padding:14px 16px 18px; }
 .mcp-status{ font:13px/1.5 var(--sans, -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif); color:var(--muted,#8a8580); padding:18px 16px; }
-.mcp-done{ text-align:center; padding:34px 16px; }
-.mcp-done .mark{ font-size:34px; color:var(--accent,#c2674b); }
-.mcp-done h2{ margin:6px 0 4px; }
-.mcp-done p{ color:var(--muted,#8a8580); margin:0; }
-/* header carries the full-screen toggle next to the title */
-.qb-header{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
-.mcp-fs{ flex:none; margin-top:2px; border:1px solid var(--border,#e0dcd5); background:var(--card,#fff); color:var(--fg-2,#57534e); border-radius:8px; padding:6px 9px; cursor:pointer; font-size:15px; line-height:1; transition:background .15s var(--ease,ease); }
-.mcp-fs:hover{ background:var(--bg-sunken,#f6f4f0); color:var(--fg,#1c1b19); }
+/* post-submit: a slim one-line confirmation so the iframe collapses small */
+.mcp-done{ display:flex; align-items:center; gap:8px; padding:11px 16px; font:14px/1.4 var(--sans, -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif); color:var(--fg,#1c1b19); }
+.mcp-done .mark{ font-size:15px; font-weight:700; color:var(--ok,#4d8a66); }
+.mcp-done .lead{ font-weight:600; }
+.mcp-done .sub{ color:var(--muted,#8a8580); }
+/* in fullscreen the host fills the window — keep text to a readable column */
+.mcp-fullscreen .wrap{ max-width:760px; margin:0 auto; }
 </style>
 </head>
 <body>
