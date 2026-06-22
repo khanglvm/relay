@@ -1,0 +1,42 @@
+{
+  "title": "Brand color direction",
+  "intro": "Pick a direction from the curated palettes, then choose the exact accent.",
+  "blocks": [
+    {
+      "type": "palette",
+      "title": "Candidate palettes — hover a swatch for its hex, click to copy",
+      "palettes": [
+        { "name": "Coastal Calm", "sub": "ocean, serene", "tag": "Cool", "tagTone": "cool", "featured": true,
+          "colors": ["#3B8EA5", "#6DBAD1", "#1E6278", "#A8DDE9", "#D6EEF5"] },
+        { "name": "Peach Fuzz", "mood": "warm, optimistic", "tag": "Warm", "tagTone": "warm",
+          "colors": ["#F2A07B", "#E8795A", "#C4543C", "#FBCFB8"] },
+        { "name": "Muted Sage", "mood": "earthy, wellness", "tag": "Nature", "tagTone": "nature",
+          "colors": ["#8DB87E", "#5D9252", "#3A6B34", "#BDD9B3"] }
+      ]
+    },
+    { "type": "palette", "name": "Current brand", "colors": ["#c2674b", "#1c1b19", "#fcfbf9"] }
+  ],
+  "questions": [
+    {
+      "id": "direction",
+      "type": "single",
+      "label": "Which palette direction?",
+      "required": true,
+      "options": [
+        { "value": "coastal", "label": "Coastal Calm" },
+        { "value": "peach", "label": "Peach Fuzz" },
+        { "value": "sage", "label": "Muted Sage" },
+        { "value": "keep", "label": "Keep current brand" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "color",
+      "label": "Exact accent color",
+      "description": "Use the picker or paste a hex; presets are the featured palette.",
+      "presets": ["#3B8EA5", "#E8795A", "#5D9252", "#c2674b"],
+      "default": "#3B8EA5"
+    }
+  ],
+  "submitLabel": "Lock the palette"
+}

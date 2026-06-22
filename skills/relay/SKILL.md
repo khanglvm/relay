@@ -104,8 +104,9 @@ answers and any annotations written so far.
 }
 ```
 
-Types: `single`, `multi`, `yesno`, `text`, `textarea`, `scale`. Users may
-submit with unanswered questions (returned in `skipped`) unless
+Types: `single`, `multi`, `yesno`, `text`, `textarea`, `scale`, `color`
+(native picker + hex; optional `"presets":["#…"]`, returns a hex string). Users
+may submit with unanswered questions (returned in `skipped`) unless
 `"allowPartial": false` or per-question `"required": true`.
 
 Set `"note": true` on a question to add a small optional free-text field under
@@ -155,6 +156,8 @@ single/multi question.
 //   screen + zoom (⌘/Ctrl+wheel or −/+, up to 8× native) + drag-to-pan viewer,
 //   so detail is always reachable regardless of height. Local images embed up
 //   to 8 MB; for a huge/high-detail image pass an http(s) URL (streamed, no cap).
+{ "type": "palette",  "palettes": [{ "name":"Brand", "colors":["#3B8EA5","#6DBAD1","#1E6278"], "featured": true }] }
+// ^ color palettes as swatch cards: hover=hex, click=copy. Shorthand {"type":"palette","colors":[…]}; pair with a `color` question.
 ```
 
 ### Visual options — show each choice, don't describe it
