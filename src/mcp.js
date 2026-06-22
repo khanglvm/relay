@@ -16,6 +16,8 @@
 // everything else goes to stderr.
 import fs from 'node:fs';
 import path from 'node:path';
+import http from 'node:http';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { normalizeSpec, SPEC_SCHEMA } from './spec.js';
 import { CliError } from './util.js';
@@ -33,6 +35,7 @@ const BOARD_URI = 'ui://relay/board';
 const VENDOR_PREFIX = 'ui://relay/vendor/';
 // Echoed back to the client when it doesn't pin a version we recognize.
 const DEFAULT_PROTOCOL = '2025-06-18';
+const DEFAULT_HTTP_PORT = 4319;
 
 const escapeHtml = (s) =>
   String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -282,12 +285,152 @@ export function runMcp() {
   });
 }
 
+// ---------- Streamable HTTP transport ----------
+// `rly mcp --http` serves the SAME server over MCP's Streamable HTTP transport
+// instead of stdio, so a host that connects over the network (Claude web/mobile,
+// a remote/custom connector) can render relay boards — not just a local desktop
+// host. relay is stateless (each tools/call is self-contained and the board
+// state lives in the iframe), so every POST is routed through buildResult and
+// answered with a single application/json response; we never need SSE.
+//
+//   • POST <endpoint>  — one JSON-RPC request → one JSON response; a
+//                        notification/response → 202 Accepted.
+//   • GET  <endpoint>  — 405 (we open no server→client stream).
+//   • DELETE           — 200 (no session state to drop).
+//   • OPTIONS          — CORS preflight (never auth-gated).
+//
+// Security per the transport spec: bind to localhost by default, validate the
+// Origin header (localhost only unless --allow-origin opts in), and support an
+// optional bearer token for an exposed endpoint.
+const HTTP_PATH = '/mcp';
+const MAX_BODY = 16 * 1024 * 1024;
+
+function corsHeaders(origin) {
+  return {
+    'access-control-allow-origin': origin || '*',
+    'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS',
+    'access-control-allow-headers': 'content-type, authorization, mcp-session-id, mcp-protocol-version, last-event-id',
+    'access-control-expose-headers': 'Mcp-Session-Id',
+    'access-control-max-age': '86400',
+    vary: 'Origin',
+  };
+}
+
+function originAllowed(origin, allowOrigin) {
+  if (!origin) return true; // non-browser client sends no Origin
+  if (allowOrigin === '*') return true;
+  if (allowOrigin && origin === allowOrigin) return true;
+  try {
+    const h = new URL(origin).hostname;
+    return h === 'localhost' || h === '127.0.0.1' || h === '::1';
+  } catch {
+    return false;
+  }
+}
+
+function safeEqual(a, b) {
+  const A = Buffer.from(String(a));
+  const B = Buffer.from(String(b));
+  if (A.length !== B.length) return false;
+  try { return crypto.timingSafeEqual(A, B); } catch { return false; }
+}
+
+function healthPage(endpoint) {
+  return (
+    '<!doctype html><meta charset="utf-8"><title>relay MCP</title>' +
+    '<style>body{font:15px/1.6 -apple-system,system-ui,sans-serif;max-width:640px;margin:14vh auto;padding:0 20px;color:#1c1b19;background:#fcfbf9}' +
+    'code{background:#f1efe8;padding:2px 6px;border-radius:5px;font-size:13px}h1{color:#c2674b;font-size:20px}</style>' +
+    '<h1>relay · MCP Apps server</h1>' +
+    '<p>This is relay running over the <b>Streamable HTTP</b> MCP transport. Point an MCP host at the endpoint below and call <code>relay_ask</code> / <code>relay_show</code>.</p>' +
+    '<p>MCP endpoint: <code>' + escapeHtml(endpoint) + '</code></p>' +
+    '<p>It speaks JSON-RPC over HTTP POST — open it in a browser and you get this page; an MCP client gets the protocol.</p>'
+  );
+}
+
+export function runMcpHttp({ port = DEFAULT_HTTP_PORT, host = '127.0.0.1', token = '', allowOrigin = '' } = {}) {
+  const requireAuth = Boolean(token);
+  const server = http.createServer((req, res) => {
+    const origin = req.headers.origin || '';
+    const url = (req.url || '/').split('?')[0];
+    const base = corsHeaders(origin);
+
+    if (req.method === 'OPTIONS') {
+      if (!originAllowed(origin, allowOrigin)) { res.writeHead(403); return res.end(); }
+      res.writeHead(204, base); return res.end();
+    }
+    // Health page only at GET / — POST / is still accepted as the MCP endpoint.
+    if (req.method === 'GET' && url === '/') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end(healthPage(`http://${host === '0.0.0.0' ? 'localhost' : host}:${port}${HTTP_PATH}`));
+    }
+    if (url !== HTTP_PATH && url !== '/') { res.writeHead(404, base); return res.end('not found'); }
+    if (!originAllowed(origin, allowOrigin)) { res.writeHead(403, base); return res.end('origin not allowed'); }
+    if (req.method === 'GET') { res.writeHead(405, { ...base, allow: 'POST, DELETE, OPTIONS' }); return res.end(); }
+    if (req.method === 'DELETE') { res.writeHead(200, { ...base, 'content-type': 'application/json' }); return res.end('{}'); }
+    if (req.method !== 'POST') { res.writeHead(405, { ...base, allow: 'POST, DELETE, OPTIONS' }); return res.end(); }
+    if (requireAuth) {
+      const auth = req.headers.authorization || '';
+      if (!(auth.startsWith('Bearer ') && safeEqual(auth.slice(7), token))) {
+        res.writeHead(401, { ...base, 'www-authenticate': 'Bearer' }); return res.end('unauthorized');
+      }
+    }
+
+    let body = '';
+    let aborted = false;
+    req.on('data', (c) => { body += c; if (body.length > MAX_BODY) { aborted = true; req.destroy(); } });
+    req.on('end', () => {
+      if (aborted) { res.writeHead(413, base); return res.end(); }
+      let msg;
+      try { msg = JSON.parse(body); } catch {
+        res.writeHead(400, { ...base, 'content-type': 'application/json' });
+        return res.end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } }));
+      }
+      const list = Array.isArray(msg) ? msg : [msg];
+      const responses = [];
+      let isInit = false;
+      for (const m of list) {
+        if (!m || typeof m !== 'object' || typeof m.method !== 'string') continue;
+        if (m.method === 'initialize') isInit = true;
+        const isRequest = m.id !== undefined && m.id !== null;
+        try {
+          const result = buildResult(m.method, m.params || {});
+          if (isRequest) responses.push({ jsonrpc: '2.0', id: m.id, result });
+        } catch (err) {
+          if (isRequest) responses.push({ jsonrpc: '2.0', id: m.id, error: { code: err.code || -32603, message: err.message || String(err) } });
+        }
+      }
+      if (!responses.length) { res.writeHead(202, base); return res.end(); } // notifications/responses only
+      const headers = { ...base, 'content-type': 'application/json; charset=utf-8' };
+      if (isInit) headers['mcp-session-id'] = crypto.randomUUID();
+      res.writeHead(200, headers);
+      res.end(JSON.stringify(Array.isArray(msg) ? responses : responses[0]));
+    });
+    req.on('error', () => { try { res.writeHead(400, base); res.end(); } catch { /* already gone */ } });
+  });
+
+  return new Promise((resolve) => {
+    server.on('error', (e) => { process.stderr.write('relay mcp http error: ' + ((e && e.message) || e) + '\n'); resolve(1); });
+    server.listen(port, host, () => {
+      const shown = host === '0.0.0.0' ? 'localhost' : host;
+      process.stderr.write(`relay MCP (Streamable HTTP) listening on http://${shown}:${port}${HTTP_PATH}\n`);
+      if (!requireAuth && host !== '127.0.0.1' && host !== 'localhost') {
+        process.stderr.write('  warning: bound to a non-local interface with no --token — anyone who can reach this port can drive relay.\n');
+      }
+    });
+    const stop = () => { try { server.close(); } catch { /* noop */ } resolve(0); };
+    process.on('SIGINT', stop);
+    process.on('SIGTERM', stop);
+  });
+}
+
 // The setup snippet printed by `rly mcp config` / `rly mcp install --print`.
 // Returns { json, toml, paths } so the CLI can present per-host instructions.
-export function mcpConfig({ command = 'rly' } = {}) {
+export function mcpConfig({ command = 'rly', httpPort = DEFAULT_HTTP_PORT } = {}) {
   return {
     command,
     args: ['mcp'],
+    httpPort,
+    httpUrl: `http://127.0.0.1:${httpPort}${HTTP_PATH}`,
     // Claude Desktop / generic MCP JSON config (claude_desktop_config.json,
     // .mcp.json, VS Code mcp.json, …).
     json: {
@@ -297,5 +440,12 @@ export function mcpConfig({ command = 'rly' } = {}) {
     },
     // Codex CLI (~/.codex/config.toml).
     toml: `[mcp_servers.relay]\ncommand = "${command}"\nargs = ["mcp"]\n`,
+    // Remote / web+mobile hosts (Claude web/mobile custom connector, etc.):
+    // run `rly mcp --http` somewhere reachable and register the URL.
+    http: {
+      run: `${command} mcp --http --port ${httpPort}`,
+      url: `http://127.0.0.1:${httpPort}${HTTP_PATH}`,
+      note: 'For web/mobile, expose this URL (e.g. a cloudflared/ngrok tunnel) and add it as a custom connector. Use --token <secret> + --allow-origin <host> when exposing it publicly.',
+    },
   };
 }

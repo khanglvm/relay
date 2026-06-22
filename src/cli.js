@@ -18,7 +18,7 @@ import {
   HOME,
 } from './store.js';
 import { runBoard } from './server.js';
-import { runMcp, mcpConfig } from './mcp.js';
+import { runMcp, runMcpHttp, mcpConfig } from './mcp.js';
 import { openUrl } from './open.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -32,6 +32,7 @@ const VALUED_FLAGS = new Set([
   'file', 'html', 'html-file', 'title', 'intro', 'timeout', 'port',
   'submit-label', 'height', 'limit', 'target', 'id', 'replies',
   'on-result', 'notify-cmd', 'idle-grace', 'scope',
+  'host', 'token', 'allow-origin',
 ]);
 
 function camel(key) {
@@ -1183,7 +1184,8 @@ async function cmdUpgrade(args) {
 }
 
 // `rly mcp` — run relay as an MCP App server, or print/write the host config.
-//   rly mcp                      serve over stdio (what a host launches)
+//   rly mcp                      serve over stdio (what a local desktop host launches)
+//   rly mcp --http [--port N]    serve over Streamable HTTP (web/mobile/remote hosts)
 //   rly mcp config [--print]     show setup for Claude / Codex / generic hosts
 //   rly mcp install --target claude|codex   write it into that host's config
 async function cmdMcp(rest) {
@@ -1191,8 +1193,17 @@ async function cmdMcp(rest) {
   if (sub === 'config' || sub === 'setup' || sub === 'install' || sub === 'add') {
     return cmdMcpConfig(parseArgs(rest.slice(1)), sub);
   }
-  // Default: be the server. main() never resolves this, so the CLI's post-run
-  // exit timer never arms — the server lives until stdin closes.
+  const args = parseArgs(rest);
+  if (args.http) {
+    return runMcpHttp({
+      port: args.port ? Number(args.port) : (process.env.RLY_MCP_PORT ? Number(process.env.RLY_MCP_PORT) : undefined),
+      host: typeof args.host === 'string' ? args.host : '127.0.0.1',
+      token: typeof args.token === 'string' ? args.token : (process.env.RLY_MCP_TOKEN || ''),
+      allowOrigin: typeof args.allowOrigin === 'string' ? args.allowOrigin : '',
+    });
+  }
+  // Default: be the stdio server. main() never resolves this, so the CLI's
+  // post-run exit timer never arms — the server lives until stdin closes.
   return runMcp();
 }
 
@@ -1219,6 +1230,7 @@ function cmdMcpConfig(args, sub) {
       claudeDesktop: { file: claudePath, add: cfg.json },
       codex: { file: codexPath, add: cfg.toml },
       generic: { add: cfg.json },
+      webMobile: cfg.http,
       install: 'rly mcp install --target claude   |   rly mcp install --target codex',
     });
     return 0;
@@ -1309,7 +1321,9 @@ USAGE
   rly upgrade                         install the latest CLI globally + refresh the skill in one step
                                       --stop/--force handle running boards · --dry-run · --cli-only/--skill-only
   rly mcp                             run relay as an MCP App server (stdio) — boards render INLINE in
-                                      Claude (desktop/mobile) & Codex instead of a browser tab
+                                      a local desktop host (Claude Desktop, Codex) instead of a browser tab
+  rly mcp --http [--port N]           serve over Streamable HTTP for web/mobile/remote hosts
+                                      [--host H --token SECRET --allow-origin ORIGIN]
   rly mcp config | install --target   print host setup, or write it (claude | codex)
 
 COMMON FLAGS

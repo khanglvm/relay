@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -1212,6 +1213,44 @@ console.log('27. mcp config + install');
   ok(/already present/.test(JSON.parse(again.stdout).note), 'a second install is idempotent (left as-is)');
   const badTarget = await run(['mcp', 'install', '--target', 'nope']);
   ok(badTarget.code === 4, 'mcp install --target <unknown> → exit 4');
+}
+
+// ---------- 28. MCP App server over Streamable HTTP ----------
+console.log('28. mcp app server (streamable http)');
+{
+  const port = 47193;
+  const child = spawn(process.execPath, [BIN, 'mcp', '--http', '--port', String(port), '--token', 'tkn'], { env: ENV });
+  let serr = '';
+  child.stderr.on('data', (d) => (serr += d));
+  await new Promise((resolve, reject) => {
+    const t = setInterval(() => { if (/listening on/.test(serr)) { clearInterval(t); resolve(); } }, 40);
+    setTimeout(() => { clearInterval(t); reject(new Error('http server did not start: ' + serr)); }, 5000);
+  });
+  const httpRpc = (msg, headers = {}) => new Promise((resolve, reject) => {
+    const data = JSON.stringify(msg);
+    const req = http.request(
+      { host: '127.0.0.1', port, path: '/mcp', method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(data), ...headers } },
+      (r) => { let b = ''; r.on('data', (c) => (b += c)); r.on('end', () => resolve({ status: r.statusCode, headers: r.headers, body: b })); }
+    );
+    req.on('error', reject); req.write(data); req.end();
+  });
+  const noauth = await httpRpc({ jsonrpc: '2.0', id: 1, method: 'ping' });
+  ok(noauth.status === 401, 'http: request without the bearer token → 401');
+  const init = await httpRpc({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {} } }, { authorization: 'Bearer tkn' });
+  ok(init.status === 200 && JSON.parse(init.body).result.serverInfo.name === 'relay', 'http: initialize returns serverInfo');
+  ok(typeof init.headers['mcp-session-id'] === 'string' && init.headers['mcp-session-id'].length > 0, 'http: initialize sets an Mcp-Session-Id header');
+  ok(init.headers['access-control-allow-origin'] !== undefined, 'http: responses carry CORS headers (web hosts can fetch)');
+  const tl = await httpRpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, { authorization: 'Bearer tkn' });
+  ok(JSON.parse(tl.body).result.tools.map((t) => t.name).includes('relay_ask'), 'http: tools/list exposes relay_ask');
+  const rd = await httpRpc({ jsonrpc: '2.0', id: 3, method: 'resources/read', params: { uri: 'ui://relay/board' } }, { authorization: 'Bearer tkn' });
+  ok(JSON.parse(rd.body).result.contents[0].mimeType === 'text/html;profile=mcp-app', 'http: resources/read returns the board html');
+  const call = await httpRpc({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'relay_ask', arguments: { questions: [{ id: 'c', type: 'color', label: 'pick' }] } } }, { authorization: 'Bearer tkn' });
+  ok(JSON.parse(call.body).result.structuredContent.spec.questions[0].type === 'color', 'http: tools/call normalizes + returns the spec');
+  const evil = await httpRpc({ jsonrpc: '2.0', id: 5, method: 'ping' }, { authorization: 'Bearer tkn', origin: 'https://evil.example' });
+  ok(evil.status === 403, 'http: a non-localhost Origin is rejected → 403 (DNS-rebind guard)');
+  const note = await httpRpc({ jsonrpc: '2.0', method: 'notifications/initialized' }, { authorization: 'Bearer tkn' });
+  ok(note.status === 202, 'http: a notification → 202 Accepted (no body)');
+  child.kill();
 }
 
 console.log(`\nAll ${passed} assertions passed. (storage: ${HOME})`);
