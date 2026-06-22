@@ -138,6 +138,9 @@ npm test     # zero-dep smoke tests (spawns real servers, fake-submits)
   copies); mark one `featured` for a spotlight. **`color` question type** — native
   picker + hex field + optional `presets`, returns a hex string. Both work on the
   browser board and inline.
+- **Element annotations inline** — comment on chart points, diagram nodes, table
+  cells, images and text selections in the MCP board too, returned in
+  `annotations` exactly like the CLI board.
 
 ### 0.10.0 — open files, richer code, diffs & video
 - **Clickable local file-links.** Write a path in any markdown (`~/clip.mp4`,

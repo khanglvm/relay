@@ -97,13 +97,15 @@ board stays live until the user submits and the host delivers the result.
 **Near-full parity with the browser board.** Local `codeFile` / `htmlFile` /
 `diffFile` and local **image** files work inline too — the server inlines them
 (images as data URIs) while normalizing your spec, so the sandboxed board needs
-no file access. The board also adopts the host's **theme, fonts and colors** and
-offers a **full-screen** toggle. The only inline-mode gaps vs. the browser board:
-**local video files** (use a YouTube/Vimeo/`https` URL instead — those play) and
-**element-level annotations** (comment-on-any-element) — per-question notes and
-the overall comment still carry feedback back to you. Everything else —
-questions plus markdown/code/diff/table/chart/mermaid/graphviz/plantuml/image/html
-— renders identically.
+no file access. **Element-level annotations work inline** — the user can comment
+on chart points, diagram nodes, table cells, images and text selections, returned
+in `annotations` just like the CLI. The board also adopts the host's **theme,
+fonts and colors** and uses the host's **full-screen** control. The only
+inline-mode gaps vs. the browser board: **local video files** (use a
+YouTube/Vimeo/`https` URL instead — those play) and commenting on elements
+*inside* a custom-HTML mockup (every other annotation target works). Everything
+else — questions plus markdown/code/diff/table/chart/mermaid/graphviz/plantuml/
+image/palette/html — renders identically.
 
 ## Creating boards
 

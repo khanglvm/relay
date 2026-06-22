@@ -350,7 +350,9 @@
       theme: effectiveTheme,
       htmlSrc: (blockId) => htmlBlobSrc(blockId),
       questionId: questionId == null ? null : questionId,
-      annotate: null,
+      // No annotation during the streaming preview (it re-renders); on the final
+      // interactive render, wire the engine so blocks register their targets.
+      annotate: composing ? null : Annotate,
       edits: state.blockEdits,
       onBlockEdit: (blockId, codeOrNull) => {
         if (codeOrNull === null || codeOrNull === undefined) delete state.blockEdits[blockId];
@@ -379,7 +381,12 @@
   // ======================================================================
   let spec = null;
   let QS = [];
-  const state = { answers: {}, other: {}, notes: {}, comment: '', blockEdits: {} };
+  const state = { answers: {}, other: {}, notes: {}, comment: '', blockEdits: {}, annotations: [] };
+  // Element-level comments: the SAME self-contained annotate engine the browser
+  // board uses (no server — it reports the thread list via onChange). Charts,
+  // diagram nodes, table cells, images and text selections become commentable;
+  // the comments ride back in the submission alongside answers.
+  const Annotate = (window.RelayAnnotate && typeof window.RelayAnnotate.init === 'function') ? window.RelayAnnotate : null;
   let submitted = false;
   const cards = {};
   const app = document.getElementById('app');
@@ -434,7 +441,8 @@
     }
     const skipped = QS.filter((q) => !(q.id in answers)).map((q) => q.id);
     const blockEdits = Object.keys(state.blockEdits).length ? state.blockEdits : null;
-    return { answers, skipped, comment: (state.comment || '').trim(), notes, blockEdits };
+    const annotations = Array.isArray(state.annotations) && state.annotations.length ? state.annotations : null;
+    return { answers, skipped, comment: (state.comment || '').trim(), notes, blockEdits, annotations };
   }
 
   function clearErr(qid) { if (cards[qid]) cards[qid].classList.remove('error'); }
@@ -605,12 +613,17 @@
   // ======================================================================
   function render() {
     app.replaceChildren();
-    app.append(el('header', { class: 'qb-header' }, el('h1', {}, spec.title)));
+    const annotateOn = !composing && Annotate;
+    const titleEl = el('h1', {}, spec.title);
+    app.append(el('header', { class: 'qb-header' }, titleEl));
+    if (annotateOn) Annotate.register(titleEl, { blockId: null, questionId: null, target: { kind: 'html-element', label: spec.title } });
     if (spec.intro) {
       const md = window.RelayBlocks && RelayBlocks.renderMarkdown;
-      app.append(md
+      const introEl = md
         ? el('div', { class: 'intro blk-markdown' }, RelayBlocks.renderMarkdown(spec.intro))
-        : el('p', { class: 'intro' }, spec.intro));
+        : el('p', { class: 'intro' }, spec.intro);
+      app.append(introEl);
+      if (annotateOn) Annotate.enableTextSelection(introEl, { blockId: null, questionId: null });
     }
     renderBlocks(app, spec.blocks || [], null);
 
@@ -694,6 +707,13 @@
       }
     }
     if (data.comment) lines.push('', 'Comment: ' + data.comment);
+    if (data.annotations && data.annotations.length) {
+      lines.push('', 'Inline comments (' + data.annotations.length + '):');
+      for (const a of data.annotations) {
+        const where = (a.target && (a.target.label || a.target.text || a.target.kind)) || a.blockId || 'element';
+        lines.push('- [' + where + ']: ' + a.text);
+      }
+    }
     if (data.blockEdits) lines.push('', 'Edited diagrams: ' + Object.keys(data.blockEdits).join(', '));
     return lines.join('\n');
   }
@@ -712,6 +732,7 @@
       notes: data.notes,
       comment: data.comment,
       blockEdits: data.blockEdits,
+      annotations: data.annotations,
     };
     const text = summarize(data);
     let delivered = false;
@@ -729,6 +750,7 @@
   function showDone(delivered) {
     // Collapse: leave fullscreen, drop the whole form for a one-line confirmation
     // so the host shrinks the iframe to a small footprint in the transcript.
+    if (Annotate) { try { Annotate.teardown(); } catch { /* nothing to tear down */ } }
     document.documentElement.classList.remove('mcp-fullscreen');
     app.replaceChildren(el('div', { class: 'mcp-done' },
       el('span', { class: 'mark' }, '✓'),
@@ -765,6 +787,7 @@
     seedDefaults();
     indexHtmlBlocks(spec);
     setStatus('Preparing…');
+    if (Annotate) Annotate.init({ initial: [], onChange: (a) => { state.annotations = Array.isArray(a) ? a : []; } });
     try { await preloadVendors(spec); } catch { /* render anyway; blocks degrade individually */ }
     render();
     applyDisplayMode();

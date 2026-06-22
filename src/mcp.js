@@ -62,7 +62,9 @@ function buildBoardPage() {
     .split('__TITLE__').join('Relay')
     .split('/*__CSS__*/').join(readAsset(UI_DIR, 'style.css'))
     .split('/*__BLOCKS_CSS__*/').join(readAsset(UI_DIR, 'blocks.css'))
+    .split('/*__ANNOTATE_CSS__*/').join(readAsset(UI_DIR, 'annotate.css'))
     .split('/*__BLOCKS_JS__*/').join(readAsset(UI_DIR, 'blocks.js'))
+    .split('/*__ANNOTATE_JS__*/').join(readAsset(UI_DIR, 'annotate.js'))
     .split('/*__BOARD_JS__*/').join(readAsset(MCP_UI_DIR, 'board.js'))
     .split('__BOOT_JSON__').join(JSON.stringify(boot).replace(/</g, '\\u003c'));
   _cache.set('__page__', page);

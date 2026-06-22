@@ -1193,6 +1193,8 @@ function mcpRoundtrip(messages) {
   const cq = byId[11].result.structuredContent.spec.questions[0];
   ok(cq.type === 'color' && Array.isArray(cq.presets) && cq.presets.length === 2 && cq.default === '#c2674b', 'color question normalizes (type, presets, default)');
   ok(board.text.includes('controlColor'), 'board renderer includes the color picker control');
+  ok(board.text.includes('RelayAnnotate') && board.text.includes('Annotate.init'), 'board bundles + initializes the element-annotation engine');
+  ok(!ask.inputSchema.properties.annotations, 'relay_ask input schema omits result-only "annotations"');
 }
 
 // ---------- 27. rly mcp config / install ----------
