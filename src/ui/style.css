@@ -311,3 +311,14 @@ textarea { min-height: 90px; resize: vertical; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* ---------- color picker question (native input + hex + presets) ---------- */
+.colorpick { display: flex; flex-direction: column; gap: 10px; }
+.colorrow { display: flex; align-items: center; gap: 10px; }
+.colorswatch { width: 48px; height: 38px; padding: 0; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--card); cursor: pointer; }
+.colorswatch::-webkit-color-swatch-wrapper { padding: 3px; }
+.colorswatch::-webkit-color-swatch { border: 0; border-radius: 7px; }
+.colorhex { width: 150px; font-family: var(--mono, ui-monospace, "SF Mono", monospace); text-transform: lowercase; }
+.colorpresets { display: flex; flex-wrap: wrap; gap: 8px; }
+.colorpreset { width: 26px; height: 26px; border-radius: 7px; border: 1px solid rgba(0,0,0,.14); cursor: pointer; padding: 0; transition: transform .12s var(--ease); }
+.colorpreset:hover { transform: scale(1.12); }

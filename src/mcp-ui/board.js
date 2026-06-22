@@ -238,6 +238,9 @@
         q.minLabel = typeof rq.minLabel === 'string' ? rq.minLabel : '';
         q.maxLabel = typeof rq.maxLabel === 'string' ? rq.maxLabel : '';
       }
+      if (type === 'color' && Array.isArray(rq.presets)) {
+        q.presets = rq.presets.map((c) => String(c)).filter(Boolean);
+      }
       if (rq.default !== undefined) q.default = rq.default;
       spec.questions.push(q);
     });
@@ -566,6 +569,37 @@
     return input;
   }
 
+  function toHex6(c) {
+    const s = String(c || '').trim();
+    let m = /^#?([0-9a-fA-F]{6})$/.exec(s);
+    if (m) return '#' + m[1].toLowerCase();
+    m = /^#?([0-9a-fA-F]{3})$/.exec(s);
+    if (m) return '#' + m[1].split('').map((x) => x + x).join('').toLowerCase();
+    return '#000000';
+  }
+  function controlColor(q) {
+    const wrap = el('div', { class: 'colorpick' });
+    const init = (typeof state.answers[q.id] === 'string' && state.answers[q.id]) || (typeof q.default === 'string' ? q.default : '');
+    const swatch = el('input', { type: 'color', class: 'colorswatch' });
+    const hex = el('input', { type: 'text', class: 'colorhex', placeholder: q.placeholder || '#rrggbb', spellcheck: 'false', autocapitalize: 'off' });
+    swatch.value = toHex6(init || '#888888');
+    if (init) { hex.value = init; state.answers[q.id] = init; }
+    const set = (val) => { state.answers[q.id] = val; clearErr(q.id); };
+    swatch.addEventListener('input', () => { hex.value = swatch.value; set(swatch.value); });
+    hex.addEventListener('input', () => { const v = hex.value.trim(); if (/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) swatch.value = toHex6(v); set(v); });
+    wrap.append(el('div', { class: 'colorrow' }, swatch, hex));
+    if (Array.isArray(q.presets) && q.presets.length) {
+      const presets = el('div', { class: 'colorpresets' });
+      for (const c of q.presets) {
+        const b = el('button', { type: 'button', class: 'colorpreset', style: 'background:' + c, title: c });
+        b.addEventListener('click', () => { swatch.value = toHex6(c); hex.value = c; set(c); });
+        presets.append(b);
+      }
+      wrap.append(presets);
+    }
+    return wrap;
+  }
+
   // ======================================================================
   // render
   // ======================================================================
@@ -592,6 +626,7 @@
       else if (q.type === 'multi') control.append(controlMulti(q));
       else if (q.type === 'yesno') control.append(segButtons(q, ['yes', 'no'], ['Yes', 'No']));
       else if (q.type === 'scale') control.append(controlScale(q));
+      else if (q.type === 'color') control.append(controlColor(q));
       else control.append(controlText(q, q.type === 'textarea'));
       card.append(control);
       if (q.note) {

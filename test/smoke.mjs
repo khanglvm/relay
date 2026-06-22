@@ -1147,6 +1147,7 @@ function mcpRoundtrip(messages) {
     { jsonrpc: '2.0', id: 8, method: 'resources/read', params: { uri: 'ui://relay/vendor/../package.json' } },
     { jsonrpc: '2.0', id: 9, method: 'no/such/method' },
     { jsonrpc: '2.0', id: 10, method: 'tools/call', params: { name: 'relay_show', arguments: { blocks: [{ type: 'palette', title: 'Trending', palettes: [{ name: 'Mocha', sub: 'warm', tag: 'Pantone', tagTone: 'warm', featured: true, colors: ['#C4956A', '#A67B52'] }] }] } } },
+    { jsonrpc: '2.0', id: 11, method: 'tools/call', params: { name: 'relay_ask', arguments: { questions: [{ id: 'brand', type: 'color', label: 'Brand color', presets: ['#c2674b', '#185FA5'], default: '#c2674b' }] } } },
   ]);
 
   // stdout must be pure protocol — every non-blank line is valid JSON-RPC.
@@ -1188,6 +1189,9 @@ function mcpRoundtrip(messages) {
   const pal = byId[10].result.structuredContent.spec.blocks[0];
   ok(pal.type === 'palette' && pal.palettes[0].colors.length === 2 && pal.palettes[0].featured === true && pal.palettes[0].tagTone === 'warm', 'palette block normalizes (palettes, colors, featured, tagTone)');
   ok(board.text.includes('blk-palette') || board.text.includes('renderPalette'), 'board renderer includes the palette block');
+  const cq = byId[11].result.structuredContent.spec.questions[0];
+  ok(cq.type === 'color' && Array.isArray(cq.presets) && cq.presets.length === 2 && cq.default === '#c2674b', 'color question normalizes (type, presets, default)');
+  ok(board.text.includes('controlColor'), 'board renderer includes the color picker control');
 }
 
 // ---------- 27. rly mcp config / install ----------

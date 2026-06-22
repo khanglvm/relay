@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { CliError } from './util.js';
 
-export const TYPES = ['single', 'multi', 'yesno', 'text', 'textarea', 'scale'];
+export const TYPES = ['single', 'multi', 'yesno', 'text', 'textarea', 'scale', 'color'];
 
 const ALIASES = {
   radio: 'single',
@@ -19,6 +19,8 @@ const ALIASES = {
   long: 'textarea',
   rating: 'scale',
   likert: 'scale',
+  colour: 'color',
+  swatch: 'color',
 };
 
 const HTML_HEIGHT = { min: 100, max: 2400, boardDefault: 400, questionDefault: 360 };
@@ -518,6 +520,14 @@ export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
       q.maxLabel = asStr(rq.maxLabel);
     }
 
+    if (type === 'color') {
+      // Optional preset swatches the user can click beside the native picker.
+      const presets = (Array.isArray(rq.presets) ? rq.presets : [])
+        .map((c) => asStr(c).trim())
+        .filter(Boolean);
+      if (presets.length) q.presets = presets;
+    }
+
     if (rq.default !== undefined) q.default = rq.default;
     spec.questions.push(q);
   });
@@ -635,7 +645,7 @@ export const SPEC_SCHEMA = {
         required: ['label'],
         properties: {
           id: { type: 'string', description: 'Answer key in the result JSON. Defaults to q1, q2, …' },
-          type: { type: 'string', enum: ['single', 'multi', 'yesno', 'text', 'textarea', 'scale'], default: 'text' },
+          type: { type: 'string', enum: ['single', 'multi', 'yesno', 'text', 'textarea', 'scale', 'color'], default: 'text' },
           label: { type: 'string' },
           description: { type: 'string' },
           required: { type: 'boolean', default: false },
@@ -665,6 +675,7 @@ export const SPEC_SCHEMA = {
           max: { type: 'integer', default: 5, maximum: 10, description: 'scale only' },
           minLabel: { type: 'string', description: 'scale only' },
           maxLabel: { type: 'string', description: 'scale only' },
+          presets: { type: 'array', items: { type: 'string' }, description: 'color only: optional preset swatches (CSS colors) shown beside the native picker for one-click selection. The answer is returned as a hex string.' },
           blocks: BLOCK_SCHEMA,
           html: { type: 'string', description: 'Legacy: per-question custom HTML. Normalized into an html block prepended to this question\'s "blocks".' },
           htmlFile: { type: 'string', description: 'Legacy: path to an HTML file (alternative to "html").' },
