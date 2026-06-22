@@ -443,11 +443,12 @@ export function mcpConfig({ command = 'rly', httpPort = DEFAULT_HTTP_PORT } = {}
     // Codex CLI (~/.codex/config.toml).
     toml: `[mcp_servers.relay]\ncommand = "${command}"\nargs = ["mcp"]\n`,
     // Remote / web+mobile hosts (Claude web/mobile custom connector, etc.):
-    // run `rly mcp --http` somewhere reachable and register the URL.
+    // run `rly mcp --http` on any reachable address and register the URL.
     http: {
       run: `${command} mcp --http --port ${httpPort}`,
       url: `http://127.0.0.1:${httpPort}${HTTP_PATH}`,
-      note: 'For web/mobile, expose this URL (e.g. a cloudflared/ngrok tunnel) and add it as a custom connector. Use --token <secret> + --allow-origin <host> when exposing it publicly.',
+      deploy: 'relay only needs its CLI — run `rly mcp --http` wherever the app can reach it. The repo Dockerfile deploys to any free MCP host (mcpdeploy.dev, mcphosting.io, Render/Railway/Fly, or Smithery) with zero config; $PORT is auto-honored. relay is stateless, so one instance serves everyone.',
+      note: 'Set RLY_MCP_TOKEN for a bearer-protected endpoint. A tunnel (cloudflared/tailscale) is ONLY for exposing a NAT\'d local machine — never required; deploying to a reachable host needs no extra tooling.',
     },
   };
 }

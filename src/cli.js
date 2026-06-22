@@ -1195,11 +1195,14 @@ async function cmdMcp(rest) {
   }
   const args = parseArgs(rest);
   if (args.http) {
+    // Port precedence: --port flag, then PaaS-injected $PORT / $RLY_MCP_PORT,
+    // then the default. PaaS hosts (Render, Railway, Fly, mcpdeploy, …) set $PORT.
+    const envPort = process.env.PORT || process.env.RLY_MCP_PORT;
     return runMcpHttp({
-      port: args.port ? Number(args.port) : (process.env.RLY_MCP_PORT ? Number(process.env.RLY_MCP_PORT) : undefined),
-      host: typeof args.host === 'string' ? args.host : '127.0.0.1',
+      port: args.port ? Number(args.port) : (envPort ? Number(envPort) : undefined),
+      host: typeof args.host === 'string' ? args.host : (process.env.RLY_MCP_HOST || '127.0.0.1'),
       token: typeof args.token === 'string' ? args.token : (process.env.RLY_MCP_TOKEN || ''),
-      allowOrigin: typeof args.allowOrigin === 'string' ? args.allowOrigin : '',
+      allowOrigin: typeof args.allowOrigin === 'string' ? args.allowOrigin : (process.env.RLY_MCP_ALLOW_ORIGIN || ''),
     });
   }
   // Default: be the stdio server. main() never resolves this, so the CLI's

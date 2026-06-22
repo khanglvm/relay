@@ -75,13 +75,25 @@ browser tab. `rly mcp` speaks the MCP **stdio** transport, so it pairs with a
 - **`relay_show`** — present a plan, diagram, diff, table, or prototype.
 
 **Web / mobile / remote hosts** can't reach a stdio subprocess, so for those run
-the **Streamable HTTP** transport instead: `rly mcp --http [--port N]` serves the
-same tools at `http://127.0.0.1:<port>/mcp`. Expose that URL (e.g. a
-cloudflared/ngrok tunnel, or a small always-on host) and register it as a custom
-connector; add `--token <secret>` + `--allow-origin <host>` when it's public.
-`rly mcp config` prints the recipe. Note: an HTTP server only sees local files if
-it runs on the machine those files live on (tunnel from your dev box to keep
-local `codeFile`/image blocks working).
+the **Streamable HTTP** transport: `rly mcp --http [--port N]` serves the same
+tools at `/mcp`. relay needs **only its own CLI** for this — no tunnel tool, no
+extra infra. Because relay is **stateless** (answers go iframe→host→model, never
+back to the server), **one deployed instance serves everyone**, so deploy it once
+on any address the app can reach and register that URL as a custom connector:
+
+- **Free MCP hosts** — the repo's `Dockerfile` runs relay with zero config on
+  **mcpdeploy.dev**, **mcphosting.io**, **Render / Railway / Fly**, or **Glama**;
+  the platform's `$PORT` is honored automatically. Set `RLY_MCP_TOKEN` for a
+  bearer-protected endpoint.
+- **Smithery** (largest MCP marketplace) — publish the deployed URL with
+  `smithery mcp publish <url> -n @you/relay` for discovery + an OAuth gateway, or
+  distribute relay as a stdio bundle clients run locally.
+- **Tunnel (optional, dev only)** — `cloudflared`/`tailscale` is *only* for
+  exposing a NAT'd laptop; it's never required and not a relay dependency.
+
+A hosted instance can't see your local files (so `codeFile`/local-image blocks
+won't resolve there — pass URLs or inline content); run it on your own machine if
+you need local-file access.
 
 Progressive rendering: if the host streams the tool call as you write it, the
 board renders valid blocks/questions incrementally (a "Composing…" preview) and

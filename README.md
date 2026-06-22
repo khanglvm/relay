@@ -123,9 +123,12 @@ npm test     # zero-dep smoke tests (spawns real servers, fake-submits)
 - **Streamable HTTP transport for web/mobile/remote** — `rly mcp --http
   [--port N --host H --token SECRET --allow-origin ORIGIN]` serves the same tools
   over MCP's Streamable HTTP transport (single `/mcp` endpoint, JSON responses,
-  CORS, Origin validation, bearer auth, `Mcp-Session-Id`). Expose it via a tunnel
-  or small host and add it as a custom connector so a phone/web host can render
-  boards too — stdio stays the zero-setup path for local desktop.
+  CORS, Origin validation, bearer auth, `Mcp-Session-Id`, `$PORT`-aware). relay is
+  **stateless**, so one instance serves everyone — deploy it once with the repo
+  **`Dockerfile`** on any free MCP host (mcpdeploy.dev, mcphosting.io,
+  Render/Railway/Fly, Glama) or publish to **Smithery**, then add the URL as a
+  custom connector. Only the relay CLI is required — no tunnel/tailscale. stdio
+  stays the zero-setup path for local desktop.
 - **Native look** — the inline board **color-blends** onto the host's SEP-1865
   style variables (surfaces, text, borders, primary button, fonts), pins
   `color-scheme` so `light-dark()` tokens resolve, and uses the host's **own

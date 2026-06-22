@@ -1,0 +1,6 @@
+.git
+.github
+.agents
+test
+docs/assets
+*.log
