@@ -545,3 +545,28 @@ body.blk-full-open { overflow: hidden; }
 /* code blocks reuse the viewer toolbar (comment + full-screen); the pre keeps
    its own card, the wrapper only hosts the toolbar strip */
 .blk-codewrap { position: relative; }
+
+/* ---------- palette block (swatch cards; hover reveals hex, click copies) ---------- */
+.blk-palette .pal-title { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 2px 0 10px; }
+.blk-palette .pal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.pal-card { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--card); }
+.pal-card.pal-spotlight { margin-bottom: 16px; }
+.pal-swatches { display: flex; height: 72px; }
+.pal-spotlight .pal-swatches { height: 104px; }
+.pal-sw { flex: 1; position: relative; cursor: pointer; border: 0; padding: 0; transition: flex .2s var(--ease); }
+.pal-sw:hover { flex: 1.6; }
+.pal-hex { position: absolute; bottom: 7px; left: 50%; transform: translateX(-50%); font: 600 10px/1 var(--mono, ui-monospace, "SF Mono", monospace); background: rgba(0,0,0,.42); color: #fff; padding: 2px 6px; border-radius: 4px; white-space: nowrap; opacity: 0; transition: opacity .15s; pointer-events: none; }
+.pal-sw:hover .pal-hex, .pal-sw.copied .pal-hex { opacity: 1; }
+.pal-sw.copied::after { content: "Copied"; position: absolute; top: 6px; left: 50%; transform: translateX(-50%); font: 600 9px/1 var(--sans); background: var(--ok); color: #fff; padding: 2px 7px; border-radius: 4px; }
+.pal-info { padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.pal-spotlight .pal-info { padding: 12px 16px; }
+.pal-name { font-size: 14px; font-weight: 600; color: var(--fg); }
+.pal-spotlight .pal-name { font-size: 15px; }
+.pal-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.pal-tag { flex: none; font-size: 11px; font-weight: 600; padding: 3px 11px; border-radius: 20px; background: var(--bg-sunken); color: var(--fg-2); }
+.pal-tag.tone-warm { background: #FAECE7; color: #993C1D; }
+.pal-tag.tone-cool { background: #E6F1FB; color: #185FA5; }
+.pal-tag.tone-neutral { background: #F1EFE8; color: #5F5E5A; }
+.pal-tag.tone-nature { background: #EAF3DE; color: #3B6D11; }
+.pal-tag.tone-bold { background: #FBEAF0; color: #72243E; }
+.pal-tag.tone-digital { background: #EEEDFE; color: #3C3489; }

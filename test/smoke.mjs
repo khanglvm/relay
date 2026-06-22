@@ -1146,6 +1146,7 @@ function mcpRoundtrip(messages) {
     { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'relay_ask', arguments: { questions: [{ type: 'nope', label: 'x' }] } } },
     { jsonrpc: '2.0', id: 8, method: 'resources/read', params: { uri: 'ui://relay/vendor/../package.json' } },
     { jsonrpc: '2.0', id: 9, method: 'no/such/method' },
+    { jsonrpc: '2.0', id: 10, method: 'tools/call', params: { name: 'relay_show', arguments: { blocks: [{ type: 'palette', title: 'Trending', palettes: [{ name: 'Mocha', sub: 'warm', tag: 'Pantone', tagTone: 'warm', featured: true, colors: ['#C4956A', '#A67B52'] }] }] } } },
   ]);
 
   // stdout must be pure protocol — every non-blank line is valid JSON-RPC.
@@ -1183,6 +1184,9 @@ function mcpRoundtrip(messages) {
   ok(byId[7].result.isError && /invalid board spec/.test(byId[7].result.content[0].text), 'a bad spec comes back as an isError tool result (not a protocol crash)');
   ok(byId[8].error && byId[8].error.code === -32002, 'vendor path traversal is rejected (-32002)');
   ok(byId[9].error && byId[9].error.code === -32601, 'unknown method → -32601 method not found');
+  const pal = byId[10].result.structuredContent.spec.blocks[0];
+  ok(pal.type === 'palette' && pal.palettes[0].colors.length === 2 && pal.palettes[0].featured === true && pal.palettes[0].tagTone === 'warm', 'palette block normalizes (palettes, colors, featured, tagTone)');
+  ok(board.text.includes('blk-palette') || board.text.includes('renderPalette'), 'board renderer includes the palette block');
 }
 
 // ---------- 27. rly mcp config / install ----------

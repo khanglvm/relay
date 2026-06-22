@@ -25,7 +25,7 @@ const HTML_HEIGHT = { min: 100, max: 2400, boardDefault: 400, questionDefault: 3
 
 // Block heights clamp to the same window; defaults vary per block type.
 const BLOCK_HEIGHT = { min: 100, max: 2400 };
-export const BLOCK_TYPES = ['markdown', 'mermaid', 'graphviz', 'plantuml', 'chart', 'table', 'code', 'diff', 'video', 'html', 'image'];
+export const BLOCK_TYPES = ['markdown', 'mermaid', 'graphviz', 'plantuml', 'chart', 'table', 'code', 'diff', 'video', 'html', 'image', 'palette'];
 const CHART_KINDS = ['bar', 'line', 'pie', 'doughnut', 'radar', 'scatter'];
 
 // code/diff blocks may load their text from a local file (like htmlFile). Caps
@@ -360,6 +360,37 @@ function normalizeBlock(rawBlock, id, cwd, where) {
     return block;
   }
 
+  if (type === 'palette') {
+    // Accept either { palettes: [{name, colors:[…]}, …] } or a single-palette
+    // shorthand { name?, colors:[…] }. Each palette needs a non-empty colors
+    // array of CSS color strings (#rrggbb, rgb(), hsl(), named — kept as given).
+    const rawList = Array.isArray(rawBlock.palettes)
+      ? rawBlock.palettes
+      : (Array.isArray(rawBlock.colors) ? [{ name: rawBlock.name, sub: rawBlock.sub, colors: rawBlock.colors }] : null);
+    if (!rawList || !rawList.length) {
+      throw new CliError(`${where}: palette block needs "palettes" (array) or a "colors" array.`);
+    }
+    const palettes = rawList.map((p, j) => {
+      if (!p || typeof p !== 'object') throw new CliError(`${where}.palettes[${j}]: must be an object with "colors".`);
+      const colors = (Array.isArray(p.colors) ? p.colors : [])
+        .map((c) => asStr(c).trim())
+        .filter(Boolean);
+      if (!colors.length) throw new CliError(`${where}.palettes[${j}]: needs a non-empty "colors" array.`);
+      const out = { colors };
+      if (p.name !== undefined) out.name = asStr(p.name);
+      const sub = p.sub ?? p.mood;
+      if (sub !== undefined) out.sub = asStr(sub);
+      const tag = p.badge ?? p.tag;
+      if (tag !== undefined) out.tag = asStr(tag);
+      if (p.tagTone !== undefined) out.tagTone = asStr(p.tagTone).trim().toLowerCase();
+      if (p.featured === true) out.featured = true;
+      return out;
+    });
+    const block = { id, type: 'palette', palettes };
+    if (rawBlock.title !== undefined) block.title = asStr(rawBlock.title);
+    return block;
+  }
+
   // type === 'html'
   const html = readBlockHtml(rawBlock, cwd, where);
   if (!html) {
@@ -555,6 +586,26 @@ const BLOCK_SCHEMA = {
       htmlFile: { type: 'string', description: 'html: path to an HTML file (alternative to "html").' },
       src: { type: 'string', description: 'image: http(s)/data URL, or a local file path (png/jpg/gif/webp/svg/avif/bmp — embedded at spec time, served offline). video: a YouTube/Vimeo URL (embeds an iframe player), an http(s) media URL, or a local video file (mp4/webm/ogv/mov/mkv/m4v — streamed from the server, never embedded).' },
       alt: { type: 'string', description: 'image: alt text / annotation label. video: accessible title for the player.' },
+      palettes: {
+        type: 'array',
+        description: 'palette: one or more color palettes to display as swatch cards. Each swatch reveals its hex on hover and copies it on click; mark one {featured:true} to show it as a larger spotlight. Each item: {name?, sub? (or mood?), tag? (or badge?), tagTone? (warm|cool|neutral|nature|bold|digital), featured?, colors:[…]}.',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            sub: { type: 'string' },
+            mood: { type: 'string' },
+            tag: { type: 'string' },
+            badge: { type: 'string' },
+            tagTone: { type: 'string', enum: ['warm', 'cool', 'neutral', 'nature', 'bold', 'digital'] },
+            featured: { type: 'boolean' },
+            colors: { type: 'array', items: { type: 'string' }, description: 'CSS colors — #rrggbb, rgb()/hsl(), or named.' },
+          },
+          required: ['colors'],
+        },
+      },
+      colors: { type: 'array', items: { type: 'string' }, description: 'palette shorthand: colors for a single palette (use "palettes" for several named ones). Pairs with block-level "name".' },
+      name: { type: 'string', description: 'palette shorthand: name for the single "colors" palette.' },
       height: { type: 'integer', minimum: BLOCK_HEIGHT.min, maximum: BLOCK_HEIGHT.max, description: 'Block height in px. Defaults: chart 320, html 360; markdown/table/code flow naturally; mermaid/graphviz/plantuml/image natural (max 1200, scrolls).' },
     },
   },
