@@ -1173,6 +1173,7 @@ function mcpRoundtrip(messages) {
   ok(board.text.includes('ui/update-model-context') && board.text.includes('RelayBlocks'), 'board HTML inlines the MCP client + the shared block renderer');
   ok(board.text.includes('ui/notifications/initialized'), 'board sends ui/notifications/initialized (the host withholds the spec until it does)');
   ok(board.text.includes('availableDisplayModes'), 'board declares fullscreen support so the host can offer its native control');
+  ok(board.text.includes('ui/notifications/tool-input-partial'), 'board renders progressively from streamed partial tool input');
   ok(board.text.includes('--color-background-primary'), 'board color-blends onto the host style variables');
   ok(!board.text.includes('/api/draft') && !board.text.includes('/api/submit'), 'board HTML has no HTTP-server endpoints (pure postMessage)');
 

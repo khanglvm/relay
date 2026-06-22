@@ -615,6 +615,12 @@
         el('div', { class: 'control' }, note)));
     }
 
+    if (composing) {
+      // still streaming in — show a live "composing" note, no submit yet
+      app.append(el('div', { class: 'submitbar' }, el('span', { class: 'mcp-composing' }, 'Composing this board…')));
+      reportSize();
+      return;
+    }
     const submitBtn = el('button', { class: 'submit', type: 'button' }, spec.submitLabel);
     const saveEl = el('span', { class: 'savestate' }, '');
     const hint = el('span', { class: 'hint' }, QS.length && spec.allowPartial ? 'Unanswered questions are returned as skipped.' : '');
@@ -717,6 +723,8 @@
     if (!next || (!Array.isArray(next.questions)) ) { return; }
     if (!next.questions.length && !(Array.isArray(next.blocks) && next.blocks.length)) return;
     booted = true;
+    composing = false;
+    if (previewTimer) { clearTimeout(previewTimer); previewTimer = null; }
     spec = next;
     QS = spec.questions || [];
     seedDefaults();
@@ -725,6 +733,30 @@
     try { await preloadVendors(spec); } catch { /* render anyway; blocks degrade individually */ }
     render();
     applyDisplayMode();
+  }
+
+  // Progressive preview: the host MAY stream the tool call's JSON as the agent
+  // writes it (ui/notifications/tool-input-partial — unclosed JSON auto-closed
+  // into a valid object). We render whatever blocks/questions are already valid
+  // so the board appears incrementally instead of only after the whole spec is
+  // generated. It's a read-only preview — submit is withheld until the final
+  // input/result arrives. Degrades to nothing on hosts that don't stream.
+  let composing = false;
+  let previewTimer = null;
+  let vendorsKicked = false;
+  function renderPreview(rawArgs) {
+    if (booted || submitted) return;
+    const next = clientNormalize(rawArgs);
+    if (!next) return;
+    const hasContent = (next.questions && next.questions.length) || (Array.isArray(next.blocks) && next.blocks.length);
+    if (!hasContent) return;
+    spec = next;
+    QS = spec.questions || [];
+    composing = true;
+    indexHtmlBlocks(spec);
+    if (!vendorsKicked) { vendorsKicked = true; preloadVendors(spec).catch(() => {}); }
+    if (previewTimer) return; // coalesce a burst of partials into one paint
+    previewTimer = setTimeout(() => { previewTimer = null; if (!booted && !submitted) render(); }, 120);
   }
 
   // The spec can arrive as the tool RESULT (preferred — server-normalized) or,
@@ -742,6 +774,10 @@
     const args = p && p.arguments;
     if (!args || typeof args !== 'object' || booted || rawInputTimer) return;
     rawInputTimer = setTimeout(() => { rawInputTimer = null; boot(args, false); }, 250);
+  });
+  onNotify('ui/notifications/tool-input-partial', (p) => {
+    const args = p && p.arguments;
+    if (args && typeof args === 'object') renderPreview(args);
   });
   onNotify('ui/notifications/host-context-changed', (p) => {
     if (p && typeof p === 'object') {

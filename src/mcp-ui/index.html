@@ -21,6 +21,10 @@ body{ margin:0; }
 .mcp-done .sub{ color:var(--muted,#8a8580); }
 /* in fullscreen the host fills the window — keep text to a readable column */
 .mcp-fullscreen .wrap{ max-width:760px; margin:0 auto; }
+/* progressive preview: shown while the agent is still streaming the spec */
+.mcp-composing{ font-size:13px; color:var(--muted,#8a8580); display:inline-flex; align-items:center; gap:7px; }
+.mcp-composing::before{ content:""; width:7px; height:7px; border-radius:50%; background:var(--accent,#c2674b); animation:mcp-pulse 1s var(--ease,ease) infinite; }
+@keyframes mcp-pulse{ 0%,100%{ opacity:.25; } 50%{ opacity:1; } }
 </style>
 </head>
 <body>
