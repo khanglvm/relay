@@ -1021,6 +1021,24 @@
   }
 
   // ---------- heartbeat ----------
+  // True when the user is actively typing — an open annotation comment popover,
+  // or focus in any text-entry field (comment box, notes, text/color answers,
+  // "Other" inputs). Used to defer the live-update reload so in-progress
+  // comments aren't destroyed mid-keystroke.
+  function isEditable(node) {
+    if (!node) return false;
+    if (node.tagName === 'TEXTAREA') return true;
+    if (node.tagName === 'INPUT') {
+      const t = (node.type || 'text').toLowerCase();
+      return ['text', 'search', 'email', 'url', 'tel', 'number', 'color'].includes(t);
+    }
+    return node.isContentEditable === true;
+  }
+  function userIsComposing() {
+    if (window.RelayAnnotate && typeof RelayAnnotate.isComposing === 'function' && RelayAnnotate.isComposing()) return true;
+    return isEditable(document.activeElement);
+  }
+
   let misses = 0;
   let reloading = false;
   let hb = null;
@@ -1054,6 +1072,16 @@
         );
       }
       if (body && typeof body.rev === 'number' && bootRev !== null && body.rev !== bootRev && !submitted && !reloading) {
+        // Don't yank the board out from under someone mid-comment: an open
+        // annotation popover (its add-comment box + reply inputs) holds text
+        // that isn't in the draft until Save, so a reload would discard it —
+        // and reloading while any field is focused drops the user's cursor and
+        // last keystrokes. Defer until they're done; the heartbeat re-checks
+        // every tick, so the update applies the moment they close/blur.
+        if (userIsComposing()) {
+          showNotice('The agent updated this board — it’ll refresh as soon as you finish your comment.', 'info');
+          return;
+        }
         reloading = true;
         stopHeartbeat();
         clearTimeout(saveTimer);

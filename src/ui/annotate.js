@@ -844,11 +844,18 @@
     return annotations.slice();
   }
 
+  // True while the user is mid-comment: the popover is open, which hosts both
+  // the "Add a comment" box and every thread's reply input. That text lives
+  // only in the DOM until Save, so the board must not reload it away.
+  function isComposing() {
+    return popOpen;
+  }
+
   function renderSummary(target) {
     ensureDom();
     summaryEls.add(target);
     renderSummaryInto(target);
   }
 
-  window.RelayAnnotate = { init, register, enableTextSelection, openExternal, list, renderSummary, onBadgeRefresh, teardown };
+  window.RelayAnnotate = { init, register, enableTextSelection, openExternal, list, renderSummary, onBadgeRefresh, teardown, isComposing };
 })();
