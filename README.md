@@ -89,7 +89,7 @@ Node ≥ 18; Chart.js / Mermaid / Graphviz are vendored and lazy-loaded offline.
 | `rly help` | every command at a glance |
 | `rly install --target <agent>` | write relay's rules into an agent's instruction file — `claude` `codex` `cursor` `copilot` `kiro` `windsurf` `cline` `gemini` `opencode` `droid` `agents`; `--all`, `--scope`, `--print`, `--list` |
 | `rly upgrade` | update the CLI **and** refresh the skill in one step (safe around open boards; `--dry-run`, `--cli-only`, `--skill-only`) |
-| `rly mcp` | run relay as an MCP App server (stdio) so boards render **inline** in Claude (desktop/mobile) & Codex; `rly mcp config` / `rly mcp install --target claude\|codex` to register it |
+| `rly mcp` | run relay as an MCP App server so boards render **inline** in the chat — **stdio** for local desktop hosts (Claude Desktop, Codex), or `rly mcp --http` (Streamable HTTP) for web/mobile/remote; `rly mcp config` / `rly mcp install --target claude\|codex` to register it |
 | `rly agent` | the full agent guide — spec format, all block types, annotations, patterns ([docs/AGENT.md](docs/AGENT.md)) |
 | `rly schema` | board spec JSON Schema |
 | [skills/relay/SKILL.md](skills/relay/SKILL.md) | the bundled skill |
@@ -120,6 +120,24 @@ npm test     # zero-dep smoke tests (spawns real servers, fake-submits)
 - **One-command setup** — `rly mcp install --target claude|codex` writes the
   host config; `rly mcp config` prints the snippet for any MCP host. The classic
   browser board is untouched.
+- **Streamable HTTP transport for web/mobile/remote** — `rly mcp --http
+  [--port N --host H --token SECRET --allow-origin ORIGIN]` serves the same tools
+  over MCP's Streamable HTTP transport (single `/mcp` endpoint, JSON responses,
+  CORS, Origin validation, bearer auth, `Mcp-Session-Id`). Expose it via a tunnel
+  or small host and add it as a custom connector so a phone/web host can render
+  boards too — stdio stays the zero-setup path for local desktop.
+- **Native look** — the inline board **color-blends** onto the host's SEP-1865
+  style variables (surfaces, text, borders, primary button, fonts), pins
+  `color-scheme` so `light-dark()` tokens resolve, and uses the host's **own
+  full-screen** control (centering content to a readable column in fullscreen).
+  After submit it collapses to a one-line confirmation so the iframe shrinks.
+- **Progressive rendering** — when the host streams the tool call
+  (`ui/notifications/tool-input-partial`), the board renders valid blocks as they
+  arrive (a "Composing…" preview) instead of waiting for the whole spec.
+- **`palette` block** — color palettes as swatch cards (hover reveals hex, click
+  copies); mark one `featured` for a spotlight. **`color` question type** — native
+  picker + hex field + optional `presets`, returns a hex string. Both work on the
+  browser board and inline.
 
 ### 0.10.0 — open files, richer code, diffs & video
 - **Clickable local file-links.** Write a path in any markdown (`~/clip.mp4`,

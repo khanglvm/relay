@@ -69,11 +69,23 @@ JSON from stdout). relay is **also** an MCP App (SEP-1865): when a host register
 `rly mcp` (see `rly mcp config` / `rly mcp install --target claude|codex`), you
 get two tools that render the board **inline in the conversation** instead of a
 browser tab. `rly mcp` speaks the MCP **stdio** transport, so it pairs with a
-**local desktop** host — Claude Desktop and Codex today (web/mobile hosts reach a
-server over HTTP, not stdio):
+**local desktop** host — Claude Desktop and Codex today.
 
 - **`relay_ask`** — collect decisions/feedback with real form controls.
 - **`relay_show`** — present a plan, diagram, diff, table, or prototype.
+
+**Web / mobile / remote hosts** can't reach a stdio subprocess, so for those run
+the **Streamable HTTP** transport instead: `rly mcp --http [--port N]` serves the
+same tools at `http://127.0.0.1:<port>/mcp`. Expose that URL (e.g. a
+cloudflared/ngrok tunnel, or a small always-on host) and register it as a custom
+connector; add `--token <secret>` + `--allow-origin <host>` when it's public.
+`rly mcp config` prints the recipe. Note: an HTTP server only sees local files if
+it runs on the machine those files live on (tunnel from your dev box to keep
+local `codeFile`/image blocks working).
+
+Progressive rendering: if the host streams the tool call as you write it, the
+board renders valid blocks/questions incrementally (a "Composing…" preview) and
+finalizes when your call completes — so the user sees it build, not a blank wait.
 
 Both take **the exact same board spec** documented below (the tool `inputSchema`
 *is* this spec). Call the tool with your spec; the host shows the board, the user
@@ -162,9 +174,11 @@ rly show --html-file prototype.html --title "Dashboard concept" --height 600
 | `text`     | `"string"`                          |
 | `textarea` | `"string"`                          |
 | `scale`    | number (`min`…`max`, default 1–5)   |
+| `color`    | hex string (e.g. `"#c2674b"`) — native picker + hex field; optional `presets:["#…"]` swatches |
 
 Aliases accepted: radio/choice/select→single, checkbox→multi,
-boolean/bool/yn→yesno, input→text, longtext→textarea, rating/likert→scale.
+boolean/bool/yn→yesno, input→text, longtext→textarea, rating/likert→scale,
+colour/swatch→color.
 
 ### Result JSON (stdout)
 
@@ -344,6 +358,17 @@ Rules of thumb:
 // for a huge / high-resolution image pass an http(s) URL (streamed, no size cap).
 { "type": "image", "src": "screenshots/variant-a.png", "alt": "Variant A", "height": 220 }
 { "type": "image", "src": "https://example.com/mock.png" }
+
+// palette — color palettes as swatch cards (hover reveals hex, click copies).
+// Mark one {"featured": true} to render it larger as a spotlight; the rest tile
+// into a responsive grid. Pairs with a "color" question to let the user pick.
+{ "type": "palette", "title": "Trending palettes", "palettes": [
+  { "name": "Mocha Mousse", "sub": "Pantone 2025 · warm", "tag": "Pantone", "tagTone": "warm",
+    "featured": true, "colors": ["#C4956A","#A67B52","#8B6240","#D4AB89","#EDD9C4"] },
+  { "name": "Digital Lavender", "mood": "soft tech", "tag": "Cool", "tagTone": "cool",
+    "colors": ["#C9BAF5","#A08EE8","#7B66CC","#5849A8"] } ] }
+{ "type": "palette", "name": "Brand", "colors": ["#c2674b", "#1c1b19", "#fcfbf9"] }  // single-palette shorthand
+// tagTone (optional pill color): warm | cool | neutral | nature | bold | digital
 ```
 
 ### Local file links — clickable, open in the default app
@@ -370,6 +395,7 @@ real path over telling the user to paste it into a terminal.
 | `diff` | proposed code changes / before-after — a unified diff rendered as a colored git-style comparison (no git needed) |
 | `video` | demos, screen recordings, walkthroughs — YouTube/Vimeo embeds, a media URL, or a local video file (streamed) |
 | `image` | screenshots, mockup exports, photos — local files embed and work offline |
+| `palette` | color palettes / themes — swatch cards with hover-hex + click-to-copy; pair with a `color` question to let the user pick |
 | `html` | anything else — pixel-perfect mockups, custom widgets, embeds |
 
 ### Height rules
