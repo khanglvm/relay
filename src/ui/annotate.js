@@ -107,6 +107,9 @@
   let popOpen = false;
   let popScrollY = 0;
   let popSave = null;
+  // Frozen by the host (e.g. relay's connection-lost block): suppress every way
+  // to START a comment, so the user can't type feedback that won't be saved.
+  let disabled = false;
   let badgeTimer = 0;
   let railOpen = false;
 
@@ -377,6 +380,7 @@
 
   // ---------- hover pin ----------
   function showPin(entry) {
+    if (disabled) return;
     clearTimeout(pinTimer);
     pinEntry = entry;
     const rect = entry.el.getBoundingClientRect();
@@ -483,6 +487,7 @@
   }
 
   function openPopover(info, anchorEl) {
+    if (disabled) return;
     ensureDom();
     closePopover();
     hidePin();
@@ -641,6 +646,7 @@
   }
 
   function maybeShowSelBtn(rootEl, baseInfo) {
+    if (disabled) return hideSelBtn();
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !sel.rangeCount) return hideSelBtn();
     if (!rootEl.contains(sel.anchorNode) || !rootEl.contains(sel.focusNode)) return hideSelBtn();
@@ -851,11 +857,28 @@
     return popOpen;
   }
 
+  // Commit a mid-typed comment (the open popover's "Add a comment" box) as a
+  // saved annotation, then close it — so freezing the board doesn't throw away
+  // text the user was in the middle of writing. ponytail: only the main comment
+  // box is flushed, not an in-progress thread reply (the rare case).
+  function flushOpen() {
+    if (popOpen && popSave) { try { popSave(); } catch { closePopover(); } }
+  }
+
+  // Freeze/unfreeze comment creation. While disabled, no pin, selection button,
+  // or popover appears, so the user can't start feedback that won't be saved.
+  function setDisabled(v) {
+    disabled = Boolean(v);
+    // Also close the rail flushOpen() may have just opened — otherwise it covers
+    // the host's top-right "connection lost" notice.
+    if (disabled) { closePopover(); hideSelBtn(); hidePin(); closeRail(); }
+  }
+
   function renderSummary(target) {
     ensureDom();
     summaryEls.add(target);
     renderSummaryInto(target);
   }
 
-  window.RelayAnnotate = { init, register, enableTextSelection, openExternal, list, renderSummary, onBadgeRefresh, teardown, isComposing };
+  window.RelayAnnotate = { init, register, enableTextSelection, openExternal, list, renderSummary, onBadgeRefresh, teardown, isComposing, flushOpen, setDisabled };
 })();

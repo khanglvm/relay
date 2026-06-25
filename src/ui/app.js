@@ -271,13 +271,15 @@
   // board's local HTTP server (server gone, port taken over, socket dropped,
   // machine slept). Autosaves then fail silently and the user keeps typing
   // answers/comments that are never persisted, then Submit fails too — all of it
-  // thrown away. When persistence is CONFIRMED lost we hard-block: disable every
-  // control and overlay an unmissable scrim with a Retry. Local `state` is never
-  // touched, so the moment the connection recovers we flush it and unblock —
-  // nothing the user typed during the outage is lost.
+  // thrown away. When persistence is CONFIRMED lost we DISABLE every control (and
+  // freeze new comments) and show a small, non-dismissable top-right notice with
+  // a Reconnect button — without blocking the page, so the user can still read
+  // and scroll. Local `state` is never touched, and a mid-typed comment is saved
+  // before the freeze, so nothing the user entered during the outage is lost; the
+  // moment the connection recovers we flush state and re-enable everything.
   let persistenceLost = false;
   let probing = false;
-  let lostOverlay = null;
+  let lostNote = null;
   let lostRetryBtn = null;
 
   // A direct, side-effect-free reachability probe. Resolves true when the local
@@ -293,46 +295,55 @@
     }
   }
 
-  function buildLostOverlay() {
-    if (lostOverlay) return lostOverlay;
-    lostRetryBtn = el('button', { class: 'lost-retry', type: 'button' }, 'Retry connection');
+  function buildLostNote() {
+    if (lostNote) return lostNote;
+    lostRetryBtn = el('button', { class: 'lost-retry', type: 'button' }, 'Reconnect');
     lostRetryBtn.addEventListener('click', retryConnection);
-    lostOverlay = el('div', { class: 'lost-overlay', role: 'alertdialog', 'aria-modal': 'true', 'aria-label': 'Connection lost' },
-      el('div', { class: 'lost-card' },
-        el('div', { class: 'lost-mark' }, '⚠'),
-        el('h2', {}, 'Connection lost — input isn’t being saved'),
-        el('p', {}, 'This board can no longer reach your agent’s session, so anything you type now won’t be saved. Editing is paused to keep you from losing work.'),
-        el('p', { class: 'lost-sub' }, 'Your input up to this point is kept in this tab. Click Retry once the agent’s session is back, or prompt the agent to reopen this board — your draft and unsaved edits will be restored.'),
-        lostRetryBtn
-      )
+    lostNote = el('div', { class: 'lost-note', role: 'status', 'aria-live': 'polite' },
+      el('span', { class: 'lost-note-dot', 'aria-hidden': 'true' }),
+      el('div', { class: 'lost-note-body' },
+        el('div', { class: 'lost-note-title' }, 'Connection lost'),
+        el('div', { class: 'lost-note-sub' }, 'Editing paused — your input is kept.')
+      ),
+      lostRetryBtn
     );
-    return lostOverlay;
+    return lostNote;
   }
 
-  // Enter the blocked state: disable controls, mount the overlay. Idempotent.
+  // Enter the blocked state: save a mid-typed comment, freeze comments, disable
+  // controls, and pin the small notice. Idempotent. Does NOT block the page —
+  // the user can still read and scroll; only editing is paused.
   function blockForLostPersistence() {
     if (persistenceLost || submitted) return;
     persistenceLost = true;
     document.documentElement.classList.add('relay-blocked');
-    // Disable every interactive control inside the form (inputs the user could
-    // otherwise keep typing into) plus Submit.
+    // Save whatever the user was typing into the comment popover BEFORE freezing
+    // it, so the in-progress comment is kept (in `state` + localStorage) instead
+    // of discarded; then stop any new comment from being started.
+    if (Annotate) {
+      if (typeof Annotate.flushOpen === 'function') { try { Annotate.flushOpen(); } catch { /* non-fatal */ } }
+      if (typeof Annotate.setDisabled === 'function') { try { Annotate.setDisabled(true); } catch { /* non-fatal */ } }
+    }
+    // Disable every interactive control inside the form. Values already entered
+    // stay in the DOM (and in `state`), so nothing typed so far is lost.
     for (const node of app.querySelectorAll('input, textarea, button, select')) {
       node.disabled = true;
     }
-    document.body.append(buildLostOverlay());
+    document.body.append(buildLostNote());
     if (saveEl) saveEl.textContent = 'connection lost — not saving';
   }
 
-  // Leave the blocked state: re-enable controls, remove the overlay, and flush
-  // whatever the user typed during the outage so it's persisted right away.
+  // Leave the blocked state: re-enable controls + comments, drop the notice, and
+  // flush whatever the user typed during the outage so it's persisted right away.
   function unblockAfterRecovery() {
     if (!persistenceLost) return;
     persistenceLost = false;
     document.documentElement.classList.remove('relay-blocked');
+    if (Annotate && typeof Annotate.setDisabled === 'function') { try { Annotate.setDisabled(false); } catch { /* non-fatal */ } }
     for (const node of app.querySelectorAll('input, textarea, button, select')) {
       node.disabled = false;
     }
-    if (lostOverlay) lostOverlay.remove();
+    if (lostNote) lostNote.remove();
     // Re-arm the heartbeat (it stops itself when it confirms loss) and persist
     // everything typed during the outage. saveDraft() updates the save label.
     startHeartbeat();
