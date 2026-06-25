@@ -88,6 +88,31 @@
   }
   let themeBtn = null;
 
+  // ---------- font scale (A− / A+) ----------
+  // A page-zoom knob: scales the root font-size (every rem) so the whole board
+  // grows/shrinks. Persists like the theme — server pref + localStorage mirror —
+  // so the choice carries across the random-port boards.
+  const FS_KEY = 'qb-fontscale';
+  const FS_MIN = 0.85, FS_MAX = 1.5, FS_STEP = 0.1;
+  let fontScale = Number((boot.pref && boot.pref.fontScale) || localStorage.getItem(FS_KEY));
+  if (!Number.isFinite(fontScale) || fontScale <= 0) fontScale = 1;
+  const clampFs = (n) => Math.min(FS_MAX, Math.max(FS_MIN, Math.round(n * 100) / 100));
+  fontScale = clampFs(fontScale);
+  function applyFontScale() {
+    document.documentElement.style.setProperty('--fs', String(fontScale));
+  }
+  function setFontScale(next) {
+    fontScale = clampFs(next);
+    applyFontScale();
+    try { localStorage.setItem(FS_KEY, String(fontScale)); } catch { /* private mode */ }
+    fetch('/api/pref', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fontScale }),
+    }).catch(() => {});
+  }
+  applyFontScale();
+
   // ---------- localStorage draft mirror ----------
   // Every autosave is ALSO written to localStorage, keyed by board id. This is
   // the durability layer the server file alone can't provide: if the connection
@@ -744,6 +769,12 @@
   });
   applyTheme();
 
+  const fsDown = el('button', { class: 'fs-btn', type: 'button', title: 'Smaller text', 'aria-label': 'Decrease text size' }, 'A−');
+  const fsUp = el('button', { class: 'fs-btn', type: 'button', title: 'Larger text', 'aria-label': 'Increase text size' }, 'A+');
+  fsDown.addEventListener('click', () => setFontScale(fontScale - FS_STEP));
+  fsUp.addEventListener('click', () => setFontScale(fontScale + FS_STEP));
+  const fsCtrl = el('div', { class: 'fs-ctrl' }, fsDown, fsUp);
+
   // Just reloaded after a live `rly update`? Flag set before reload below.
   try {
     if (sessionStorage.getItem('relay-updated') === '1') {
@@ -755,7 +786,7 @@
   }
 
   const titleEl = el('h1', {}, spec.title);
-  app.append(el('header', { class: 'qb-header' }, titleEl, themeBtn));
+  app.append(el('header', { class: 'qb-header' }, titleEl, el('div', { class: 'qb-controls' }, fsCtrl, themeBtn)));
   // The board title is commentable too: hovering it shows the pin, like the
   // intro and every other content element. (themeBtn stays out of it.)
   if (spec.title) {

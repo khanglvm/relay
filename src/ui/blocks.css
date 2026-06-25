@@ -491,6 +491,21 @@ body.blk-full-open { overflow: hidden; }
   height: calc(100vh - 44px) !important; width: 100%;
   margin: 0; border: 0; border-radius: 0;
 }
+/* Full-screen diagrams/images: apply() sizes the child to fit the viewport
+   (FULL_PAD_* in blocks.js mirrors this padding). margin:auto on the single
+   child centers it on both axes AND keeps it scrollable when zoomed past the
+   fit — plain flex centering would clip the top/left and trap the overflow. */
+.blk-mermaid.blk-full,
+.blk-graphviz.blk-full,
+.blk-plantuml.blk-full,
+.blk-imagewrap.blk-full {
+  display: flex; padding: 44px 24px 24px;
+}
+.blk-mermaid.blk-full > svg,
+.blk-graphviz.blk-full > svg,
+.blk-plantuml.blk-full > svg,
+.blk-plantuml.blk-full > .blk-plantuml-img,
+.blk-imagewrap.blk-full > .blk-img { margin: auto; }
 
 /* Small frame on charts + mermaid so they read as a deliberate card, matching
    the graphviz/plantuml/image blocks (already framed). Scoped to the inner

@@ -68,14 +68,17 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
+/* Root font size drives every rem on the page; --fs is the user's text-size
+   knob (A−/A+ next to the theme toggle). Base bumped 16→17px for readability. */
+html { font-size: calc(17px * var(--fs, 1)); }
 body {
   background: var(--bg);
   color: var(--fg);
-  font: 16px/1.6 var(--sans);
+  font: 1rem/1.6 var(--sans);
   -webkit-font-smoothing: antialiased;
   transition: background 200ms var(--ease), color 200ms var(--ease), padding 240ms var(--ease);
 }
-.wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 28px; }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 32px 20px 28px; }
 
 .qb-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
 h1 {
@@ -101,6 +104,18 @@ h1 {
   transition: border-color 150ms var(--ease), color 150ms var(--ease);
 }
 .theme-btn:hover { border-color: var(--accent); color: var(--accent); }
+/* header controls: font-size knob + theme toggle, grouped at the right */
+.qb-controls { display: flex; align-items: center; gap: 8px; flex: none; }
+.fs-ctrl { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 999px; overflow: hidden; }
+.fs-btn {
+  background: transparent; color: var(--fg-2); border: 0;
+  padding: 6px 11px; cursor: pointer; line-height: 1; font-family: var(--sans);
+  transition: color 150ms var(--ease), background 150ms var(--ease);
+}
+.fs-btn:first-child { font-size: 0.72rem; }
+.fs-btn:last-child { font-size: 0.92rem; }
+.fs-btn + .fs-btn { border-left: 1px solid var(--border-strong); }
+.fs-btn:hover { color: var(--accent); background: var(--accent-soft); }
 
 .card {
   background: var(--card);

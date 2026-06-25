@@ -627,6 +627,9 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
       } else if (req.method === 'POST' && pathname === '/api/pref') {
         const body = JSON.parse((await readBody(req)) || '{}');
         if (['auto', 'light', 'dark'].includes(body.theme)) savePref({ theme: body.theme });
+        if (typeof body.fontScale === 'number' && body.fontScale >= 0.5 && body.fontScale <= 2) {
+          savePref({ fontScale: body.fontScale });
+        }
         sendJson(res, 200, { ok: true });
       } else if (req.method === 'POST' && pathname === '/api/open') {
         // Open a board-referenced local file in the OS default app. Guarded by

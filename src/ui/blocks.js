@@ -31,7 +31,9 @@
 
   // ---------- chart palette (from contract) ----------
   const PALETTE_LIGHT = ['#c2674b', '#4d8a66', '#5a7ca8', '#b9913f', '#8a6da3', '#57534e'];
-  const PALETTE_DARK = ['#d98e67', '#6fbf92', '#7c9fcc', '#d4b061', '#ad8fc2', '#a29c93'];
+  // Brighter/more saturated than the surfaces behind them so series stay legible
+  // on the dark card (#282624) — the muted set washed out at a glance.
+  const PALETTE_DARK = ['#e8a07a', '#74cfa0', '#88b4e8', '#e3c46a', '#c4a0db', '#c2b9ad'];
 
   function cssVar(name) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -743,7 +745,8 @@
 
   function themeDefaults(ctx) {
     const grid = cssVar('--border') || '#ece9e4';
-    const tick = cssVar('--muted') || '#8a8580';
+    // axis/legend/title text: --fg-2 reads clearly on dark; --muted was too dim
+    const tick = cssVar('--fg-2') || '#57534e';
     const fontFamily = cssVar('--sans') || 'sans-serif';
     return { grid, tick, fontFamily };
   }
@@ -1492,6 +1495,9 @@
   // the annotation pins/badges/popover usable while expanded (they live on
   // <body>, which native fullscreen would hide).
   let fullOpen = null; // container currently expanded
+  // full-screen content insets — must mirror the .blk-full padding in blocks.css
+  // so the fit-to-screen scale clears the fixed toolbar + leaves a small margin.
+  const FULL_PAD_X = 24, FULL_PAD_TOP = 44, FULL_PAD_BOTTOM = 24;
 
   // Toolbar icons: full-screen (4-corner expand) and a speech-bubble for the
   // "comment on the whole block" button. Zoom is both cmd/ctrl+wheel AND
@@ -1633,14 +1639,26 @@
       const target = opts.zoomEl;
       const nat = opts.natural();
       const z = container._rlyZ;
+      const full = container.classList.contains('blk-full');
       // A per-block height caps only the compact inline preview. The moment the
       // user zooms in (z !== null) or goes full-screen they want pixel detail, so
       // lift the cap there; restore it when back to the inline fit view.
       if (opts.fitMaxHeight != null) {
-        const fit = z === null && !container.classList.contains('blk-full');
-        target.style.maxHeight = fit ? opts.fitMaxHeight + 'px' : 'none';
+        target.style.maxHeight = z === null && !full ? opts.fitMaxHeight + 'px' : 'none';
       }
-      if (z === null || !nat || !nat.w) {
+      if (z === null && full && nat && nat.w && nat.h) {
+        // Full-screen default: scale the diagram/image to fill the viewport
+        // (contain — enlarge a small one, shrink a big one) so it's readable at
+        // a glance without reaching for the zoom buttons. CSS margin:auto centers
+        // it; it stays pannable once the user zooms past this fit.
+        const availW = window.innerWidth - FULL_PAD_X * 2;
+        const availH = window.innerHeight - FULL_PAD_TOP - FULL_PAD_BOTTOM;
+        const scale = Math.min(availW / nat.w, availH / nat.h);
+        target.style.maxWidth = 'none';
+        target.style.width = Math.max(1, Math.round(nat.w * scale)) + 'px';
+        target.style.height = 'auto';
+        pct.textContent = 'fit';
+      } else if (z === null || !nat || !nat.w) {
         target.style.width = '100%';
         target.style.maxWidth = nat && nat.w ? Math.ceil(nat.w) + 'px' : '100%';
         target.style.height = 'auto';
