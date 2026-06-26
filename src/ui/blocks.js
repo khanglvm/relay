@@ -1502,6 +1502,104 @@
     return wrap;
   }
 
+  // ---------- kpi (stat cards) ----------
+  function renderKpi(block, ctx, blockId) {
+    const wrap = el('div', { class: 'blk-kpi' });
+    if (block.title) wrap.append(el('div', { class: 'kpi-title' }, block.title));
+    const grid = el('div', { class: 'kpi-grid' });
+    for (const it of block.items || []) {
+      const card = el('div', { class: 'kpi-card' });
+      if (it.label) card.append(el('div', { class: 'kpi-label' }, it.label));
+      card.append(el('div', { class: 'kpi-value' }, it.value || ''));
+      if (it.delta) {
+        const glyph = it.dir === 'up' ? '▲ ' : it.dir === 'down' ? '▼ ' : it.dir === 'flat' ? '▬ ' : '';
+        card.append(el('div', { class: 'kpi-delta' + (it.dir ? ' kpi-' + it.dir : '') }, glyph + it.delta));
+      }
+      if (it.sub) card.append(el('div', { class: 'kpi-sub' }, it.sub));
+      if (ctx.annotate) {
+        ctx.annotate.register(card, {
+          blockId, questionId: ctx.questionId,
+          target: { kind: 'html-element', label: ((it.label ? it.label + ' · ' : '') + (it.value || 'KPI')) },
+        });
+      }
+      grid.append(card);
+    }
+    wrap.append(grid);
+    return wrap;
+  }
+
+  // ---------- typography (type specimens) ----------
+  function renderTypography(block, ctx, blockId) {
+    const wrap = el('div', { class: 'blk-typography' });
+    if (block.title) wrap.append(el('div', { class: 'typo-title' }, block.title));
+    for (const s of block.specimens || []) {
+      const meta = [];
+      if (s.label) meta.push(s.label);
+      if (s.size) meta.push(s.size);
+      if (s.weight) meta.push('w' + s.weight);
+      const sample = el('div', { class: 'typo-sample' }, s.text);
+      // set via DOM style props (browser ignores invalid values — no injection)
+      if (s.size) sample.style.fontSize = s.size;
+      if (s.weight) sample.style.fontWeight = s.weight;
+      if (s.font || block.font) sample.style.fontFamily = s.font || block.font;
+      if (s.lineHeight) sample.style.lineHeight = s.lineHeight;
+      if (s.letterSpacing) sample.style.letterSpacing = s.letterSpacing;
+      wrap.append(el('div', { class: 'typo-row' },
+        meta.length ? el('div', { class: 'typo-meta' }, meta.join(' · ')) : null,
+        sample
+      ));
+    }
+    ctx.annotate && ctx.annotate.enableTextSelection(wrap, { blockId, questionId: ctx.questionId });
+    return wrap;
+  }
+
+  // ---------- compare (before/after image slider) ----------
+  // The "after" image is the base layer (defines the frame size); the "before"
+  // image sits in an overflow-clipped layer whose width the divider drives, so
+  // dragging reveals more of one image and less of the other.
+  function renderCompare(block, ctx, blockId) {
+    const wrap = el('div', { class: 'blk-comparewrap' });
+    const frame = el('div', { class: 'cmp-frame' });
+    if (block.height) frame.style.maxHeight = clampHeight(block.height, 1200) + 'px';
+    const afterImg = el('img', { class: 'cmp-img', src: block.after, alt: block.afterLabel || 'after', draggable: 'false', loading: 'lazy' });
+    const beforeImg = el('img', { class: 'cmp-img cmp-img-before', src: block.before, alt: block.beforeLabel || 'before', draggable: 'false', loading: 'lazy' });
+    const beforeLayer = el('div', { class: 'cmp-before' }, beforeImg);
+    const handle = el('div', { class: 'cmp-handle', tabindex: '0', role: 'slider', 'aria-label': 'Compare before and after' },
+      el('div', { class: 'cmp-handle-grip' }, '⟺'));
+    frame.append(
+      afterImg, beforeLayer, handle,
+      el('span', { class: 'cmp-tag cmp-tag-before' }, block.beforeLabel || 'Before'),
+      el('span', { class: 'cmp-tag cmp-tag-after' }, block.afterLabel || 'After')
+    );
+    wrap.append(frame);
+
+    let pos = 50;
+    const apply = () => { beforeLayer.style.width = pos + '%'; handle.style.left = pos + '%'; };
+    // pin the before image to the frame's pixel width so the clip reveals it in
+    // place (rather than squishing it as the clip narrows)
+    const sizeBefore = () => { beforeImg.style.width = frame.clientWidth + 'px'; };
+    const refresh = () => { sizeBefore(); apply(); };
+    if (afterImg.complete && afterImg.naturalWidth) refresh();
+    else afterImg.addEventListener('load', refresh, { once: true });
+    window.addEventListener('resize', sizeBefore);
+
+    let dragging = false;
+    const setFromX = (clientX) => {
+      const r = frame.getBoundingClientRect();
+      if (r.width) { pos = Math.max(0, Math.min(100, ((clientX - r.left) / r.width) * 100)); apply(); }
+    };
+    frame.addEventListener('pointerdown', (e) => { dragging = true; setFromX(e.clientX); try { frame.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); });
+    frame.addEventListener('pointermove', (e) => { if (dragging) setFromX(e.clientX); });
+    frame.addEventListener('pointerup', () => { dragging = false; });
+    frame.addEventListener('pointercancel', () => { dragging = false; });
+    handle.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') { pos = Math.max(0, pos - 2); apply(); e.preventDefault(); }
+      else if (e.key === 'ArrowRight') { pos = Math.min(100, pos + 2); apply(); e.preventDefault(); }
+    });
+    attachViewer(wrap, { zoomEl: null, label: 'comparison', comment: wholeBlockComment(ctx, blockId, 'comparison') });
+    return wrap;
+  }
+
   // ---------- viewer controls (zoom / fit / full-screen) ----------
   // Large diagrams get squeezed to the column width; these controls let the
   // user zoom (buttons or cmd/ctrl+wheel) and expand any visual block into a
@@ -1846,6 +1944,18 @@
         break;
       case 'palette':
         inner = renderPalette(block, ctx, blockId);
+        wrapper.append(inner);
+        break;
+      case 'kpi':
+        inner = renderKpi(block, ctx, blockId);
+        wrapper.append(inner);
+        break;
+      case 'typography':
+        inner = renderTypography(block, ctx, blockId);
+        wrapper.append(inner);
+        break;
+      case 'compare':
+        inner = renderCompare(block, ctx, blockId);
         wrapper.append(inner);
         break;
       default:

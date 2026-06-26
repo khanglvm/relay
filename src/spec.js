@@ -32,7 +32,7 @@ const HTML_HEIGHT = { min: 100, max: 2400, boardDefault: 400, questionDefault: 3
 
 // Block heights clamp to the same window; defaults vary per block type.
 const BLOCK_HEIGHT = { min: 100, max: 2400 };
-export const BLOCK_TYPES = ['markdown', 'mermaid', 'graphviz', 'plantuml', 'chart', 'table', 'code', 'diff', 'video', 'html', 'image', 'palette'];
+export const BLOCK_TYPES = ['markdown', 'mermaid', 'graphviz', 'plantuml', 'chart', 'table', 'code', 'diff', 'video', 'html', 'image', 'palette', 'kpi', 'typography', 'compare'];
 const CHART_KINDS = ['bar', 'line', 'pie', 'doughnut', 'radar', 'scatter'];
 
 // code/diff blocks may load their text from a local file (like htmlFile). Caps
@@ -110,6 +110,23 @@ function readTextSource(block, inlineKey, fileKey, cwd, where) {
     return buf.toString('utf8');
   }
   return '';
+}
+
+// Resolve an image source (shared by the `image` and `compare` blocks): an
+// http(s)/data URL passes through; a local file is read + embedded as a data
+// URI (capped) so the board stays self-contained offline.
+function resolveImageSrc(srcRaw, cwd, where, field) {
+  const src = asStr(srcRaw).trim();
+  if (!src) throw new CliError(`${where}: ${field} needs a "src" (http(s)/data URL or local file path).`);
+  if (/^(https?:|data:)/i.test(src)) return src;
+  const p = path.resolve(cwd, src);
+  const ext = path.extname(p).slice(1).toLowerCase();
+  const mime = IMAGE_MIMES[ext];
+  if (!mime) throw new CliError(`${where}: ${field}: unsupported image extension ".${ext}" — use ${Object.keys(IMAGE_MIMES).join('/')}, or an http(s)/data URL.`);
+  let buf;
+  try { buf = fs.readFileSync(p); } catch { throw new CliError(`${where}: ${field}: cannot read image "${src}" (resolved: ${p})`); }
+  if (buf.length > IMAGE_MAX_BYTES) throw new CliError(`${where}: ${field}: image "${src}" is ${(buf.length / 1024 / 1024).toFixed(1)}MB — max ${IMAGE_MAX_BYTES / 1024 / 1024}MB.`);
+  return `data:${mime};base64,${buf.toString('base64')}`;
 }
 
 // Recognizes a YouTube / Vimeo URL (or a bare YouTube id) and returns
@@ -339,31 +356,68 @@ function normalizeBlock(rawBlock, id, cwd, where) {
   }
 
   if (type === 'image') {
-    const src = asStr(rawBlock.src ?? rawBlock.file ?? rawBlock.url).trim();
-    if (!src) throw new CliError(`${where}: image block needs a "src" (http(s)/data URL or local file path).`);
     const block = { id, type: 'image' };
+    block.src = resolveImageSrc(rawBlock.src ?? rawBlock.file ?? rawBlock.url, cwd, where, 'image block');
     if (rawBlock.alt !== undefined) block.alt = asStr(rawBlock.alt);
     if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
-    if (/^(https?:|data:)/i.test(src)) {
-      block.src = src;
-      return block;
-    }
-    const p = path.resolve(cwd, src);
-    const ext = path.extname(p).slice(1).toLowerCase();
-    const mime = IMAGE_MIMES[ext];
-    if (!mime) {
-      throw new CliError(`${where}: unsupported image extension ".${ext}" — use ${Object.keys(IMAGE_MIMES).join('/')}, or an http(s)/data URL.`);
-    }
-    let buf;
-    try {
-      buf = fs.readFileSync(p);
-    } catch {
-      throw new CliError(`${where}: cannot read image "${src}" (resolved: ${p})`);
-    }
-    if (buf.length > IMAGE_MAX_BYTES) {
-      throw new CliError(`${where}: image "${src}" is ${(buf.length / 1024 / 1024).toFixed(1)}MB — max ${IMAGE_MAX_BYTES / 1024 / 1024}MB.`);
-    }
-    block.src = `data:${mime};base64,${buf.toString('base64')}`;
+    return block;
+  }
+
+  if (type === 'kpi') {
+    // Stat cards: a row of big-number metrics, each with an optional delta
+    // (up/down tinted) and sublabel. For "revenue ↑12%" at a glance, no chart.
+    const rawItems = Array.isArray(rawBlock.items) ? rawBlock.items : [];
+    if (!rawItems.length) throw new CliError(`${where}: kpi block needs a non-empty "items" array of {label, value, delta?, dir?, sub?}.`);
+    const items = rawItems.map((it, k) => {
+      if (it === null || typeof it !== 'object' || Array.isArray(it)) throw new CliError(`${where}.items[${k}]: must be an object {label, value, …}.`);
+      const out = { label: asStr(it.label), value: asStr(it.value) };
+      if (it.delta !== undefined && it.delta !== null && it.delta !== '') out.delta = asStr(it.delta);
+      const dir = asStr(it.dir ?? it.deltaDir).trim().toLowerCase();
+      if (dir === 'up' || dir === 'down' || dir === 'flat') out.dir = dir;
+      if (it.sub !== undefined) out.sub = asStr(it.sub);
+      return out;
+    });
+    const block = { id, type: 'kpi', items };
+    if (rawBlock.title !== undefined) block.title = asStr(rawBlock.title);
+    return block;
+  }
+
+  if (type === 'typography') {
+    // Type specimens: render sample text at given size/weight/font so a designer
+    // can react to type choices the way they react to a palette.
+    const raw = Array.isArray(rawBlock.specimens) ? rawBlock.specimens : (Array.isArray(rawBlock.samples) ? rawBlock.samples : []);
+    if (!raw.length) throw new CliError(`${where}: typography block needs a non-empty "specimens" array of {label?, size?, weight?, text?}.`);
+    const specimens = raw.map((s, k) => {
+      if (s === null || typeof s !== 'object' || Array.isArray(s)) throw new CliError(`${where}.specimens[${k}]: must be an object.`);
+      const out = { text: asStr(s.text ?? s.sample) || 'The quick brown fox jumps over the lazy dog' };
+      if (s.label !== undefined) out.label = asStr(s.label);
+      if (s.size !== undefined) out.size = asStr(s.size);
+      if (s.weight !== undefined) out.weight = asStr(s.weight);
+      if (s.font !== undefined) out.font = asStr(s.font);
+      const lh = s.lineHeight ?? s.leading;
+      if (lh !== undefined) out.lineHeight = asStr(lh);
+      const ls = s.letterSpacing ?? s.tracking;
+      if (ls !== undefined) out.letterSpacing = asStr(ls);
+      return out;
+    });
+    const block = { id, type: 'typography', specimens };
+    if (rawBlock.title !== undefined) block.title = asStr(rawBlock.title);
+    if (rawBlock.font !== undefined) block.font = asStr(rawBlock.font);
+    return block;
+  }
+
+  if (type === 'compare') {
+    // Before/after: two images with a draggable divider to compare a redesign.
+    const beforeRaw = rawBlock.before && typeof rawBlock.before === 'object' ? rawBlock.before.src : (rawBlock.before ?? rawBlock.beforeSrc);
+    const afterRaw = rawBlock.after && typeof rawBlock.after === 'object' ? rawBlock.after.src : (rawBlock.after ?? rawBlock.afterSrc);
+    const block = {
+      id, type: 'compare',
+      before: resolveImageSrc(beforeRaw, cwd, where, '"before"'),
+      after: resolveImageSrc(afterRaw, cwd, where, '"after"'),
+    };
+    block.beforeLabel = asStr(rawBlock.beforeLabel ?? (rawBlock.before && rawBlock.before.label) ?? 'Before') || 'Before';
+    block.afterLabel = asStr(rawBlock.afterLabel ?? (rawBlock.after && rawBlock.after.label) ?? 'After') || 'After';
+    if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
     return block;
   }
 
@@ -629,7 +683,21 @@ const BLOCK_SCHEMA = {
       },
       colors: { type: 'array', items: { type: 'string' }, description: 'palette shorthand: colors for a single palette (use "palettes" for several named ones). Pairs with block-level "name".' },
       name: { type: 'string', description: 'palette shorthand: name for the single "colors" palette.' },
-      height: { type: 'integer', minimum: BLOCK_HEIGHT.min, maximum: BLOCK_HEIGHT.max, description: 'Block height in px. Defaults: chart 320, html 360; markdown/table/code flow naturally; mermaid/graphviz/plantuml/image natural (max 1200, scrolls).' },
+      items: {
+        type: 'array',
+        description: 'kpi: stat cards. Each {label, value, delta?, dir? (up|down|flat — tints the delta), sub?}. Big-number metrics at a glance ("Revenue $1.2M ↑12%") with no chart.',
+        items: { type: 'object', properties: { label: { type: 'string' }, value: { type: 'string' }, delta: { type: 'string' }, dir: { type: 'string', enum: ['up', 'down', 'flat'] }, sub: { type: 'string' } }, required: ['value'] },
+      },
+      specimens: {
+        type: 'array',
+        description: 'typography: type specimens rendered at the given style. Each {label?, size? (e.g. "32px"/"2rem"), weight? (e.g. "600"), font?, lineHeight?, letterSpacing?, text?}. Block-level "font" sets a default family.',
+        items: { type: 'object', properties: { label: { type: 'string' }, size: { type: 'string' }, weight: { type: 'string' }, font: { type: 'string' }, lineHeight: { type: 'string' }, letterSpacing: { type: 'string' }, text: { type: 'string' } } },
+      },
+      before: { description: 'compare: the "before" image — an http(s)/data URL, a local file path, or {src, label}.' },
+      after: { description: 'compare: the "after" image — an http(s)/data URL, a local file path, or {src, label}.' },
+      beforeLabel: { type: 'string', description: 'compare: caption for the before side (default "Before").' },
+      afterLabel: { type: 'string', description: 'compare: caption for the after side (default "After").' },
+      height: { type: 'integer', minimum: BLOCK_HEIGHT.min, maximum: BLOCK_HEIGHT.max, description: 'Block height in px. Defaults: chart 320, html 360; markdown/table/code flow naturally; mermaid/graphviz/plantuml/image/compare natural (max 1200, scrolls).' },
     },
   },
 };
