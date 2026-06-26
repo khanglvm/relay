@@ -1195,6 +1195,7 @@ function mcpRoundtrip(messages) {
   ok(cq.type === 'color' && Array.isArray(cq.presets) && cq.presets.length === 2 && cq.default === '#c2674b', 'color question normalizes (type, presets, default)');
   ok(board.text.includes('controlColor'), 'board renderer includes the color picker control');
   ok(board.text.includes('RelayAnnotate') && board.text.includes('Annotate.init'), 'board bundles + initializes the element-annotation engine');
+  ok(board.text.includes('ann-confirm') && board.text.includes('requestDelete'), 'board ships the confirm-delete modal (no accidental delete)');
   ok(!ask.inputSchema.properties.annotations, 'relay_ask input schema omits result-only "annotations"');
   const sq = byId[12].result.structuredContent.spec.questions;
   ok(sq[0].other === true && sq[1].other === false, 'single questions default "other" ON (opt out with other:false)');

@@ -48,12 +48,22 @@
   padding: 12px 14px;
   font: 14px/1.5 var(--sans);
 }
+.ann-pop-head { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
 .ann-pop-label {
+  flex: 1; min-width: 0;
   color: var(--muted);
   font-size: 0.78rem;
-  margin-bottom: 8px;
   overflow-wrap: anywhere;
 }
+.ann-pop-close {
+  flex: none; margin: -4px -4px 0 0;
+  background: transparent; color: var(--muted);
+  border: none; border-radius: 7px;
+  width: 26px; height: 26px;
+  font-size: 1.25rem; line-height: 1; cursor: pointer;
+  transition: color 150ms var(--ease), background 150ms var(--ease);
+}
+.ann-pop-close:hover { color: var(--fg); background: var(--bg-sunken); }
 .ann-pop-existing { margin-bottom: 8px; max-height: min(50vh, 420px); overflow-y: auto; }
 .ann-pop-existing:empty { display: none; margin: 0; }
 
@@ -146,16 +156,49 @@
 .ann-cancel:hover { border-color: var(--accent); color: var(--accent); }
 
 /* delete button (popover items + summary rows): muted, danger on hover */
+/* Delete = a trash icon button, visually distinct from the close ×. */
 .ann-del {
   flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
   background: transparent; color: var(--muted);
-  border: none; border-radius: 6px;
-  padding: 2px 6px;
-  font-size: 1.05rem; line-height: 1;
+  border: none; border-radius: 7px;
+  width: 26px; height: 26px;
   cursor: pointer;
-  transition: color 150ms var(--ease);
+  transition: color 150ms var(--ease), background 150ms var(--ease);
 }
-.ann-del:hover { color: var(--danger); }
+.ann-del:hover { color: var(--danger); background: var(--accent-soft); }
+
+/* ---------- delete confirmation modal ---------- */
+.ann-confirm-scrim {
+  position: fixed; inset: 0; z-index: 80;
+  background: rgba(28, 27, 25, 0.4);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.ann-confirm {
+  width: min(360px, 92vw);
+  background: var(--card); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: var(--shadow-lift);
+  padding: 20px;
+  font: 14px/1.5 var(--sans);
+}
+.ann-confirm-title { font: 600 1.05rem var(--sans); margin-bottom: 6px; }
+.ann-confirm-msg { color: var(--fg-2); font-size: 0.9rem; }
+.ann-confirm-skip {
+  display: flex; align-items: center; gap: 8px;
+  margin: 14px 0 4px; color: var(--fg-2); font-size: 0.85rem; cursor: pointer;
+}
+.ann-confirm-skip input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+.ann-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.ann-confirm-cancel, .ann-confirm-del {
+  border-radius: 9px; padding: 8px 16px; font: 600 0.88rem var(--sans); cursor: pointer;
+  border: 1px solid var(--border-strong); transition: all 150ms var(--ease);
+}
+.ann-confirm-cancel { background: var(--card); color: var(--fg-2); }
+.ann-confirm-cancel:hover { background: var(--bg-sunken); color: var(--fg); }
+.ann-confirm-del { background: var(--danger); color: var(--danger-fg); border-color: var(--danger); }
+.ann-confirm-del:hover { filter: brightness(1.06); }
 
 /* ---------- floating selection button ---------- */
 .ann-selbtn {
@@ -274,15 +317,23 @@
 .ann-rail-list .ann-sum-row + .ann-sum-row { border-top: 1px solid var(--border); }
 .ann-rail-list .ann-sum-row:hover { border-color: var(--accent); box-shadow: var(--shadow-card); }
 
-/* The rail always overlays the board (scrim dims, content never moves) — opening
-   it must NOT shift layout, on any width. It's reached only via the floating
-   Comments button, which flashes when a new comment lands. */
+/* The rail NEVER auto-opens (that shifted the board unexpectedly) — it's reached
+   only via the floating Comments button, which flashes when a new comment lands. */
 @keyframes ann-toggle-pulse {
   0% { transform: scale(1); }
   35% { transform: scale(1.12); box-shadow: 0 0 0 4px var(--accent-soft); }
   100% { transform: scale(1); }
 }
 .ann-rail-toggle.pulse { animation: ann-toggle-pulse 600ms var(--ease); border-color: var(--accent); color: var(--accent); }
+
+/* When opened on a roomy screen, the rail DOCKS and consumes page space (pushes
+   content) instead of covering it — so the board stays visible beside it and
+   clicking a comment reveals the highlighted item in the page. No scrim while
+   docked. Narrow screens fall back to an overlay + scrim (no room to dock). */
+@media (min-width: 980px) {
+  .ann-rail-scrim { display: none !important; }
+  body.ann-rail-open { padding-right: 340px; }
+}
 
 /* ---------- jump-to flash ---------- */
 .ann-flash { animation: ann-flash 1s var(--ease); }

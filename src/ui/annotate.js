@@ -494,13 +494,57 @@
     dom.pop.replaceChildren();
   }
 
+  // ---------- delete a comment (with confirm) ----------
+  // The × that used to delete a comment read as "close the popup". Delete is now
+  // a distinct trash button that opens a confirm modal; "Don't ask again"
+  // (default OFF) suppresses future confirms for the session (persisted best-effort).
+  const ICON_TRASH =
+    '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M2.5 4h11M6 4V2.5h4V4M5 4l.5 9h5l.5-9"/></svg>';
+  const DEL_SKIP_KEY = 'relay-ann-del-skip';
+  let delConfirmSkip = false;
+  try { delConfirmSkip = localStorage.getItem(DEL_SKIP_KEY) === '1'; } catch { /* sandbox: no storage */ }
+
+  function requestDelete(id, after) {
+    const done = () => { removeAnnotation(id); if (after) after(); };
+    if (delConfirmSkip) { done(); return; }
+    showDeleteConfirm(done);
+  }
+  function showDeleteConfirm(onConfirm) {
+    const scrim = el('div', { class: 'ann-confirm-scrim' });
+    const skip = el('input', { type: 'checkbox' });
+    const cancel = el('button', { class: 'ann-confirm-cancel', type: 'button' }, 'Cancel');
+    const del = el('button', { class: 'ann-confirm-del', type: 'button' }, 'Delete');
+    const close = () => { scrim.remove(); document.removeEventListener('keydown', onKey, true); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
+    cancel.addEventListener('click', close);
+    scrim.addEventListener('mousedown', (e) => { if (e.target === scrim) close(); });
+    del.addEventListener('click', () => {
+      if (skip.checked) { delConfirmSkip = true; try { localStorage.setItem(DEL_SKIP_KEY, '1'); } catch { /* sandbox */ } }
+      close();
+      onConfirm();
+    });
+    scrim.append(el('div', { class: 'ann-confirm', role: 'alertdialog', 'aria-label': 'Delete comment' },
+      el('div', { class: 'ann-confirm-title' }, 'Delete this comment?'),
+      el('div', { class: 'ann-confirm-msg' }, 'This removes the comment and its replies. It can’t be undone.'),
+      el('label', { class: 'ann-confirm-skip' }, skip, el('span', {}, 'Don’t ask again')),
+      el('div', { class: 'ann-confirm-actions' }, cancel, del)
+    ));
+    document.body.append(scrim);
+    document.addEventListener('keydown', onKey, true);
+    setTimeout(() => { try { cancel.focus(); } catch { /* ignore */ } }, 0);
+  }
+
   function openPopover(info, anchorEl) {
     if (disabled) return;
     ensureDom();
     closePopover();
     hidePin();
     const pop = dom.pop;
-    pop.replaceChildren(el('div', { class: 'ann-pop-label' }, humanize(info.target)));
+    // Header: target label + an explicit CLOSE button, so × always means "close".
+    const popClose = el('button', { class: 'ann-pop-close', type: 'button', title: 'Close', 'aria-label': 'Close' }, '×');
+    popClose.addEventListener('click', closePopover);
+    pop.replaceChildren(el('div', { class: 'ann-pop-head' }, el('div', { class: 'ann-pop-label' }, humanize(info.target)), popClose));
 
     // Existing comments on this exact target, rendered as threads: author
     // chip + time + delete, the comment text, its replies indented below,
@@ -510,11 +554,9 @@
     const renderExisting = () => {
       existingWrap.replaceChildren();
       for (const a of matching(info)) {
-        const del = el('button', { class: 'ann-del', type: 'button', title: 'Delete comment', 'aria-label': 'Delete comment' }, '×');
-        del.addEventListener('click', () => {
-          removeAnnotation(a.id);
-          renderExisting();
-        });
+        const del = el('button', { class: 'ann-del', type: 'button', title: 'Delete comment', 'aria-label': 'Delete comment' });
+        del.innerHTML = ICON_TRASH;
+        del.addEventListener('click', () => requestDelete(a.id, renderExisting));
         const thread = el('div', { class: 'ann-thread' },
           el('div', { class: 'ann-thread-head' }, chip(a.author), timeEl(a.createdAt), del),
           el('div', { class: 'ann-pop-text' }, a.text)
@@ -719,11 +761,9 @@
     // The rail has its own header chrome; standalone summaries get a heading.
     if (!isRail) target.append(el('h3', { class: 'ann-sum-head' }, `Comments (${annotations.length})`));
     for (const a of annotations) {
-      const del = el('button', { class: 'ann-del', type: 'button', title: 'Delete comment', 'aria-label': 'Delete comment' }, '×');
-      del.addEventListener('click', (e) => {
-        e.stopPropagation();
-        removeAnnotation(a.id);
-      });
+      const del = el('button', { class: 'ann-del', type: 'button', title: 'Delete comment', 'aria-label': 'Delete comment' });
+      del.innerHTML = ICON_TRASH;
+      del.addEventListener('click', (e) => { e.stopPropagation(); requestDelete(a.id); });
       // Thread meta: reply count, plus an "agent" chip when the latest entry
       // in the thread (last reply, or the comment itself) is agent-authored.
       const replyCount = Array.isArray(a.replies) ? a.replies.length : 0;
