@@ -222,6 +222,22 @@
     for (const v of opts) if (!order.includes(v)) order.push(v);
     return order;
   }
+  // Allocate: a complete map {optionValue: number≥0}, seeded from a prior/default.
+  function seedAllocate(q, prior) {
+    const m = prior && typeof prior === 'object' && !Array.isArray(prior) ? prior : {};
+    const out = {};
+    for (const o of q.options || []) out[o.value] = Math.max(0, Number(m[o.value]) || 0);
+    return out;
+  }
+  // Checklist: keep only {knownOption: knownStatus} entries from a prior/default.
+  function seedChecklist(q, prior) {
+    const m = prior && typeof prior === 'object' && !Array.isArray(prior) ? prior : {};
+    const optVals = new Set((q.options || []).map((o) => o.value));
+    const stVals = new Set((q.statuses || []).map((s) => s.value));
+    const out = {};
+    for (const k of Object.keys(m)) if (optVals.has(k) && stVals.has(m[k])) out[k] = m[k];
+    return out;
+  }
 
   if (initialPrefill) seedFromPrefill(initialPrefill);
   else for (const q of QS) if (q.default !== undefined) state.answers[q.id] = q.default;
@@ -229,6 +245,8 @@
   // (from a draft/default if present, else the authored order), so a never-touched
   // rank still returns a meaningful ordering.
   for (const q of QS) if (q.type === 'rank') state.answers[q.id] = seedRankOrder(q, state.answers[q.id]);
+  for (const q of QS) if (q.type === 'allocate') state.answers[q.id] = seedAllocate(q, state.answers[q.id]);
+  for (const q of QS) if (q.type === 'checklist') state.answers[q.id] = seedChecklist(q, state.answers[q.id]);
   // If the local mirror was newer than the server (or the server had nothing),
   // the in-memory state now holds input the server hasn't seen — flush it once
   // the rest of the app is wired (see the post-init flush near the heartbeat).
@@ -259,6 +277,15 @@
       case 'rank':
         // always a full, valid permutation (seeded below) → always answered
         return Array.isArray(v) && v.length ? [...v] : undefined;
+      case 'checklist': {
+        const m = v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+        return Object.keys(m).length ? { ...m } : undefined;
+      }
+      case 'allocate': {
+        const m = v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+        const sum = Object.values(m).reduce((a, n) => a + (Number(n) || 0), 0);
+        return sum > 0 ? { ...m } : undefined;
+      }
       default: {
         const t = typeof v === 'string' ? v.trim() : '';
         return t || undefined;
@@ -793,6 +820,90 @@
     return wrap;
   }
 
+  // Checklist: each option is a row with a segmented status control (Pass/Fail/
+  // N/A by default). Answer is a map {optionValue: statusValue} for set rows.
+  function controlChecklist(q) {
+    const wrap = el('div', { class: 'checklist' });
+    const cur = () => (state.answers[q.id] && typeof state.answers[q.id] === 'object' && !Array.isArray(state.answers[q.id])
+      ? state.answers[q.id]
+      : (state.answers[q.id] = {}));
+    for (const o of q.options) {
+      const seg = el('div', { class: 'chk-seg' });
+      const buttons = [];
+      for (const s of q.statuses) {
+        const b = el('button', { type: 'button', class: 'chk-status' + (s.tone ? ' tone-' + s.tone : '') }, s.label);
+        if (cur()[o.value] === s.value) b.classList.add('sel');
+        b.addEventListener('click', () => {
+          const m = cur();
+          if (m[o.value] === s.value) delete m[o.value];
+          else m[o.value] = s.value;
+          for (const x of buttons) x.btn.classList.toggle('sel', m[o.value] === x.val);
+          clearErr(q.id);
+          scheduleSave();
+        });
+        buttons.push({ btn: b, val: s.value });
+        seg.append(b);
+      }
+      wrap.append(el('div', { class: 'chk-row' },
+        el('div', { class: 'chk-body' },
+          el('div', { class: 'ol' }, o.label),
+          o.description ? el('div', { class: 'od' }, o.description) : null),
+        seg
+      ));
+    }
+    return wrap;
+  }
+
+  // Allocate: distribute q.total across the options with per-option sliders; a
+  // live total bar shows the running sum / remaining / overage. Answer is a map
+  // {optionValue: number}; an all-zero allocation submits as unanswered.
+  function controlAllocate(q) {
+    const wrap = el('div', { class: 'allocate' });
+    const total = q.total || 100;
+    const unit = q.unit ? ' ' + q.unit : '';
+    const cur = () => (state.answers[q.id] = seedAllocate(q, state.answers[q.id]));
+    const sumEl = el('span', { class: 'alloc-sum' });
+    const fill = el('div', { class: 'alloc-bar-fill' });
+    const nums = [];
+    const refresh = () => {
+      const m = cur();
+      const sum = (q.options || []).reduce((a, o) => a + (Number(m[o.value]) || 0), 0);
+      const tail = sum > total ? ` (over by ${sum - total})` : sum < total ? ` (${total - sum} left)` : ' ✓';
+      sumEl.textContent = `${sum} / ${total}${unit}${tail}`;
+      sumEl.classList.toggle('over', sum > total);
+      sumEl.classList.toggle('exact', sum === total);
+      fill.style.width = Math.min(100, (sum / total) * 100) + '%';
+      fill.classList.toggle('over', sum > total);
+      for (const n of nums) n.el.textContent = String(m[n.value] || 0);
+    };
+    for (const o of q.options) {
+      const m = cur();
+      const range = el('input', { type: 'range', min: '0', max: String(total), step: '1', class: 'alloc-range', 'aria-label': o.label });
+      range.value = String(m[o.value] || 0);
+      const num = el('span', { class: 'alloc-num' }, String(m[o.value] || 0));
+      range.addEventListener('input', () => {
+        cur()[o.value] = Number(range.value) || 0;
+        refresh();
+        clearErr(q.id);
+        scheduleSave();
+      });
+      nums.push({ value: o.value, el: num });
+      wrap.append(el('div', { class: 'alloc-row' },
+        el('div', { class: 'alloc-rowhead' },
+          el('div', { class: 'ol' }, o.label),
+          num),
+        range,
+        o.description ? el('div', { class: 'od' }, o.description) : null
+      ));
+    }
+    wrap.append(el('div', { class: 'alloc-total' },
+      el('div', { class: 'alloc-bar' }, fill),
+      el('div', { class: 'alloc-sumwrap' }, 'Total: ', sumEl)
+    ));
+    refresh();
+    return wrap;
+  }
+
   function controlText(q, multiline) {
     const input = multiline
       ? el('textarea', { placeholder: q.placeholder || '' })
@@ -905,6 +1016,8 @@
     else if (q.type === 'scale') control.append(controlScale(q));
     else if (q.type === 'color') control.append(controlColor(q));
     else if (q.type === 'rank') control.append(controlRank(q));
+    else if (q.type === 'checklist') control.append(controlChecklist(q));
+    else if (q.type === 'allocate') control.append(controlAllocate(q));
     else control.append(controlText(q, q.type === 'textarea'));
     card.append(control);
     if (q.note) {

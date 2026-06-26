@@ -229,6 +229,42 @@ h1 {
 .rank-btn:hover:not(:disabled) { border-color: var(--accent); }
 .rank-btn:disabled { opacity: 0.35; cursor: default; }
 
+/* checklist — one row per item with a Pass/Fail/N·A segmented status control */
+.checklist { display: flex; flex-direction: column; gap: 8px; }
+.chk-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card);
+}
+.chk-body { flex: 1; min-width: 140px; }
+.chk-seg { display: flex; gap: 6px; flex: none; }
+.chk-status {
+  padding: 6px 14px; font: inherit; font-size: 0.85rem; cursor: pointer;
+  background: var(--bg-sunken); color: var(--fg-2);
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  transition: border-color 150ms var(--ease), background 150ms var(--ease), color 150ms var(--ease);
+}
+.chk-status:hover { border-color: var(--accent); }
+.chk-status.sel { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.chk-status.tone-ok.sel { background: var(--ok); border-color: var(--ok); color: #fff; }
+.chk-status.tone-bad.sel { background: var(--danger); border-color: var(--danger); color: var(--danger-fg); }
+.chk-status.tone-warn.sel { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.chk-status.tone-muted.sel { background: var(--muted); border-color: var(--muted); color: #fff; }
+
+/* allocate — distribute a budget across options with sliders + a live total */
+.allocate { display: flex; flex-direction: column; gap: 14px; }
+.alloc-row { display: flex; flex-direction: column; gap: 6px; }
+.alloc-rowhead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.alloc-num { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--fg); }
+.alloc-range { width: 100%; accent-color: var(--accent); }
+.alloc-total { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 4px; border-top: 1px solid var(--border); }
+.alloc-bar { flex: 1; min-width: 120px; height: 8px; background: var(--bg-sunken); border-radius: 999px; overflow: hidden; }
+.alloc-bar-fill { height: 100%; width: 0; background: var(--accent); transition: width 120ms var(--ease); }
+.alloc-bar-fill.over { background: var(--danger); }
+.alloc-sumwrap { color: var(--muted); font-size: 0.85rem; flex: none; }
+.alloc-sum { font-weight: 600; color: var(--fg-2); font-variant-numeric: tabular-nums; }
+.alloc-sum.exact { color: var(--ok); }
+.alloc-sum.over { color: var(--danger); }
+
 input[type="text"], textarea {
   width: 100%;
   background: var(--bg-sunken); color: var(--fg);

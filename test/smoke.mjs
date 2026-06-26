@@ -1335,5 +1335,38 @@ console.log('30. rank question type');
   ok(schema.properties.questions.items.properties.type.enum.includes('rank'), 'rly schema lists "rank" in the question type enum');
 }
 
+// ---------- 31. checklist + allocate question types ----------
+console.log('31. checklist + allocate');
+{
+  const SPEC31 = {
+    title: 'QA & budget',
+    questions: [
+      { id: 'qa', type: 'checklist', label: 'Sign-off', options: ['login', 'search', 'checkout'] },
+      { id: 'qa2', type: 'signoff', label: 'Alias', options: ['a'], statuses: ['yes', 'no'] },
+      { id: 'spend', type: 'allocate', label: 'Split budget', total: 100, options: ['eng', 'design', 'ops'] },
+      { id: 'spend2', type: 'budget', label: 'Alias', options: ['x', 'y'] },
+    ],
+  };
+  const p = path.join(HOME, 'q31-spec.json');
+  fs.writeFileSync(p, JSON.stringify(SPEC31));
+  const { url, exited } = await spawnBlocking(['ask', '--file', p, '--no-open', '--timeout', '60']);
+  const spec = (await (await fetch(new URL('/api/board', url))).json()).spec;
+  const qa = spec.questions[0];
+  ok(qa.type === 'checklist' && qa.options.length === 3, 'checklist normalizes its options');
+  ok(qa.statuses.length === 3 && qa.statuses[0].value === 'pass' && qa.statuses[0].tone === 'ok' && qa.statuses[2].label === 'N/A',
+    'checklist default statuses are Pass/Fail/N·A with tones');
+  ok(spec.questions[1].type === 'checklist' && spec.questions[1].statuses.length === 2, 'alias "signoff" → checklist; custom statuses honored');
+  ok(spec.questions[2].type === 'allocate' && spec.questions[2].total === 100, 'allocate normalizes (default total 100)');
+  ok(spec.questions[3].type === 'allocate', 'alias "budget" → allocate');
+
+  await post(url, '/api/submit', { answers: { qa: { login: 'pass', checkout: 'fail' }, spend: { eng: 50, design: 30, ops: 20 } } });
+  const res = JSON.parse((await exited).stdout);
+  ok(res.answers.qa && res.answers.qa.login === 'pass' && res.answers.qa.checkout === 'fail', 'checklist answer roundtrips as {item: status}');
+  ok(res.answers.spend && res.answers.spend.eng === 50 && res.answers.spend.ops === 20, 'allocate answer roundtrips as {option: number}');
+
+  const badChk = await run(['ask', '--file', '-'], { input: JSON.stringify({ title: 'x', questions: [{ id: 'c', type: 'checklist', label: 'c', options: ['a'], statuses: ['only'] }] }) });
+  ok(badChk.code === 4 && /checklist needs ≥2/.test(badChk.stderr), 'checklist with <2 statuses → exit 4');
+}
+
 console.log(`\nAll ${passed} assertions passed. (storage: ${HOME})`);
 process.exit(0);

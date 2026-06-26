@@ -235,7 +235,7 @@
         placeholder: typeof rq.placeholder === 'string' ? rq.placeholder : '',
         blocks: normBlocks(rq.blocks, id + '-'),
       };
-      if (type === 'single' || type === 'multi' || type === 'rank') {
+      if (type === 'single' || type === 'multi' || type === 'rank' || type === 'checklist' || type === 'allocate') {
         const opts = Array.isArray(rq.options) ? rq.options : [];
         q.options = opts.map((o, j) => {
           if (typeof o === 'string' || typeof o === 'number') return { value: String(o), label: String(o) };
@@ -249,7 +249,18 @@
           }
           return { value: String(o), label: String(o) };
         });
-        if (type !== 'rank') q.other = type === 'single' ? rq.other !== false : rq.other === true;
+        if (type === 'single' || type === 'multi') q.other = type === 'single' ? rq.other !== false : rq.other === true;
+      }
+      if (type === 'checklist') {
+        const rawSt = Array.isArray(rq.statuses) && rq.statuses.length ? rq.statuses
+          : [{ value: 'pass', label: 'Pass', tone: 'ok' }, { value: 'fail', label: 'Fail', tone: 'bad' }, { value: 'na', label: 'N/A', tone: 'muted' }];
+        q.statuses = rawSt.map((s) => typeof s === 'object' && s
+          ? { value: String(s.value != null ? s.value : s.label || ''), label: String(s.label != null ? s.label : s.value || ''), tone: s.tone ? String(s.tone) : undefined }
+          : { value: String(s), label: String(s) === 'na' ? 'N/A' : String(s) });
+      }
+      if (type === 'allocate') {
+        q.total = Number.isFinite(rq.total) && rq.total > 0 ? Math.floor(rq.total) : 100;
+        if (rq.unit !== undefined) q.unit = String(rq.unit);
       }
       if (type === 'scale') {
         q.min = Number.isFinite(rq.min) ? rq.min : 1;
@@ -433,6 +444,22 @@
       for (const v of opts) if (!order.includes(v)) order.push(v);
       state.answers[q.id] = order;
     }
+    for (const q of QS) if (q.type === 'allocate') state.answers[q.id] = seedAllocate(q, state.answers[q.id]);
+    for (const q of QS) if (q.type === 'checklist') state.answers[q.id] = seedChecklist(q, state.answers[q.id]);
+  }
+  function seedAllocate(q, prior) {
+    const m = prior && typeof prior === 'object' && !Array.isArray(prior) ? prior : {};
+    const out = {};
+    for (const o of q.options || []) out[o.value] = Math.max(0, Number(m[o.value]) || 0);
+    return out;
+  }
+  function seedChecklist(q, prior) {
+    const m = prior && typeof prior === 'object' && !Array.isArray(prior) ? prior : {};
+    const optVals = new Set((q.options || []).map((o) => o.value));
+    const stVals = new Set((q.statuses || []).map((s) => s.value));
+    const out = {};
+    for (const k of Object.keys(m)) if (optVals.has(k) && stVals.has(m[k])) out[k] = m[k];
+    return out;
   }
 
   function getValue(q) {
@@ -454,6 +481,15 @@
         return typeof v === 'number' ? v : undefined;
       case 'rank':
         return Array.isArray(v) && v.length ? [...v] : undefined;
+      case 'checklist': {
+        const m = v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+        return Object.keys(m).length ? { ...m } : undefined;
+      }
+      case 'allocate': {
+        const m = v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+        const sum = Object.values(m).reduce((a, n) => a + (Number(n) || 0), 0);
+        return sum > 0 ? { ...m } : undefined;
+      }
       default: {
         const t = typeof v === 'string' ? v.trim() : '';
         return t || undefined;
@@ -607,6 +643,70 @@
     input.addEventListener('input', () => { state.answers[q.id] = input.value; clearErr(q.id); });
     return input;
   }
+  // Checklist / allocate — see the browser board's controls (no autosave here).
+  function controlChecklist(q) {
+    const wrap = el('div', { class: 'checklist' });
+    const cur = () => (state.answers[q.id] && typeof state.answers[q.id] === 'object' && !Array.isArray(state.answers[q.id])
+      ? state.answers[q.id] : (state.answers[q.id] = {}));
+    for (const o of q.options) {
+      const seg = el('div', { class: 'chk-seg' });
+      const buttons = [];
+      for (const s of q.statuses) {
+        const b = el('button', { type: 'button', class: 'chk-status' + (s.tone ? ' tone-' + s.tone : '') }, s.label);
+        if (cur()[o.value] === s.value) b.classList.add('sel');
+        b.addEventListener('click', () => {
+          const m = cur();
+          if (m[o.value] === s.value) delete m[o.value];
+          else m[o.value] = s.value;
+          for (const x of buttons) x.btn.classList.toggle('sel', m[o.value] === x.val);
+          clearErr(q.id);
+        });
+        buttons.push({ btn: b, val: s.value });
+        seg.append(b);
+      }
+      wrap.append(el('div', { class: 'chk-row' },
+        el('div', { class: 'chk-body' }, el('div', { class: 'ol' }, o.label), o.description ? el('div', { class: 'od' }, o.description) : null),
+        seg));
+    }
+    return wrap;
+  }
+  function controlAllocate(q) {
+    const wrap = el('div', { class: 'allocate' });
+    const total = q.total || 100;
+    const unit = q.unit ? ' ' + q.unit : '';
+    const cur = () => (state.answers[q.id] = seedAllocate(q, state.answers[q.id]));
+    const sumEl = el('span', { class: 'alloc-sum' });
+    const fill = el('div', { class: 'alloc-bar-fill' });
+    const nums = [];
+    const refresh = () => {
+      const m = cur();
+      const sum = (q.options || []).reduce((a, o) => a + (Number(m[o.value]) || 0), 0);
+      const tail = sum > total ? ' (over by ' + (sum - total) + ')' : sum < total ? ' (' + (total - sum) + ' left)' : ' ✓';
+      sumEl.textContent = sum + ' / ' + total + unit + tail;
+      sumEl.classList.toggle('over', sum > total);
+      sumEl.classList.toggle('exact', sum === total);
+      fill.style.width = Math.min(100, (sum / total) * 100) + '%';
+      fill.classList.toggle('over', sum > total);
+      for (const n of nums) n.el.textContent = String(m[n.value] || 0);
+    };
+    for (const o of q.options) {
+      const m = cur();
+      const range = el('input', { type: 'range', min: '0', max: String(total), step: '1', class: 'alloc-range', 'aria-label': o.label });
+      range.value = String(m[o.value] || 0);
+      const num = el('span', { class: 'alloc-num' }, String(m[o.value] || 0));
+      range.addEventListener('input', () => { cur()[o.value] = Number(range.value) || 0; refresh(); clearErr(q.id); });
+      nums.push({ value: o.value, el: num });
+      wrap.append(el('div', { class: 'alloc-row' },
+        el('div', { class: 'alloc-rowhead' }, el('div', { class: 'ol' }, o.label), num),
+        range,
+        o.description ? el('div', { class: 'od' }, o.description) : null));
+    }
+    wrap.append(el('div', { class: 'alloc-total' },
+      el('div', { class: 'alloc-bar' }, fill),
+      el('div', { class: 'alloc-sumwrap' }, 'Total: ', sumEl)));
+    refresh();
+    return wrap;
+  }
   // Reorderable priority list — see the browser board's controlRank. Answer is
   // the ordered array of option values (highest first); always a full permutation.
   function controlRank(q) {
@@ -723,6 +823,8 @@
       else if (q.type === 'scale') control.append(controlScale(q));
       else if (q.type === 'color') control.append(controlColor(q));
       else if (q.type === 'rank') control.append(controlRank(q));
+      else if (q.type === 'checklist') control.append(controlChecklist(q));
+      else if (q.type === 'allocate') control.append(controlAllocate(q));
       else control.append(controlText(q, q.type === 'textarea'));
       card.append(control);
       if (q.note) {

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { CliError } from './util.js';
 
-export const TYPES = ['single', 'multi', 'yesno', 'text', 'textarea', 'scale', 'color', 'rank'];
+export const TYPES = ['single', 'multi', 'yesno', 'text', 'textarea', 'scale', 'color', 'rank', 'checklist', 'allocate'];
 
 const ALIASES = {
   radio: 'single',
@@ -26,6 +26,13 @@ const ALIASES = {
   ordering: 'rank',
   prioritize: 'rank',
   sort: 'rank',
+  signoff: 'checklist',
+  'sign-off': 'checklist',
+  qa: 'checklist',
+  allocation: 'allocate',
+  budget: 'allocate',
+  distribute: 'allocate',
+  points: 'allocate',
 };
 
 const HTML_HEIGHT = { min: 100, max: 2400, boardDefault: 400, questionDefault: 360 };
@@ -545,7 +552,7 @@ export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
       placeholder: asStr(rq.placeholder),
     };
 
-    if (type === 'single' || type === 'multi' || type === 'rank') {
+    if (type === 'single' || type === 'multi' || type === 'rank' || type === 'checklist' || type === 'allocate') {
       const opts = Array.isArray(rq.options) ? rq.options : [];
       q.options = opts.map((o, j) => {
         if (typeof o === 'string' || typeof o === 'number') {
@@ -573,10 +580,39 @@ export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
       // Radio (single) questions include an "Other" free-text option by default so
       // the user is never boxed into the listed choices; opt out with other:false.
       // Multi stays opt-in (checkbox lists are usually exhaustive on purpose).
-      // Rank reorders a fixed set, so no "Other".
-      if (type !== 'rank') {
+      // rank/checklist/allocate operate over a fixed set, so no "Other".
+      if (type === 'single' || type === 'multi') {
         q.other = type === 'single' ? rq.other !== false : rq.other === true;
       }
+    }
+
+    if (type === 'checklist') {
+      // Per-item status control. Default Pass / Fail / N/A; override with
+      // "statuses" (strings or {value,label,tone?}). tone colors the chip.
+      const rawSt = Array.isArray(rq.statuses) && rq.statuses.length
+        ? rq.statuses
+        : [{ value: 'pass', label: 'Pass', tone: 'ok' }, { value: 'fail', label: 'Fail', tone: 'bad' }, { value: 'na', label: 'N/A', tone: 'muted' }];
+      q.statuses = rawSt.map((s, k) => {
+        if (typeof s === 'string' || typeof s === 'number') {
+          const value = String(s).trim();
+          return { value, label: value === 'na' ? 'N/A' : value.charAt(0).toUpperCase() + value.slice(1) };
+        }
+        if (s && typeof s === 'object') {
+          const value = asStr(s.value ?? s.label).trim();
+          if (!value) throw new CliError(`${where}.statuses[${k}]: needs "value" or "label".`);
+          const out = { value, label: asStr(s.label ?? s.value) || value };
+          const tone = asStr(s.tone).trim().toLowerCase();
+          if (tone) out.tone = tone;
+          return out;
+        }
+        throw new CliError(`${where}.statuses[${k}]: must be a string or {value, label, tone?}.`);
+      });
+      if (q.statuses.length < 2) throw new CliError(`${where}: checklist needs ≥2 "statuses".`);
+    }
+
+    if (type === 'allocate') {
+      q.total = clampInt(rq.total, 1, 1000000, 100);
+      if (rq.unit !== undefined) q.unit = asStr(rq.unit);
     }
 
     if (type === 'scale') {
@@ -726,13 +762,13 @@ export const SPEC_SCHEMA = {
         required: ['label'],
         properties: {
           id: { type: 'string', description: 'Answer key in the result JSON. Defaults to q1, q2, …' },
-          type: { type: 'string', enum: ['single', 'multi', 'yesno', 'text', 'textarea', 'scale', 'color', 'rank'], default: 'text' },
+          type: { type: 'string', enum: ['single', 'multi', 'yesno', 'text', 'textarea', 'scale', 'color', 'rank', 'checklist', 'allocate'], default: 'text' },
           label: { type: 'string' },
           description: { type: 'string' },
           required: { type: 'boolean', default: false },
           options: {
             type: 'array',
-            description: 'For single/multi/rank. Strings, or {value, label, description, blocks?}. An option\'s "blocks" render INSIDE that option card — use them to show each choice (image/chart/mermaid/html…) instead of describing it in words. For "rank", the user reorders these (drag or ↑/↓) and the answer is the ordered array of values (highest priority first); rank needs ≥2 options and always returns a value.',
+            description: 'For single/multi/rank/checklist/allocate. Strings, or {value, label, description, blocks?}. An option\'s "blocks" render INSIDE that option card — use them to show each choice (image/chart/mermaid/html…) instead of describing it in words. "rank": user reorders (drag/↑↓), answer is the ordered values, ≥2 options. "checklist": each option gets a status (see "statuses"), answer is {value: status}. "allocate": user distributes "total" across options, answer is {value: number}.',
             items: {
               anyOf: [
                 { type: 'string' },
@@ -757,6 +793,9 @@ export const SPEC_SCHEMA = {
           minLabel: { type: 'string', description: 'scale only' },
           maxLabel: { type: 'string', description: 'scale only' },
           presets: { type: 'array', items: { type: 'string' }, description: 'color only: optional preset swatches (CSS colors) shown beside the native picker for one-click selection. The answer is returned as a hex string.' },
+          statuses: { type: 'array', description: 'checklist only: the per-item statuses (default Pass / Fail / N/A). Strings, or {value, label, tone?} where tone ∈ ok|bad|muted|warn tints the chip. Answer is a map {optionValue: statusValue} for the items the user set.', items: { anyOf: [{ type: 'string' }, { type: 'object' }] } },
+          total: { type: 'integer', minimum: 1, default: 100, description: 'allocate only: the budget to distribute across options (default 100). Answer is a map {optionValue: number}.' },
+          unit: { type: 'string', description: 'allocate only: optional unit label shown next to the total (e.g. "%", "pts", "hrs").' },
           blocks: BLOCK_SCHEMA,
           html: { type: 'string', description: 'Legacy: per-question custom HTML. Normalized into an html block prepended to this question\'s "blocks".' },
           htmlFile: { type: 'string', description: 'Legacy: path to an HTML file (alternative to "html").' },
