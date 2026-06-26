@@ -597,7 +597,7 @@
     }
     if (q.other) {
       otherRadio = el('input', { type: 'radio', name: q.id });
-      const text = el('input', { type: 'text', placeholder: 'your own answer…' });
+      const text = el('textarea', { class: 'otherinput', rows: '2', placeholder: 'your own answer…' });
       text.value = (state.other[q.id] && state.other[q.id].text) || '';
       otherRadio.checked = otherOn();
       const ensureOther = () => state.other[q.id] || (state.other[q.id] = { on: false, text: text.value });
@@ -666,7 +666,7 @@
     if (q.other) {
       const oth = state.other[q.id];
       const box = el('input', { type: 'checkbox' });
-      const text = el('input', { type: 'text', placeholder: 'your own answer…' });
+      const text = el('textarea', { class: 'otherinput', rows: '2', placeholder: 'your own answer…' });
       box.checked = Boolean(oth && oth.on);
       text.value = (oth && oth.text) || '';
       const sync = () => {

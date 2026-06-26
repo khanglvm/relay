@@ -159,6 +159,25 @@
     }
   }
 
+  // Platform awareness: reflect the host's surface so the board (and CSS) can
+  // adapt — a data-platform hint, a touch flag, and the host's safe-area insets
+  // applied as padding so content clears notches / home indicators on mobile.
+  function applyHostEnv() {
+    const root = document.documentElement;
+    if (host.platform === 'web' || host.platform === 'desktop' || host.platform === 'mobile') {
+      root.dataset.platform = host.platform;
+    }
+    root.classList.toggle('mcp-touch', Boolean(host.deviceCapabilities && host.deviceCapabilities.touch));
+    const sai = host.safeAreaInsets;
+    if (sai && typeof sai === 'object') {
+      const px = (n) => (Number.isFinite(n) ? n : 0) + 'px';
+      root.style.setProperty('--mcp-safe-top', px(sai.top));
+      root.style.setProperty('--mcp-safe-right', px(sai.right));
+      root.style.setProperty('--mcp-safe-bottom', px(sai.bottom));
+      root.style.setProperty('--mcp-safe-left', px(sai.left));
+    }
+  }
+
   let sizeTimer = null;
   function measureHeight() {
     return Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0);
@@ -230,7 +249,7 @@
           }
           return { value: String(o), label: String(o) };
         });
-        q.other = rq.other === true;
+        q.other = type === 'single' ? rq.other !== false : rq.other === true;
       }
       if (type === 'scale') {
         q.min = Number.isFinite(rq.min) ? rq.min : 1;
@@ -496,7 +515,7 @@
     }
     if (q.other) {
       otherRadio = el('input', { type: 'radio', name: q.id });
-      const text = el('input', { type: 'text', placeholder: 'your own answer…' });
+      const text = el('textarea', { class: 'otherinput', rows: '2', placeholder: 'your own answer…' });
       text.value = (state.other[q.id] && state.other[q.id].text) || '';
       otherRadio.checked = otherOn();
       const ensureOther = () => state.other[q.id] || (state.other[q.id] = { on: false, text: text.value });
@@ -529,7 +548,7 @@
     if (q.other) {
       const oth = state.other[q.id];
       const box = el('input', { type: 'checkbox' });
-      const text = el('input', { type: 'text', placeholder: 'your own answer…' });
+      const text = el('textarea', { class: 'otherinput', rows: '2', placeholder: 'your own answer…' });
       box.checked = Boolean(oth && oth.on);
       text.value = (oth && oth.text) || '';
       const sync = () => { state.other[q.id] = { on: box.checked, text: text.value }; syncOptSel(group); clearErr(q.id); };
@@ -841,11 +860,15 @@
     if (p && typeof p === 'object') {
       if ('theme' in p) host.theme = p.theme;
       if ('styles' in p) host.styles = p.styles;
+      if ('platform' in p) host.platform = p.platform;
+      if ('safeAreaInsets' in p) host.safeAreaInsets = p.safeAreaInsets;
+      if ('deviceCapabilities' in p) host.deviceCapabilities = p.deviceCapabilities;
       if (p.displayMode === 'inline' || p.displayMode === 'fullscreen' || p.displayMode === 'pip') {
         displayMode = p.displayMode;
         applyDisplayMode();
       }
       adoptHostStyles();
+      applyHostEnv();
       applyTheme();
     }
   });
@@ -870,6 +893,7 @@
     if (host.displayMode === 'fullscreen' || host.displayMode === 'pip') displayMode = host.displayMode;
     notify('ui/notifications/initialized', {});
     adoptHostStyles();
+    applyHostEnv();
     applyTheme();
     setStatus('Waiting for the board…');
     reportSize();

@@ -510,7 +510,10 @@ export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
       if (q.options.length < 1) {
         throw new CliError(`${where}: type "${type}" needs at least 1 option.`);
       }
-      q.other = rq.other === true;
+      // Radio (single) questions include an "Other" free-text option by default so
+      // the user is never boxed into the listed choices; opt out with other:false.
+      // Multi stays opt-in (checkbox lists are usually exhaustive on purpose).
+      q.other = type === 'single' ? rq.other !== false : rq.other === true;
     }
 
     if (type === 'scale') {
@@ -667,7 +670,7 @@ export const SPEC_SCHEMA = {
               ],
             },
           },
-          other: { type: 'boolean', default: false, description: 'single/multi: add a free-text "Other" option. Its text is returned verbatim as the value.' },
+          other: { type: 'boolean', description: 'Add a free-text "Other" option (a multi-line textarea); its text is returned verbatim as the value. Defaults ON for "single" (radio) questions so the user is never boxed in — set other:false to remove it; "multi" stays opt-in (other:true).' },
           note: { type: 'boolean', description: 'Small optional free-text field under the question (to qualify an answer). Returned separately as result.notes[questionId]. Defaults to true for "single" (radio) questions so users can comment on their pick, false for other types; set note:false to hide it on a single question.' },
           placeholder: { type: 'string', description: 'For text/textarea.' },
           default: { description: 'Pre-selected value. Shape matches the answer shape for the type.' },

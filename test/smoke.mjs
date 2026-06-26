@@ -1149,6 +1149,7 @@ function mcpRoundtrip(messages) {
     { jsonrpc: '2.0', id: 9, method: 'no/such/method' },
     { jsonrpc: '2.0', id: 10, method: 'tools/call', params: { name: 'relay_show', arguments: { blocks: [{ type: 'palette', title: 'Trending', palettes: [{ name: 'Mocha', sub: 'warm', tag: 'Pantone', tagTone: 'warm', featured: true, colors: ['#C4956A', '#A67B52'] }] }] } } },
     { jsonrpc: '2.0', id: 11, method: 'tools/call', params: { name: 'relay_ask', arguments: { questions: [{ id: 'brand', type: 'color', label: 'Brand color', presets: ['#c2674b', '#185FA5'], default: '#c2674b' }] } } },
+    { jsonrpc: '2.0', id: 12, method: 'tools/call', params: { name: 'relay_ask', arguments: { questions: [{ id: 'pick', type: 'single', label: 'Pick one', options: ['a', 'b'] }, { id: 'env', type: 'single', label: 'Env', options: ['dev', 'prod'], other: false }] } } },
   ]);
 
   // stdout must be pure protocol — every non-blank line is valid JSON-RPC.
@@ -1195,6 +1196,9 @@ function mcpRoundtrip(messages) {
   ok(board.text.includes('controlColor'), 'board renderer includes the color picker control');
   ok(board.text.includes('RelayAnnotate') && board.text.includes('Annotate.init'), 'board bundles + initializes the element-annotation engine');
   ok(!ask.inputSchema.properties.annotations, 'relay_ask input schema omits result-only "annotations"');
+  const sq = byId[12].result.structuredContent.spec.questions;
+  ok(sq[0].other === true && sq[1].other === false, 'single questions default "other" ON (opt out with other:false)');
+  ok(/\[pick\] Pick one \(single/.test(byId[12].result.content[0].text), 'tool-result text carries a fallback question list for non-rendering surfaces');
 }
 
 // ---------- 27. rly mcp config / install ----------

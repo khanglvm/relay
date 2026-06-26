@@ -274,11 +274,15 @@
 .ann-rail-list .ann-sum-row + .ann-sum-row { border-top: 1px solid var(--border); }
 .ann-rail-list .ann-sum-row:hover { border-color: var(--accent); box-shadow: var(--shadow-card); }
 
-/* Wide screens: dock the rail beside the content instead of overlaying it. */
-@media (min-width: 1180px) {
-  .ann-rail-scrim { display: none !important; }
-  body.ann-rail-open { padding-right: 340px; }
+/* The rail always overlays the board (scrim dims, content never moves) — opening
+   it must NOT shift layout, on any width. It's reached only via the floating
+   Comments button, which flashes when a new comment lands. */
+@keyframes ann-toggle-pulse {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.12); box-shadow: 0 0 0 4px var(--accent-soft); }
+  100% { transform: scale(1); }
 }
+.ann-rail-toggle.pulse { animation: ann-toggle-pulse 600ms var(--ease); border-color: var(--accent); color: var(--accent); }
 
 /* ---------- jump-to flash ---------- */
 .ann-flash { animation: ann-flash 1s var(--ease); }

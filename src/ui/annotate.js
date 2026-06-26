@@ -367,6 +367,14 @@
     if (railOpen) closeRail();
     else openRail();
   }
+  // Briefly flash the floating Comments button (used when a comment is added so
+  // the user sees it landed, without auto-opening the rail / shifting layout).
+  function pulseToggle() {
+    if (!dom || !dom.railToggle) return;
+    dom.railToggle.classList.remove('pulse');
+    void dom.railToggle.offsetWidth; // reflow so the animation restarts
+    dom.railToggle.classList.add('pulse');
+  }
   // Sync the toggle badge + rail count with the live list; hide the whole rail
   // affordance when there are no comments.
   function refreshRailChrome() {
@@ -601,7 +609,9 @@
       }
     }
     changed();
-    openRail(); // surface the new comment in the sidebar, Outline-style
+    // Don't auto-open the rail — that shifts the board layout. Just flash the
+    // floating Comments button so the user notices, and opens it when they want.
+    pulseToggle();
   }
 
   // Append a user reply to a top-level annotation's thread (cap 50, like the

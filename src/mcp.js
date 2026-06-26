@@ -214,15 +214,40 @@ function callTool(params) {
     const msg = err instanceof CliError ? err.message : String((err && err.message) || err);
     return { content: [{ type: 'text', text: 'relay: invalid board spec — ' + msg }], isError: true };
   }
-  const nQ = spec.questions.length;
-  const summary = nQ
-    ? `Relay board "${spec.title}" is now displayed to the user (${nQ} question${nQ === 1 ? '' : 's'}). They will fill it in and submit; their answers will be delivered back to you. Do NOT re-ask these questions in plain text — wait for the submission.`
-    : `Relay board "${spec.title}" is now displayed to the user. They can review it and acknowledge; any feedback will be delivered back to you.`;
   return {
-    content: [{ type: 'text', text: summary }],
+    content: [{ type: 'text', text: boardText(spec) }],
     structuredContent: { spec, mode: name === 'relay_show' ? 'show' : 'ask' },
     _meta: { ui: { resourceUri: BOARD_URI }, [UI_EXT]: { resourceUri: BOARD_URI } },
   };
+}
+
+// The tool-result text. Beyond announcing the board, it carries a readable
+// rendering of the questions as a GRACEFUL FALLBACK: on a surface that can't show
+// the interactive board (some mobile/remote-control views), the user can still
+// answer in chat and the model has the questions to work from. The model should
+// PREFER the rendered board (wait for the submission) and only fall back to chat
+// when the board clearly didn't render for the user.
+function boardText(spec) {
+  const nQ = spec.questions.length;
+  if (!nQ) {
+    return `Relay board "${spec.title}" is now displayed to the user. They can review it and acknowledge; any feedback will be delivered back to you.`;
+  }
+  const lines = [];
+  lines.push(`Relay board "${spec.title}" is now displayed to the user (${nQ} question${nQ === 1 ? '' : 's'}). Prefer the interactive board — wait for their submission; do NOT re-ask in plain text.`);
+  lines.push('');
+  lines.push('If the board does NOT render on the user\'s surface (e.g. some mobile / remote views) they can answer in chat — the questions are:');
+  spec.questions.forEach((q, i) => {
+    let line = `${i + 1}. [${q.id}] ${q.label} (${q.type}`;
+    if (q.required || spec.allowPartial === false) line += ', required';
+    line += ')';
+    if (Array.isArray(q.options) && q.options.length) {
+      line += ' — options: ' + q.options.map((o) => o.label || o.value).join(' | ') + (q.other ? ' | Other (free text)' : '');
+    } else if (q.type === 'scale') {
+      line += ` — ${q.min}…${q.max}`;
+    }
+    lines.push(line);
+  });
+  return lines.join('\n');
 }
 
 // ---------- stdio loop ----------

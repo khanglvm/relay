@@ -154,7 +154,7 @@ rly show --html-file prototype.html --title "Dashboard concept" --height 600
         { "value": "a", "label": "Approach A", "description": "fast, less flexible" },
         "Approach B"                                    // plain strings work too
       ],
-      "other": true },                                  // adds a free-text "Other" option
+      "other": false },                                 // single: "Other" (free-text textarea) is ON by default — set false to remove it
     { "id": "scope", "type": "multi", "label": "Include which parts?", "options": ["api", "ui", "docs"],
       "note": true },                                   // optional free-text under the question
                                                         //   → returned as result.notes.scope
