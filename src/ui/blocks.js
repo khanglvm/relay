@@ -95,6 +95,16 @@
     s = s.replace(/`([^`]+)`/g, (_m, c) =>
       looksLikeLocalPath(c) ? keep(fileLinkHtml(c.trim(), c, true)) : keep(`<code>${c}</code>`)
     );
+    // images ![alt](src) BEFORE links so the leading "!" isn't stranded as text.
+    // A remote/data image embeds inline; a local path stays a click-to-open link
+    // (the board server doesn't serve the source file's directory).
+    // ponytail: remote/data images embed; local-relative images open in the app
+    // rather than render — add directory serving only if users need inline locals.
+    s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_m, alt, url) => {
+      if (/^(https?:|data:image\/)/i.test(url)) return keep(`<img class="md-img" src="${url}" alt="${alt}" loading="lazy">`);
+      if (looksLikeLocalPath(url)) return keep(fileLinkHtml(url, alt || url, false));
+      return `![${alt}](${url})`; // unknown scheme — leave literal, don't link
+    });
     // links [text](url) — url is already escaped; a local-path target becomes a
     // click-to-open link, otherwise a normal link (guarding odd schemes).
     s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, text, url) => {
@@ -107,6 +117,10 @@
     // bold then italic (bold uses ** so must run before single *)
     s = s.replace(/\*\*([^*]+)\*\*/g, (_m, c) => `<strong>${c}</strong>`);
     s = s.replace(/\*([^*]+)\*/g, (_m, c) => `<em>${c}</em>`);
+    // underscore emphasis __bold__ / _italic_, only at word boundaries so
+    // snake_case and RLY_BOARD_ID are left alone (CommonMark intraword rule).
+    s = s.replace(/(^|[^A-Za-z0-9_])__([^_]+)__(?![A-Za-z0-9_])/g, (_m, p, c) => `${p}<strong>${c}</strong>`);
+    s = s.replace(/(^|[^A-Za-z0-9_])_([^_]+)_(?![A-Za-z0-9_])/g, (_m, p, c) => `${p}<em>${c}</em>`);
     // restore the stashed HTML — loop so a placeholder nested inside another
     // stashed fragment (e.g. a code span inside a link's text) is also resolved.
     let guard = 0;

@@ -236,6 +236,27 @@ async function cmdAsk(args, mode) {
   return runOrDetach(record, args);
 }
 
+// `rly view <file.md> [more.md …]` — quick read-only board that renders one or
+// more markdown files (README, plan, report) with the built-in no-library
+// renderer. Each file becomes a markdown block; with 2+ files a small filename
+// heading separates them. Sugar over `rly show` with markdown mdFile blocks.
+async function cmdView(args) {
+  const files = args._;
+  if (!files.length) throw new CliError('usage: rly view <file.md> [more.md …] [--title T] [--detach]');
+  const multi = files.length > 1;
+  const blocks = [];
+  for (const f of files) {
+    if (multi) blocks.push({ type: 'markdown', md: `## ${path.basename(f)}` });
+    blocks.push({ type: 'markdown', mdFile: f });
+  }
+  const raw = { blocks };
+  raw.title = args.title || (multi ? `${files.length} files` : path.basename(files[0]));
+  raw.submitLabel = args.submitLabel || 'Done';
+  const spec = normalizeSpec(raw); // reads + validates each file, clear error if unreadable
+  const record = createBoard(spec);
+  return runOrDetach(record, args);
+}
+
 // Seeds the draft from the last result (as runBoard would on reopen) and
 // appends agent replies to the matching annotations, so an agent can ANSWER
 // the user's element comments and re-open the board as a conversation.
@@ -1296,6 +1317,7 @@ USAGE
   rly ask ... --detach                no blocking: prints {boardId,url} now; collect via \`rly wait <id>\`
   rly ask ... --on-result "<cmd>"     push-wake: run <cmd> when the board finishes (result JSON on stdin)
   rly show --html-file viz.html       visualization-only board (submit button = acknowledge)
+  rly view <file.md> [more.md …]      quick read-only board rendering markdown file(s) (no lib)
   rly wait <id> [--timeout 3600]      block until board finishes, print result JSON
                                       --while-active [--idle-grace 180]: keep waiting past the deadline
                                         while the user is still viewing/focused & recently active
@@ -1366,6 +1388,8 @@ export async function main(argv) {
         return await cmdAsk(parseArgs(rest), 'ask');
       case 'show':
         return await cmdAsk(parseArgs(rest), 'show');
+      case 'view':
+        return await cmdView(parseArgs(rest));
       case 'reopen':
         return await cmdReopen(parseArgs(rest));
       case 'rescue':

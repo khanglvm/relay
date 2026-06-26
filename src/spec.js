@@ -140,8 +140,8 @@ function normalizeBlock(rawBlock, id, cwd, where) {
   const hasHeight = rawBlock.height !== undefined && rawBlock.height !== null && rawBlock.height !== '';
 
   if (type === 'markdown') {
-    const md = asStr(rawBlock.md);
-    if (!md.trim()) throw new CliError(`${where}: markdown block needs a non-empty "md" string.`);
+    const md = readTextSource(rawBlock, 'md', 'mdFile', cwd, where);
+    if (!md.trim()) throw new CliError(`${where}: markdown block needs a non-empty "md" string or a readable "mdFile".`);
     const block = { id, type: 'markdown', md };
     if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
     return block;
@@ -568,7 +568,8 @@ const BLOCK_SCHEMA = {
     required: ['type'],
     properties: {
       type: { type: 'string', enum: BLOCK_TYPES },
-      md: { type: 'string', description: 'markdown: built-in mini renderer (no external library) — headings, lists, code, quotes, links, and GFM pipe tables. Text selections are commentable. For real tabular data prefer a "table" block (sortable + per-cell comments).' },
+      md: { type: 'string', description: 'markdown: built-in mini renderer (no external library) — headings, lists, code, quotes, links, images, and GFM pipe tables. Text selections are commentable. For real tabular data prefer a "table" block (sortable + per-cell comments).' },
+      mdFile: { type: 'string', description: 'markdown: path to a local .md file to load + render instead of inline "md" (e.g. view a README/plan/report). Resolved against the CWD. Quick view of one or more files: `rly view a.md b.md`.' },
       code: { type: 'string', description: 'mermaid: diagram source (e.g. "graph TD; A-->B"); plantuml: the @startuml…@enduml source; code: the source to display (syntax-highlighted with line numbers).' },
       codeFile: { type: 'string', description: 'code: path to a local source file to load + display instead of inline "code". Resolved against the CWD; lang defaults from the file extension.' },
       filename: { type: 'string', description: 'code/diff: optional file name/path shown as a header label above the block.' },

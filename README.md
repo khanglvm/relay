@@ -87,6 +87,7 @@ Node ≥ 18; Chart.js / Mermaid / Graphviz are vendored and lazy-loaded offline.
 | | |
 |---|---|
 | `rly help` | every command at a glance |
+| `rly view <file.md> …` | open a quick read-only board that renders local markdown file(s) — library-free; great for plans, READMEs, reports |
 | `rly install --target <agent>` | write relay's rules into an agent's instruction file — `claude` `codex` `cursor` `copilot` `kiro` `windsurf` `cline` `gemini` `opencode` `droid` `agents`; `--all`, `--scope`, `--print`, `--list` |
 | `rly upgrade` | update the CLI **and** refresh the skill in one step (safe around open boards; `--dry-run`, `--cli-only`, `--skill-only`) |
 | `rly mcp` | run relay as an MCP App server so boards render **inline** in the chat — **stdio** for local desktop hosts (Claude Desktop, Codex), or `rly mcp --http` (Streamable HTTP) for web/mobile/remote; `rly mcp config` / `rly mcp install --target claude\|codex` to register it |

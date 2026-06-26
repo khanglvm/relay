@@ -135,6 +135,13 @@ Visualization-only (no questions; submit button reads "Acknowledge"):
 rly show --html-file prototype.html --title "Dashboard concept" --height 600
 ```
 
+Read a markdown file (no questions; library-free renderer; submit reads "Done"):
+
+```sh
+rly view PLAN.md                      # one file
+rly view README.md CHANGELOG.md       # several, each under a filename heading
+```
+
 ## Board spec (JSON)
 
 ```jsonc
@@ -279,9 +286,12 @@ Rules of thumb:
 
 ```jsonc
 // Markdown — built-in mini renderer, no library. Headings, lists, code, quotes,
-// links, and GFM pipe tables all render. For real tabular DATA use a `table`
-// block instead (sortable + per-cell comments); markdown tables are display-only.
+// links, images, and GFM pipe tables all render. For real tabular DATA use a
+// `table` block instead (sortable + per-cell comments); markdown tables are display-only.
 { "type": "markdown", "md": "## Heading\nAny **CommonMark** prose." }
+// Load the body from a local .md file instead of inlining it (README, plan, report).
+// Quick view of whole file(s) with no questions: `rly view file.md [more.md …]`.
+{ "type": "markdown", "mdFile": "README.md" }
 
 // Mermaid diagram — vendored, lazy-loaded; natural height, max 1200 px + scroll
 { "type": "mermaid", "code": "graph TD; A-->B; B-->C", "height": 400 }
@@ -404,7 +414,7 @@ real path over telling the user to paste it into a terminal.
 | `plantuml` | UML diagrams (sequence, class, component) via server rendering; great for detailed interface contracts |
 | `chart` | numbers, trends, comparisons, metrics |
 | `table` | structured comparisons, option matrices, data grids — **use this for any tabular data**: it's sortable and every cell is commentable, unlike a markdown pipe table |
-| `markdown` | prose context, background, instructions, section headings (renders GFM pipe tables too, but reach for a `table` block for real data) |
+| `markdown` | prose context, background, instructions, section headings (renders GFM pipe tables + images too, but reach for a `table` block for real data); load a whole `.md` file with `mdFile` — or `rly view file.md` for a quick read-only board |
 | `code` | code snippets, config examples, command output — syntax-highlighted + line-numbered; load from a file with `codeFile` |
 | `diff` | proposed code changes / before-after — a unified diff rendered as a colored git-style comparison (no git needed) |
 | `video` | demos, screen recordings, walkthroughs — YouTube/Vimeo embeds, a media URL, or a local video file (streamed) |

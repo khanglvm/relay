@@ -33,6 +33,7 @@
 .blk-markdown .md h2 { font-size: 1.2rem; }
 .blk-markdown .md h3 { font-size: 1.05rem; }
 .blk-markdown .md p { margin: 10px 0; }
+.blk-markdown .md img.md-img { max-width: 100%; height: auto; border-radius: 8px; margin: 8px 0; }
 .blk-markdown .md a { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 150ms var(--ease); }
 .blk-markdown .md a:hover { border-bottom-color: var(--accent); }
 .blk-markdown .md strong { font-weight: 600; }

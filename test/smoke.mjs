@@ -1260,5 +1260,43 @@ console.log('28. mcp app server (streamable http)');
   child.kill();
 }
 
+// ---------- 29. markdown mdFile + `rly view` ----------
+console.log('29. markdown mdFile + rly view');
+{
+  const mdA = path.join(HOME, 'doc-a.md');
+  const mdB = path.join(HOME, 'doc-b.md');
+  fs.writeFileSync(mdA, '# Title A\n\nBody **A**.\n');
+  fs.writeFileSync(mdB, '# Title B\n\nBody _B_.\n');
+
+  // markdown block loads its body from mdFile (mirrors codeFile/diffFile)
+  const fileSpec = { title: 'x', blocks: [{ type: 'markdown', mdFile: mdA }] };
+  const sp = path.join(HOME, 'md-spec.json');
+  fs.writeFileSync(sp, JSON.stringify(fileSpec));
+  const { url, exited } = await spawnBlocking(['show', '--file', sp, '--no-open', '--timeout', '60']);
+  const board = await (await fetch(new URL('/api/board', url))).json();
+  ok(board.spec.blocks[0].type === 'markdown' && board.spec.blocks[0].md.includes('Body **A**'),
+    'markdown block loads mdFile contents');
+  ok(board.spec.blocks[0].mdFile === undefined, 'mdFile is resolved at spec time (not leaked to the client)');
+  await post(url, '/api/submit', {});
+  await exited;
+
+  // `rly view` renders one or more files; multi prepends a filename heading
+  const v = await spawnBlocking(['view', mdA, mdB, '--no-open', '--timeout', '60']);
+  const vb = (await (await fetch(new URL('/api/board', v.url))).json()).spec;
+  ok(vb.title === '2 files', 'rly view titles a multi-file board');
+  const mds = vb.blocks.filter((b) => b.type === 'markdown');
+  ok(mds.length === 4, 'rly view renders a heading + body block per file');
+  ok(mds[0].md === '## doc-a.md' && mds[1].md.includes('Body **A**'), 'rly view prepends a filename heading before each file');
+  await post(v.url, '/api/submit', {});
+  await v.exited;
+
+  // empty markdown (no md, no mdFile) → usage error
+  const noMd = await run(['ask', '--file', '-'], { input: JSON.stringify({ title: 'x', blocks: [{ type: 'markdown' }] }) });
+  ok(noMd.code === 4 && /markdown block needs/.test(noMd.stderr), 'markdown block without md/mdFile → exit 4');
+  // bare `rly view` with no file → usage error
+  const noFile = await run(['view']);
+  ok(noFile.code === 4 && /usage: rly view/.test(noFile.stderr), 'rly view with no file → exit 4');
+}
+
 console.log(`\nAll ${passed} assertions passed. (storage: ${HOME})`);
 process.exit(0);
