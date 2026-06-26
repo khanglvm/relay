@@ -95,6 +95,13 @@
     s = s.replace(/`([^`]+)`/g, (_m, c) =>
       looksLikeLocalPath(c) ? keep(fileLinkHtml(c.trim(), c, true)) : keep(`<code>${c}</code>`)
     );
+    // reference links [label](#ref:name) / [label](#block:id) open the named/identified
+    // block in a full-screen modal — so a question can point back to a chart/image
+    // shown earlier without the user scrolling up. Runs before the generic link
+    // pass so the #ref:/#block: target isn't rendered as a plain href.
+    s = s.replace(/\[([^\]]+)\]\(#(ref|block):([^)\s]+)\)/g, (_m, label, kind, target) =>
+      keep(`<a class="rly-reflink" role="button" tabindex="0" data-rly-${kind === 'block' ? 'refid' : 'ref'}="${target}" title="Open this visual">` +
+        `<span class="rly-reflink-ico" aria-hidden="true"></span><span>${label}</span></a>`));
     // images ![alt](src) BEFORE links so the leading "!" isn't stranded as text.
     // A remote/data image embeds inline; a local path stays a click-to-open link
     // (the board server doesn't serve the source file's directory).
@@ -1564,7 +1571,9 @@
       });
     if (img.complete && img.naturalWidth > 0) attachImgViewer();
     else img.addEventListener('load', attachImgViewer, { once: true });
-    if (ctx.annotate) {
+    if (ctx.annotate && block.pins === true) {
+      enableImagePins(container, img, ctx, blockId, block.alt || 'Image');
+    } else if (ctx.annotate) {
       ctx.annotate.register(img, {
         blockId,
         questionId: ctx.questionId,
@@ -1572,6 +1581,56 @@
       });
     }
     return container;
+  }
+
+  // Coordinate pin-comments on an image (block.pins): click any point to drop a
+  // comment anchored to that (x,y) fraction; a numbered pin marks each one and
+  // tracks the image as it scales/scrolls (positions are % of the displayed img,
+  // so they ride zoom/full-screen/pan for free). Mirrors the chart-badge model.
+  function enableImagePins(container, img, ctx, blockId, label) {
+    const layer = el('div', { class: 'blk-imgpins' });
+    container.append(layer);
+    img.classList.add('blk-img-pinnable');
+    let down = null; // {x,y} at pointerdown — used to reject drags (pan) as clicks
+    img.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; });
+    img.addEventListener('click', (e) => {
+      if (down && (Math.abs(e.clientX - down.x) > 4 || Math.abs(e.clientY - down.y) > 4)) { down = null; return; }
+      const r = img.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      const x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+      const y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+      ctx.annotate.openExternal(
+        { blockId, questionId: ctx.questionId, target: { kind: 'image-point', x: Math.round(x * 1000) / 1000, y: Math.round(y * 1000) / 1000, label } },
+        img
+      );
+    });
+    const syncPins = () => {
+      layer.replaceChildren();
+      const groups = new Map(); // "x:y" -> {target, count}
+      let n = 0;
+      for (const a of ctx.annotate.list()) {
+        if (a.blockId !== blockId) continue;
+        const t = a.target || {};
+        if (t.kind !== 'image-point') continue;
+        const k = t.x + ':' + t.y;
+        const g = groups.get(k) || { target: t, count: 0 };
+        g.count++; groups.set(k, g);
+      }
+      for (const { target, count } of groups.values()) {
+        n++;
+        const pin = el('button', { class: 'blk-imgpin', type: 'button', title: count + (count === 1 ? ' comment' : ' comments') }, String(count));
+        pin.style.left = (target.x * 100) + '%';
+        pin.style.top = (target.y * 100) + '%';
+        pin.addEventListener('mousedown', (e) => e.stopPropagation());
+        pin.addEventListener('click', (e) => {
+          e.stopPropagation(); e.preventDefault();
+          ctx.annotate.openExternal({ blockId, questionId: ctx.questionId, target }, pin);
+        });
+        layer.append(pin);
+      }
+    };
+    if (ctx.annotate.onBadgeRefresh) ctx.annotate.onBadgeRefresh(syncPins);
+    syncPins();
   }
 
   // ---------- palette ----------
@@ -1767,6 +1826,70 @@
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && fullOpen) exitFull();
   });
+
+  // Enter full-screen for a viewer container (shared by the toolbar button and
+  // the markdown reference-link → modal path).
+  function enterFull(container) {
+    if (fullOpen === container) return;
+    exitFull();
+    container.classList.add('blk-full');
+    document.body.classList.add('blk-full-open');
+    fullOpen = container;
+    const btn = container.querySelector('.blk-tools .tool-full');
+    if (btn) btn.textContent = '✕';
+    window.dispatchEvent(new Event('resize'));
+    if (container._rlyToolsSync) container._rlyToolsSync();
+    if (container._rlyZoom) container._rlyZoom.reapply();
+  }
+
+  // CSS.escape fallback for attribute-selector building from a block id/ref.
+  function cssEsc(s) {
+    return window.CSS && CSS.escape ? CSS.escape(String(s)) : String(s).replace(/["\\\]]/g, '\\$&');
+  }
+
+  // Open a block as a modal: full-screen its viewer if it has one (chart, image,
+  // diagram, table, compare, code…); otherwise scroll to it and flash. `host` is
+  // the .blk[data-block-id] wrapper. Returns true if it found something to show.
+  function openFullEl(host) {
+    if (!host) return false;
+    const viewer = host.classList.contains('blk-viewer') ? host : host.querySelector('.blk-viewer');
+    if (viewer && viewer._rlyTools) { enterFull(viewer); return true; }
+    host.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    host.classList.remove('rly-refflash');
+    void host.offsetWidth;
+    host.classList.add('rly-refflash');
+    setTimeout(() => host.classList.remove('rly-refflash'), 1200);
+    return true;
+  }
+  function openFull(blockId) {
+    return openFullEl(document.querySelector('[data-block-id="' + cssEsc(blockId) + '"]'));
+  }
+
+  // Delegated handler for markdown reference links (data-rly-ref / data-rly-refid).
+  function initRefLinks() {
+    if (window.__relayRefLinksReady) return;
+    window.__relayRefLinksReady = true;
+    const open = (a) => {
+      const host = a.dataset.rlyRefid
+        ? document.querySelector('[data-block-id="' + cssEsc(a.dataset.rlyRefid) + '"]')
+        : document.querySelector('[data-block-ref="' + cssEsc(a.dataset.rlyRef) + '"]');
+      if (host) openFullEl(host);
+      else fileToast('Referenced visual not found on this board', 'err');
+    };
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest ? e.target.closest('a.rly-reflink') : null;
+      if (!a) return;
+      e.preventDefault();
+      open(a);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+      const a = e.target.closest ? e.target.closest('a.rly-reflink') : null;
+      if (!a) return;
+      e.preventDefault();
+      open(a);
+    });
+  }
 
   // Drag-to-pan: grab anywhere on a scrollable visual (a tall/zoomed diagram or
   // oversized image) and drag to move across it, instead of hunting for the
@@ -1976,15 +2099,8 @@
     fullBtn.innerHTML = ICON_EXPAND;
     fullBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (fullOpen === container) { exitFull(); return; }
-      exitFull();
-      container.classList.add('blk-full');
-      document.body.classList.add('blk-full-open');
-      fullOpen = container;
-      fullBtn.textContent = '✕';
-      window.dispatchEvent(new Event('resize'));
-      container._rlyToolsSync();
-      if (container._rlyZoom) container._rlyZoom.reapply(); // lift any inline height cap
+      if (fullOpen === container) exitFull();
+      else enterFull(container);
     });
     tools.append(fullBtn);
 
@@ -2025,6 +2141,7 @@
   function renderBlock(block, ctx) {
     const blockId = block.id;
     const wrapper = el('div', { class: 'blk blk-' + block.type, 'data-block-id': blockId });
+    if (block.ref) wrapper.setAttribute('data-block-ref', block.ref);
     let inner = null;
     switch (block.type) {
       case 'markdown': {
@@ -2174,6 +2291,7 @@
     });
   }
   initFileLinks();
+  initRefLinks();
 
-  window.RelayBlocks = { render, onThemeChange, renderMarkdown };
+  window.RelayBlocks = { render, onThemeChange, renderMarkdown, openFull };
 })();

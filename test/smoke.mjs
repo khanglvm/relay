@@ -1406,5 +1406,28 @@ console.log('32. table rowsFile + view data');
   await v.exited;
 }
 
+// ---------- 33. block ref (modal reference) + image pins normalize ----------
+console.log('33. block ref + image pins');
+{
+  const SPEC = {
+    title: 'Ref + pins',
+    blocks: [
+      { type: 'chart', ref: 'velocity', kind: 'bar', labels: ['a'], series: [{ label: 's', data: [1] }] },
+      { type: 'image', src: 'https://example.com/m.png', pins: true },
+      { type: 'markdown', md: 'See the [chart](#ref:velocity) and [first block](#block:b1).' },
+    ],
+    questions: [{ id: 'ok', type: 'yesno', label: 'OK?' }],
+  };
+  const p = path.join(HOME, 'ref-spec.json');
+  fs.writeFileSync(p, JSON.stringify(SPEC));
+  const { url, exited } = await spawnBlocking(['ask', '--file', p, '--no-open', '--timeout', '60']);
+  const bb = (await (await fetch(new URL('/api/board', url))).json()).spec.blocks;
+  ok(bb[0].ref === 'velocity', 'block "ref" name is preserved for reference links');
+  ok(bb[1].type === 'image' && bb[1].pins === true, 'image "pins" flag enables coordinate pin-comments');
+  ok(bb[2].md.includes('#ref:velocity'), 'markdown reference syntax passes through to the client renderer');
+  await post(url, '/api/submit', { answers: { ok: 'yes' } });
+  await exited;
+}
+
 console.log(`\nAll ${passed} assertions passed. (storage: ${HOME})`);
 process.exit(0);

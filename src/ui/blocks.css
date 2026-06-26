@@ -685,3 +685,44 @@ body.blk-full-open { overflow: hidden; }
 }
 .cmp-tag-before { left: 10px; }
 .cmp-tag-after { right: 10px; }
+
+/* ---------- reference links (open a visual in a modal) ---------- */
+.rly-reflink {
+  display: inline-flex; align-items: center; gap: 0.3em;
+  color: var(--accent); cursor: pointer; text-decoration: none;
+  border-bottom: 1px solid transparent; border-radius: 4px;
+  transition: border-color 150ms var(--ease);
+}
+.rly-reflink:hover { border-bottom-color: var(--accent); }
+.rly-reflink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rly-reflink-ico {
+  flex: none; width: 0.85em; height: 0.85em;
+  border: 1.6px solid currentColor; border-radius: 50%;
+  position: relative;
+}
+.rly-reflink-ico::after {
+  content: ''; position: absolute; width: 0.42em; height: 1.6px;
+  background: currentColor; right: -0.28em; bottom: 0.02em;
+  transform: rotate(45deg); transform-origin: left center;
+}
+/* brief highlight when a reference jumps to a non-modal block */
+.rly-refflash { animation: rly-refflash 1.2s var(--ease); }
+@keyframes rly-refflash {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  20% { box-shadow: 0 0 0 3px var(--accent); }
+}
+
+/* ---------- image coordinate pins (block.pins) ---------- */
+.blk-img-pinnable { cursor: crosshair; }
+.blk-imgpins { position: absolute; inset: 0; pointer-events: none; }
+.blk-imgpin {
+  position: absolute; transform: translate(-50%, -50%);
+  min-width: 22px; height: 22px; padding: 0 6px;
+  border-radius: 11px; border: 2px solid #fff;
+  background: var(--accent); color: #fff;
+  font: inherit; font-size: 0.72rem; font-weight: 600; line-height: 1;
+  cursor: pointer; pointer-events: auto;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+  display: grid; place-items: center;
+}
+.blk-imgpin:hover { filter: brightness(1.08); }

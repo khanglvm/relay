@@ -46,6 +46,8 @@
         return 'Diagram · ' + truncate(t.text || 'element', 50);
       case 'image':
         return truncate(t.label || 'Image', 50);
+      case 'image-point':
+        return (t.label ? truncate(t.label, 30) + ' · ' : 'Image · ') + 'pin ' + Math.round((t.x || 0) * 100) + '%, ' + Math.round((t.y || 0) * 100) + '%';
       case 'table-cell': {
         let s = `Table · row ${(Number(t.row) || 0) + 1} · ${t.col}`;
         if (t.value !== undefined && t.value !== null && t.value !== '') s += ` — “${truncate(t.value, 30)}”`;

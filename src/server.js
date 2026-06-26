@@ -42,16 +42,21 @@ function readUi(name) {
 // (their bodies are served via /html/b/<id>), embedded images ship only
 // metadata (bytes served via /img/b/<id>), everything else ships as-is.
 function clientBlock(b) {
+  // Cross-block fields preserved when we ship metadata-only (ref = reference-link
+  // target name; pins = image coordinate comments). The default `return b` path
+  // already carries them.
+  const extra = {};
+  if (b && b.ref !== undefined) extra.ref = b.ref;
   if (b && b.type === 'html') {
-    return { id: b.id, type: 'html', height: b.height, hasHtml: Boolean(b.html) };
+    return { id: b.id, type: 'html', height: b.height, hasHtml: Boolean(b.html), ...extra };
   }
   if (b && b.type === 'image' && typeof b.src === 'string' && b.src.startsWith('data:')) {
-    return { id: b.id, type: 'image', alt: b.alt, height: b.height, hasData: true };
+    return { id: b.id, type: 'image', alt: b.alt, height: b.height, hasData: true, ...(b.pins ? { pins: true } : {}), ...extra };
   }
   // Local video: the absolute file path stays server-side; the client gets a
   // flag + mime and loads the bytes (Range-streamed) from /video/b/<id>.
   if (b && b.type === 'video' && typeof b.file === 'string') {
-    return { id: b.id, type: 'video', title: b.title, height: b.height, mime: b.mime, hasFile: true };
+    return { id: b.id, type: 'video', title: b.title, height: b.height, mime: b.mime, hasFile: true, ...extra };
   }
   return b;
 }

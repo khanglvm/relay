@@ -570,7 +570,15 @@ function buildBlocks(rawObj, cwd, where, prefix) {
   if (rawObj.blocks !== undefined && rawObj.blocks !== null) {
     if (!Array.isArray(rawObj.blocks)) throw new CliError(`${where}.blocks: must be an array.`);
     rawObj.blocks.forEach((b, i) => {
-      blocks.push(normalizeBlock(b, nextId(), cwd, `${where}.blocks[${i}]`));
+      const nb = normalizeBlock(b, nextId(), cwd, `${where}.blocks[${i}]`);
+      // Cross-block fields handled uniformly so every block type supports them:
+      // `ref` = a stable name a markdown reference link can open in a modal;
+      // `pins` = enable coordinate pin-comments on an image.
+      if (b && typeof b === 'object') {
+        if (typeof b.ref === 'string' && b.ref.trim()) nb.ref = b.ref.trim();
+        if (nb.type === 'image' && b.pins === true) nb.pins = true;
+      }
+      blocks.push(nb);
     });
   }
   return blocks;
@@ -807,6 +815,8 @@ const BLOCK_SCHEMA = {
         description: 'typography: type specimens rendered at the given style. Each {label?, size? (e.g. "32px"/"2rem"), weight? (e.g. "600"), font?, lineHeight?, letterSpacing?, text?}. Block-level "font" sets a default family.',
         items: { type: 'object', properties: { label: { type: 'string' }, size: { type: 'string' }, weight: { type: 'string' }, font: { type: 'string' }, lineHeight: { type: 'string' }, letterSpacing: { type: 'string' }, text: { type: 'string' } } },
       },
+      ref: { type: 'string', description: 'Any block: a stable name (e.g. "velocity") that a markdown reference link [see chart](#ref:velocity) can open in a full-screen modal — so a question can point back to a visual shown earlier instead of making the user scroll up.' },
+      pins: { type: 'boolean', description: 'image: enable coordinate pin-comments — the user clicks any point on the image to drop a comment anchored to that spot (Figma-style), returned as a {kind:"image-point", x, y} annotation.' },
       before: { description: 'compare: the "before" image — an http(s)/data URL, a local file path, or {src, label}.' },
       after: { description: 'compare: the "after" image — an http(s)/data URL, a local file path, or {src, label}.' },
       beforeLabel: { type: 'string', description: 'compare: caption for the before side (default "Before").' },
