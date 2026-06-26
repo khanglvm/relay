@@ -238,6 +238,36 @@
 }
 .blk-difftoggle:hover { color: var(--accent); border-color: var(--accent); }
 
+/* multi-file diff: per-file filename header + a jump bar of file chips */
+.diff-file + .diff-file { margin-top: 6px; }
+.diff-filehead {
+  position: sticky; top: 0; z-index: 1;
+  padding: 5px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.76rem; color: var(--fg-2);
+  background: var(--card); border-bottom: 1px solid var(--border);
+}
+.diff-files {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 8px 0;
+}
+.diff-file-chip {
+  cursor: pointer; font: inherit; font-size: 0.72rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--fg-2); background: var(--bg-sunken);
+  border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px;
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: color 150ms var(--ease), border-color 150ms var(--ease);
+}
+.diff-file-chip:hover { color: var(--accent); border-color: var(--accent); }
+
+/* clickable line-number gutter: hover a number to comment on that line */
+.blk-gutter-c { padding: 14px 0; }
+.blk-gutter-c .blk-gutterline {
+  padding: 0 10px 0 14px; cursor: pointer; position: relative;
+  transition: background 120ms var(--ease), color 120ms var(--ease);
+}
+.blk-gutter-c .blk-gutterline:hover { background: var(--accent-soft); color: var(--accent); }
+
 /* ---------- video (iframe embed / local stream / direct URL) ---------- */
 .blk-videowrap { margin: 0; }
 .blk-video, .blk-video-embed {

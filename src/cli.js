@@ -236,6 +236,37 @@ async function cmdAsk(args, mode) {
   return runOrDetach(record, args);
 }
 
+// `rly diff [git args…]` — run `git diff` for the user and open the result as a
+// diff-block board in one step (sugar like `rly view`). Everything that isn't a
+// recognized rly flag is forwarded to git verbatim, so `rly diff --staged`,
+// `rly diff HEAD~1`, `rly diff main -- src/` all work. rly flags: --detach,
+// --no-open, --split (side-by-side), --title.
+async function cmdDiff(rest) {
+  const RLY_FLAGS = new Set(['--detach', '--no-open', '--split']);
+  const gitArgs = [];
+  const rlyArgv = [];
+  for (let i = 0; i < rest.length; i++) {
+    const t = rest[i];
+    if (t === '--title') { rlyArgv.push(t, rest[++i]); continue; }
+    if (t.startsWith('--title=')) { rlyArgv.push(t); continue; }
+    if (RLY_FLAGS.has(t)) { rlyArgv.push(t); continue; }
+    gitArgs.push(t);
+  }
+  const args = parseArgs(rlyArgv);
+  const res = spawnSync('git', ['--no-pager', 'diff', ...gitArgs], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  if (res.error) throw new CliError(`could not run git: ${res.error.message}. Is git installed and is this a repo?`);
+  if (res.status !== 0 && res.stderr) throw new CliError(`git diff failed: ${res.stderr.trim()}`, res.status || 1);
+  const diff = res.stdout || '';
+  if (!diff.trim()) {
+    printJson({ status: 'no-diff', hint: `git diff${gitArgs.length ? ' ' + gitArgs.join(' ') : ''} produced no output — nothing to show` });
+    return 0;
+  }
+  const title = args.title || ('git diff' + (gitArgs.length ? ' ' + gitArgs.join(' ') : ''));
+  const spec = normalizeSpec({ title, blocks: [{ type: 'diff', diff, view: args.split ? 'split' : 'unified' }] });
+  const record = createBoard(spec);
+  return runOrDetach(record, args);
+}
+
 // `rly view <file.md> [more.md …]` — quick read-only board that renders one or
 // more markdown files (README, plan, report) with the built-in no-library
 // renderer. Each file becomes a markdown block; with 2+ files a small filename
@@ -1321,6 +1352,9 @@ USAGE
   rly ask ... --on-result "<cmd>"     push-wake: run <cmd> when the board finishes (result JSON on stdin)
   rly show --html-file viz.html       visualization-only board (submit button = acknowledge)
   rly view <file.md> [more.md …]      quick read-only board rendering markdown file(s) (no lib)
+                                      (.csv/.tsv/.json render as a filterable, sortable table)
+  rly diff [git args…]                run git diff and show it in a diff board (--split, --detach,
+                                      --title; other args pass to git: rly diff --staged | HEAD~1 | -- path)
   rly wait <id> [--timeout 3600]      block until board finishes, print result JSON
                                       --while-active [--idle-grace 180]: keep waiting past the deadline
                                         while the user is still viewing/focused & recently active
@@ -1393,6 +1427,8 @@ export async function main(argv) {
         return await cmdAsk(parseArgs(rest), 'show');
       case 'view':
         return await cmdView(parseArgs(rest));
+      case 'diff':
+        return await cmdDiff(rest);
       case 'reopen':
         return await cmdReopen(parseArgs(rest));
       case 'rescue':

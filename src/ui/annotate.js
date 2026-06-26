@@ -51,6 +51,8 @@
         if (t.value !== undefined && t.value !== null && t.value !== '') s += ` — “${truncate(t.value, 30)}”`;
         return s;
       }
+      case 'code-line':
+        return 'Line ' + t.line + (t.file ? ' · ' + truncate(t.file, 40) : '');
       case 'text':
         return `“${truncate(t.quote || '', 60)}”`;
       case 'html-element':

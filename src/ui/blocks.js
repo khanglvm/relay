@@ -387,14 +387,25 @@
     return out;
   }
 
-  // A line-number gutter element for `text` (aria-hidden + non-selectable so a
-  // select-to-comment grabs only the code, not the numbers). `startAt` default 1.
-  function lineGutter(text, startAt) {
+  // A line-number gutter for `text` (non-selectable so a select-to-comment grabs
+  // only the code, not the numbers). When annotation is on, each number becomes a
+  // hover/click target to comment on that exact line (kind:'code-line'); the
+  // numbers still don't enter a text selection. `startAt` default 1.
+  function lineGutter(text, startAt, ctx, blockId, filename) {
     const n = Math.max(1, String(text).replace(/\n+$/, '').split('\n').length);
-    const g = el('div', { class: 'blk-gutter', 'aria-hidden': 'true' });
-    let s = '';
-    for (let i = 0; i < n; i++) s += (startAt || 1) + i + '\n';
-    g.textContent = s;
+    const annotate = ctx && ctx.annotate;
+    const g = el('div', { class: 'blk-gutter' + (annotate ? ' blk-gutter-c' : ''), 'aria-hidden': annotate ? null : 'true' });
+    for (let i = 0; i < n; i++) {
+      const ln = (startAt || 1) + i;
+      const lineEl = el('div', { class: 'blk-gutterline' }, String(ln));
+      if (annotate) {
+        annotate.register(lineEl, {
+          blockId, questionId: ctx.questionId,
+          target: { kind: 'code-line', line: ln, file: filename || '' },
+        });
+      }
+      g.append(lineEl);
+    }
     return g;
   }
 
@@ -405,7 +416,7 @@
     const code = el('code');
     code.innerHTML = tintCode(raw, block.lang);
     const pre = el('pre', { class: 'blk-pre', 'data-lang': block.lang || '' }, code);
-    const row = el('div', { class: 'blk-coderow' }, lineGutter(raw), pre);
+    const row = el('div', { class: 'blk-coderow' }, lineGutter(raw, 1, ctx, blockId, block.filename), pre);
     const wrap = el('div', { class: 'blk-codewrap' });
     // Optional file-name + language header above the code.
     if (block.filename || block.lang) {
@@ -527,18 +538,62 @@
     return el('table', { class: 'blk-difftable blk-difftable-split' }, tbody);
   }
 
+  // Split a (possibly multi-file) unified diff into per-file chunks. Each
+  // `diff --git a/x b/x` starts a new file; the name comes from that line (or a
+  // following `+++ b/...`). A plain hunk-only diff (no `diff --git`) is one
+  // unnamed file, preserving the single-file path that uses block.filename.
+  function splitDiffFiles(text) {
+    const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+    const files = [];
+    let cur = null;
+    for (const line of lines) {
+      if (/^diff --git /.test(line)) {
+        const m = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+        cur = { name: m ? m[2] : 'file', lines: [line] };
+        files.push(cur);
+      } else {
+        if (!cur) { cur = { name: null, lines: [] }; files.push(cur); }
+        cur.lines.push(line);
+        if (cur.name === null) {
+          const pm = line.match(/^\+\+\+ b?\/(.+)$/);
+          if (pm) cur.name = pm[1];
+        }
+      }
+    }
+    return files.map((f) => ({ name: f.name, text: f.lines.join('\n') }));
+  }
+
+  // Per-file header lines are redundant once we render a filename header bar.
+  const DIFF_NOISE = /^(diff --git |index |--- |\+\+\+ )/;
+
   function renderDiff(block, ctx, blockId) {
-    const rows = parseDiff(block.diff);
+    const files = splitDiffFiles(block.diff);
+    const named = files.filter((f) => f.name);
+    const multi = named.length > 1;
     let view = block.view === 'split' ? 'split' : 'unified';
     const scroll = el('div', { class: 'blk-diffscroll' });
+    const sections = [];
+
     const paint = () => {
-      scroll.innerHTML = '';
-      scroll.append(view === 'split' ? buildSplitDiff(rows, block.lang) : buildUnifiedDiff(rows, block.lang));
+      scroll.replaceChildren();
+      sections.length = 0;
+      files.forEach((f) => {
+        const name = f.name || (files.length === 1 ? (block.filename || '') : '');
+        let rows = parseDiff(f.text);
+        // drop the pure file-header noise when we show a filename bar
+        if (name) rows = rows.filter((r) => !(r.kind === 'meta' && DIFF_NOISE.test(r.text)));
+        if (!rows.length) return;
+        const sec = el('div', { class: 'diff-file' });
+        if (name) sec.append(el('div', { class: 'diff-filehead' }, name));
+        sec.append(view === 'split' ? buildSplitDiff(rows, block.lang) : buildUnifiedDiff(rows, block.lang));
+        scroll.append(sec);
+        sections.push({ name, el: sec });
+      });
     };
     paint();
 
     const wrap = el('div', { class: 'blk-codewrap blk-diffwrap' });
-    // header: file name (left) + a Unified/Split view toggle (right)
+    // header: file count / single name (left) + a Unified/Split view toggle (right)
     const toggle = el('button', { class: 'blk-difftoggle', type: 'button', title: 'Toggle side-by-side view' });
     const syncToggle = () => { toggle.textContent = view === 'split' ? 'Unified view' : 'Split view'; };
     syncToggle();
@@ -551,10 +606,26 @@
       syncToggle();
       paint();
     });
+    const headLabel = multi ? `${named.length} files changed` : (named[0] && named[0].name) || block.filename || '';
     wrap.append(el('div', { class: 'blk-codehead' },
-      el('span', { class: 'blk-codename' }, block.filename || ''),
+      el('span', { class: 'blk-codename' }, headLabel),
       toggle
     ));
+    // jump bar of file chips for a multi-file diff (click scrolls to that file)
+    if (multi) {
+      const bar = el('div', { class: 'diff-files' });
+      named.forEach((f) => {
+        const chip = el('button', { type: 'button', class: 'diff-file-chip' }, f.name);
+        chip.addEventListener('mousedown', (e) => e.stopPropagation());
+        chip.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const s = sections.find((x) => x.name === f.name);
+          if (s) s.el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        bar.append(chip);
+      });
+      wrap.append(bar);
+    }
     wrap.classList.toggle('is-split', view === 'split');
     wrap.append(scroll);
     // select-to-comment stays bound to the stable scroll container across toggles
