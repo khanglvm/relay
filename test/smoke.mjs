@@ -1368,5 +1368,43 @@ console.log('31. checklist + allocate');
   ok(badChk.code === 4 && /checklist needs ≥2/.test(badChk.stderr), 'checklist with <2 statuses → exit 4');
 }
 
+// ---------- 32. table rowsFile (CSV/JSON) + rly view data.csv + filter/export ----------
+console.log('32. table rowsFile + view data');
+{
+  // CSV with a quoted field containing a comma and an escaped "" quote
+  const csv = 'name,role,note\nAda,Eng,"Lovelace, Ada"\nBob,Design,"says ""hi"""\n';
+  const csvFile = path.join(HOME, 'people.csv');
+  fs.writeFileSync(csvFile, csv);
+  const jsonFile = path.join(HOME, 'people.json');
+  fs.writeFileSync(jsonFile, JSON.stringify([{ name: 'Cy', score: 9 }, { name: 'Di', score: 7 }]));
+
+  const SPEC = {
+    title: 'Data',
+    blocks: [
+      { type: 'table', rowsFile: csvFile, filterable: true, exportable: true },
+      { type: 'table', rowsFile: jsonFile },
+    ],
+    questions: [{ id: 'ok', type: 'yesno', label: 'OK?' }],
+  };
+  const p = path.join(HOME, 'data-spec.json');
+  fs.writeFileSync(p, JSON.stringify(SPEC));
+  const { url, exited } = await spawnBlocking(['ask', '--file', p, '--no-open', '--timeout', '60']);
+  const bb = (await (await fetch(new URL('/api/board', url))).json()).spec.blocks;
+  ok(bb[0].columns.map((c) => c.key).join(',') === 'name,role,note', 'rowsFile CSV header → columns');
+  ok(bb[0].rows.length === 2 && bb[0].rows[0].note === 'Lovelace, Ada', 'CSV quoted field with a comma parses as one cell');
+  ok(bb[0].rows[1].note === 'says "hi"', 'CSV escaped "" quote unescapes');
+  ok(bb[0].filterable === true && bb[0].exportable === true, 'table filterable/exportable flags normalize');
+  ok(bb[1].columns.map((c) => c.key).join(',') === 'name,score' && bb[1].rows[1].score === 7, 'rowsFile JSON array → columns from keys');
+  await post(url, '/api/submit', { answers: { ok: 'yes' } });
+  await exited;
+
+  // rly view data.csv → a filterable/exportable sortable table
+  const v = await spawnBlocking(['view', csvFile, '--no-open', '--timeout', '60']);
+  const vb = (await (await fetch(new URL('/api/board', v.url))).json()).spec.blocks;
+  ok(vb[0].type === 'table' && vb[0].sortable && vb[0].filterable && vb[0].exportable, 'rly view <csv> renders a sortable+filterable+exportable table');
+  await post(v.url, '/api/submit', {});
+  await v.exited;
+}
+
 console.log(`\nAll ${passed} assertions passed. (storage: ${HOME})`);
 process.exit(0);

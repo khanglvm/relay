@@ -136,6 +136,71 @@ function resolveImageSrc(srcRaw, cwd, where, field) {
   return `data:${mime};base64,${buf.toString('base64')}`;
 }
 
+// Minimal RFC-4180-ish CSV/TSV parser: handles quoted fields containing the
+// delimiter, embedded newlines, and "" escaped quotes. Returns an array of rows
+// (each an array of string cells). Library-free.
+function parseDelimited(text, delim) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQ = false;
+  const pushField = () => { row.push(field); field = ''; };
+  const pushRow = () => { pushField(); rows.push(row); row = []; };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false;
+      } else field += c;
+      continue;
+    }
+    if (c === '"') inQ = true;
+    else if (c === delim) pushField();
+    else if (c === '\n') pushRow();
+    else if (c === '\r') { /* swallow CR (CRLF) */ }
+    else field += c;
+  }
+  if (field.length || row.length) pushRow();
+  // drop a single trailing empty row from a final newline
+  if (rows.length && rows[rows.length - 1].length === 1 && rows[rows.length - 1][0] === '') rows.pop();
+  return rows;
+}
+
+// Load table {columns, rows} from a local .csv/.tsv/.json file (rowsFile).
+// CSV/TSV: first row = header → column keys. JSON: an array of objects (columns
+// from the union of keys) or arrays (needs explicit "columns").
+function loadRowsFile(file, cwd, where) {
+  const p = path.resolve(cwd, file);
+  let buf;
+  try { buf = fs.readFileSync(p); } catch { throw new CliError(`${where}: cannot read rowsFile "${file}" (resolved: ${p})`); }
+  if (buf.length > TEXT_FILE_MAX_BYTES) {
+    throw new CliError(`${where}: rowsFile "${file}" is ${(buf.length / 1024).toFixed(0)}KB — max ${TEXT_FILE_MAX_BYTES / 1024}KB.`);
+  }
+  const text = buf.toString('utf8');
+  const ext = path.extname(p).slice(1).toLowerCase();
+  if (ext === 'json') {
+    let data;
+    try { data = JSON.parse(text); } catch (e) { throw new CliError(`${where}: rowsFile "${file}" JSON parse error: ${e.message}`); }
+    if (!Array.isArray(data)) throw new CliError(`${where}: rowsFile "${file}" JSON must be an array of rows.`);
+    const cols = [];
+    for (const r of data) {
+      if (r && typeof r === 'object' && !Array.isArray(r)) {
+        for (const k of Object.keys(r)) if (!cols.includes(k)) cols.push(k);
+      }
+    }
+    return { columns: cols, rows: data };
+  }
+  const parsed = parseDelimited(text, ext === 'tsv' ? '\t' : ',');
+  if (!parsed.length) return { columns: [], rows: [] };
+  const header = parsed[0].map((h) => String(h).trim());
+  const rows = parsed.slice(1).map((cells) => {
+    const obj = {};
+    header.forEach((h, i) => { obj[h] = cells[i] !== undefined ? cells[i] : ''; });
+    return obj;
+  });
+  return { columns: header, rows };
+}
+
 // Recognizes a YouTube / Vimeo URL (or a bare YouTube id) and returns
 // {provider, videoId, start} for an iframe embed, else null. Cross-platform —
 // pure string parsing, no URL host assumptions beyond the known providers.
@@ -323,13 +388,21 @@ function normalizeBlock(rawBlock, id, cwd, where) {
   }
 
   if (type === 'table') {
-    if (!Array.isArray(rawBlock.columns) || rawBlock.columns.length < 1) {
-      throw new CliError(`${where}: table needs a non-empty "columns" array (strings or {key,label,align?}).`);
+    // Rows/columns may come from a local .csv/.tsv/.json file instead of inline.
+    let rawColumns = rawBlock.columns;
+    let rawRows = rawBlock.rows;
+    if (typeof rawBlock.rowsFile === 'string' && rawBlock.rowsFile.trim() && !Array.isArray(rawRows)) {
+      const loaded = loadRowsFile(rawBlock.rowsFile, cwd, where);
+      rawRows = loaded.rows;
+      if (!Array.isArray(rawColumns) || !rawColumns.length) rawColumns = loaded.columns;
     }
-    if (!Array.isArray(rawBlock.rows)) {
-      throw new CliError(`${where}: table needs a "rows" array.`);
+    if (!Array.isArray(rawColumns) || rawColumns.length < 1) {
+      throw new CliError(`${where}: table needs a non-empty "columns" array (strings or {key,label,align?})${rawBlock.rowsFile ? ' — the rowsFile had no header/keys to infer them' : ''}.`);
     }
-    const columns = rawBlock.columns.map((c, k) => {
+    if (!Array.isArray(rawRows)) {
+      throw new CliError(`${where}: table needs a "rows" array or a readable "rowsFile".`);
+    }
+    const columns = rawColumns.map((c, k) => {
       if (typeof c === 'string' || typeof c === 'number') {
         const key = String(c);
         return { key, label: key };
@@ -345,7 +418,7 @@ function normalizeBlock(rawBlock, id, cwd, where) {
     });
     // Normalize array rows into objects keyed by column key, so the client
     // (and table-cell annotation values) always index rows the same way.
-    const rows = rawBlock.rows.map((r, ri) => {
+    const rows = rawRows.map((r, ri) => {
       if (Array.isArray(r)) {
         const obj = {};
         columns.forEach((col, ci) => {
@@ -358,6 +431,8 @@ function normalizeBlock(rawBlock, id, cwd, where) {
     });
     const block = { id, type: 'table', columns, rows };
     if (rawBlock.sortable === true) block.sortable = true;
+    if (rawBlock.filterable === true) block.filterable = true;
+    if (rawBlock.exportable === true) block.exportable = true;
     if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
     return block;
   }
@@ -694,7 +769,10 @@ const BLOCK_SCHEMA = {
         items: { anyOf: [{ type: 'string' }, { type: 'object' }] },
       },
       rows: { type: 'array', description: 'table: array of arrays (positional) or array of objects (keyed by column key).' },
+      rowsFile: { type: 'string', description: 'table: load rows from a local .csv/.tsv/.json file instead of inline "rows". CSV/TSV first row is the header (becomes "columns" if omitted); JSON is an array of objects. Resolved against the CWD. Quick view: `rly view data.csv`.' },
       sortable: { type: 'boolean', description: 'table: enable click-to-sort headers.' },
+      filterable: { type: 'boolean', description: 'table: show a filter box that live-filters rows by substring across all cells. Good for large tables.' },
+      exportable: { type: 'boolean', description: 'table: show a "CSV" button that downloads the (filtered) rows as a CSV file.' },
       html: { type: 'string', description: 'html: custom markup rendered in a sandboxed iframe.' },
       htmlFile: { type: 'string', description: 'html: path to an HTML file (alternative to "html").' },
       src: { type: 'string', description: 'image: http(s)/data URL, or a local file path (png/jpg/gif/webp/svg/avif/bmp — embedded at spec time, served offline). video: a YouTube/Vimeo URL (embeds an iframe player), an http(s) media URL, or a local video file (mp4/webm/ogv/mov/mkv/m4v — streamed from the server, never embedded).' },

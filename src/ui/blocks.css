@@ -278,6 +278,23 @@
 .blk-table tbody tr:hover { background: var(--bg-sunken); }
 .blk-table tbody tr:last-child td { border-bottom: 0; }
 
+/* table toolbar: live filter box + CSV export (opt-in via filterable/exportable) */
+.blk-tablebar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.blk-tablefilter {
+  flex: 1; min-width: 0; max-width: 280px;
+  padding: 6px 10px; font: inherit; font-size: 0.85rem;
+  background: var(--bg-sunken); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 8px;
+}
+.blk-tablefilter:focus { outline: none; border-color: var(--accent); }
+.blk-tableexport {
+  flex: none; padding: 6px 12px; font: inherit; font-size: 0.8rem; cursor: pointer;
+  background: var(--card); color: var(--fg-2);
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  transition: border-color 150ms var(--ease), color 150ms var(--ease);
+}
+.blk-tableexport:hover { border-color: var(--accent); color: var(--accent); }
+
 /* ---------- chart ---------- */
 /* NO height here: renderChart always sets the inline height, and this class
    also lands on the outer .blk.blk-chart dispatch wrapper — a CSS height

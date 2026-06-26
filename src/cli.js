@@ -242,12 +242,15 @@ async function cmdAsk(args, mode) {
 // heading separates them. Sugar over `rly show` with markdown mdFile blocks.
 async function cmdView(args) {
   const files = args._;
-  if (!files.length) throw new CliError('usage: rly view <file.md> [more.md …] [--title T] [--detach]');
+  if (!files.length) throw new CliError('usage: rly view <file.md|.csv|.json> [more …] [--title T] [--detach]');
   const multi = files.length > 1;
+  const DATA_EXT = new Set(['csv', 'tsv', 'json']);
   const blocks = [];
   for (const f of files) {
     if (multi) blocks.push({ type: 'markdown', md: `## ${path.basename(f)}` });
-    blocks.push({ type: 'markdown', mdFile: f });
+    const ext = path.extname(f).slice(1).toLowerCase();
+    if (DATA_EXT.has(ext)) blocks.push({ type: 'table', rowsFile: f, sortable: true, filterable: true, exportable: true });
+    else blocks.push({ type: 'markdown', mdFile: f });
   }
   const raw = { blocks };
   raw.title = args.title || (multi ? `${files.length} files` : path.basename(files[0]));
