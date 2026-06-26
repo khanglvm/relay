@@ -212,8 +212,23 @@
       }
     }
   }
+  // Coerce any prior rank value (draft/default) into a complete, deduped
+  // permutation of the option values: keep the known ones in their given order,
+  // then append any options the prior list missed (in authored order).
+  function seedRankOrder(q, prior) {
+    const opts = (q.options || []).map((o) => o.value);
+    const arr = Array.isArray(prior) ? prior : [];
+    const order = arr.filter((v, i) => opts.includes(v) && arr.indexOf(v) === i);
+    for (const v of opts) if (!order.includes(v)) order.push(v);
+    return order;
+  }
+
   if (initialPrefill) seedFromPrefill(initialPrefill);
   else for (const q of QS) if (q.default !== undefined) state.answers[q.id] = q.default;
+  // Rank questions always carry a full, valid permutation of their option values
+  // (from a draft/default if present, else the authored order), so a never-touched
+  // rank still returns a meaningful ordering.
+  for (const q of QS) if (q.type === 'rank') state.answers[q.id] = seedRankOrder(q, state.answers[q.id]);
   // If the local mirror was newer than the server (or the server had nothing),
   // the in-memory state now holds input the server hasn't seen — flush it once
   // the rest of the app is wired (see the post-init flush near the heartbeat).
@@ -241,6 +256,9 @@
         return v === 'yes' || v === 'no' ? v : undefined;
       case 'scale':
         return typeof v === 'number' ? v : undefined;
+      case 'rank':
+        // always a full, valid permutation (seeded below) → always answered
+        return Array.isArray(v) && v.length ? [...v] : undefined;
       default: {
         const t = typeof v === 'string' ? v.trim() : '';
         return t || undefined;
@@ -721,6 +739,60 @@
     return row;
   }
 
+  // Reorderable priority list. The user drags an item or uses ↑/↓; the answer is
+  // the ordered array of option values (highest priority first). state.answers[q.id]
+  // is kept a full, valid permutation by seedRankOrder so it's always submittable.
+  function controlRank(q) {
+    const wrap = el('div', { class: 'rank' });
+    const byVal = new Map(q.options.map((o) => [o.value, o]));
+    let dragFrom = null;
+    function move(from, to) {
+      const arr = state.answers[q.id];
+      if (!Array.isArray(arr) || to < 0 || to >= arr.length || from === to) return;
+      const [x] = arr.splice(from, 1);
+      arr.splice(to, 0, x);
+      paint();
+      clearErr(q.id);
+      scheduleSave();
+    }
+    function paint() {
+      wrap.replaceChildren();
+      const order = state.answers[q.id] || [];
+      order.forEach((val, i) => {
+        const o = byVal.get(val);
+        if (!o) return;
+        const up = el('button', { type: 'button', class: 'rank-btn', title: 'Move up', 'aria-label': `Move "${o.label}" up` }, '↑');
+        const down = el('button', { type: 'button', class: 'rank-btn', title: 'Move down', 'aria-label': `Move "${o.label}" down` }, '↓');
+        up.disabled = i === 0;
+        down.disabled = i === order.length - 1;
+        up.addEventListener('click', () => move(i, i - 1));
+        down.addEventListener('click', () => move(i, i + 1));
+        const item = el('div', { class: 'rank-item', draggable: 'true' },
+          el('span', { class: 'rank-badge', 'aria-hidden': 'true' }, String(i + 1)),
+          el('div', { class: 'rank-body' },
+            el('div', { class: 'ol' }, o.label),
+            o.description ? el('div', { class: 'od' }, o.description) : null),
+          el('div', { class: 'rank-ctrls' }, up, down)
+        );
+        item.addEventListener('dragstart', (e) => {
+          dragFrom = i; item.classList.add('dragging');
+          try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(i)); } catch (_) {}
+        });
+        item.addEventListener('dragend', () => { dragFrom = null; item.classList.remove('dragging'); });
+        item.addEventListener('dragover', (e) => { if (dragFrom !== null) { e.preventDefault(); item.classList.add('drop-into'); } });
+        item.addEventListener('dragleave', () => item.classList.remove('drop-into'));
+        item.addEventListener('drop', (e) => {
+          e.preventDefault();
+          const from = dragFrom; dragFrom = null;
+          if (from !== null && from !== i) move(from, i);
+        });
+        wrap.append(item);
+      });
+    }
+    paint();
+    return wrap;
+  }
+
   function controlText(q, multiline) {
     const input = multiline
       ? el('textarea', { placeholder: q.placeholder || '' })
@@ -832,6 +904,7 @@
     else if (q.type === 'yesno') control.append(segButtons(q, ['yes', 'no'], ['Yes', 'No']));
     else if (q.type === 'scale') control.append(controlScale(q));
     else if (q.type === 'color') control.append(controlColor(q));
+    else if (q.type === 'rank') control.append(controlRank(q));
     else control.append(controlText(q, q.type === 'textarea'));
     card.append(control);
     if (q.note) {

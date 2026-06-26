@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { CliError } from './util.js';
 
-export const TYPES = ['single', 'multi', 'yesno', 'text', 'textarea', 'scale', 'color'];
+export const TYPES = ['single', 'multi', 'yesno', 'text', 'textarea', 'scale', 'color', 'rank'];
 
 const ALIASES = {
   radio: 'single',
@@ -21,6 +21,11 @@ const ALIASES = {
   likert: 'scale',
   colour: 'color',
   swatch: 'color',
+  ranking: 'rank',
+  order: 'rank',
+  ordering: 'rank',
+  prioritize: 'rank',
+  sort: 'rank',
 };
 
 const HTML_HEIGHT = { min: 100, max: 2400, boardDefault: 400, questionDefault: 360 };
@@ -486,7 +491,7 @@ export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
       placeholder: asStr(rq.placeholder),
     };
 
-    if (type === 'single' || type === 'multi') {
+    if (type === 'single' || type === 'multi' || type === 'rank') {
       const opts = Array.isArray(rq.options) ? rq.options : [];
       q.options = opts.map((o, j) => {
         if (typeof o === 'string' || typeof o === 'number') {
@@ -507,13 +512,17 @@ export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
         }
         throw new CliError(`${where}.options[${j}]: must be a string or {value, label, description?, blocks?}.`);
       });
-      if (q.options.length < 1) {
-        throw new CliError(`${where}: type "${type}" needs at least 1 option.`);
+      const minOpts = type === 'rank' ? 2 : 1;
+      if (q.options.length < minOpts) {
+        throw new CliError(`${where}: type "${type}" needs at least ${minOpts} option${minOpts > 1 ? 's' : ''}.`);
       }
       // Radio (single) questions include an "Other" free-text option by default so
       // the user is never boxed into the listed choices; opt out with other:false.
       // Multi stays opt-in (checkbox lists are usually exhaustive on purpose).
-      q.other = type === 'single' ? rq.other !== false : rq.other === true;
+      // Rank reorders a fixed set, so no "Other".
+      if (type !== 'rank') {
+        q.other = type === 'single' ? rq.other !== false : rq.other === true;
+      }
     }
 
     if (type === 'scale') {
@@ -649,13 +658,13 @@ export const SPEC_SCHEMA = {
         required: ['label'],
         properties: {
           id: { type: 'string', description: 'Answer key in the result JSON. Defaults to q1, q2, …' },
-          type: { type: 'string', enum: ['single', 'multi', 'yesno', 'text', 'textarea', 'scale', 'color'], default: 'text' },
+          type: { type: 'string', enum: ['single', 'multi', 'yesno', 'text', 'textarea', 'scale', 'color', 'rank'], default: 'text' },
           label: { type: 'string' },
           description: { type: 'string' },
           required: { type: 'boolean', default: false },
           options: {
             type: 'array',
-            description: 'For single/multi. Strings, or {value, label, description, blocks?}. An option\'s "blocks" render INSIDE that option card — use them to show each choice (image/chart/mermaid/html…) instead of describing it in words.',
+            description: 'For single/multi/rank. Strings, or {value, label, description, blocks?}. An option\'s "blocks" render INSIDE that option card — use them to show each choice (image/chart/mermaid/html…) instead of describing it in words. For "rank", the user reorders these (drag or ↑/↓) and the answer is the ordered array of values (highest priority first); rank needs ≥2 options and always returns a value.',
             items: {
               anyOf: [
                 { type: 'string' },

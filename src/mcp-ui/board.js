@@ -235,7 +235,7 @@
         placeholder: typeof rq.placeholder === 'string' ? rq.placeholder : '',
         blocks: normBlocks(rq.blocks, id + '-'),
       };
-      if (type === 'single' || type === 'multi') {
+      if (type === 'single' || type === 'multi' || type === 'rank') {
         const opts = Array.isArray(rq.options) ? rq.options : [];
         q.options = opts.map((o, j) => {
           if (typeof o === 'string' || typeof o === 'number') return { value: String(o), label: String(o) };
@@ -249,7 +249,7 @@
           }
           return { value: String(o), label: String(o) };
         });
-        q.other = type === 'single' ? rq.other !== false : rq.other === true;
+        if (type !== 'rank') q.other = type === 'single' ? rq.other !== false : rq.other === true;
       }
       if (type === 'scale') {
         q.min = Number.isFinite(rq.min) ? rq.min : 1;
@@ -423,6 +423,16 @@
 
   function seedDefaults() {
     for (const q of QS) if (q.default !== undefined) state.answers[q.id] = q.default;
+    // Rank questions carry a full, valid permutation so an untouched rank still
+    // submits a meaningful order (mirrors the browser board's seedRankOrder).
+    for (const q of QS) {
+      if (q.type !== 'rank') continue;
+      const opts = (q.options || []).map((o) => o.value);
+      const prior = Array.isArray(state.answers[q.id]) ? state.answers[q.id] : [];
+      const order = prior.filter((v, i) => opts.includes(v) && prior.indexOf(v) === i);
+      for (const v of opts) if (!order.includes(v)) order.push(v);
+      state.answers[q.id] = order;
+    }
   }
 
   function getValue(q) {
@@ -442,6 +452,8 @@
         return v === 'yes' || v === 'no' ? v : undefined;
       case 'scale':
         return typeof v === 'number' ? v : undefined;
+      case 'rank':
+        return Array.isArray(v) && v.length ? [...v] : undefined;
       default: {
         const t = typeof v === 'string' ? v.trim() : '';
         return t || undefined;
@@ -595,6 +607,57 @@
     input.addEventListener('input', () => { state.answers[q.id] = input.value; clearErr(q.id); });
     return input;
   }
+  // Reorderable priority list — see the browser board's controlRank. Answer is
+  // the ordered array of option values (highest first); always a full permutation.
+  function controlRank(q) {
+    const wrap = el('div', { class: 'rank' });
+    const byVal = new Map(q.options.map((o) => [o.value, o]));
+    let dragFrom = null;
+    function move(from, to) {
+      const arr = state.answers[q.id];
+      if (!Array.isArray(arr) || to < 0 || to >= arr.length || from === to) return;
+      const [x] = arr.splice(from, 1);
+      arr.splice(to, 0, x);
+      paint();
+      clearErr(q.id);
+    }
+    function paint() {
+      wrap.replaceChildren();
+      const order = state.answers[q.id] || [];
+      order.forEach((val, i) => {
+        const o = byVal.get(val);
+        if (!o) return;
+        const up = el('button', { type: 'button', class: 'rank-btn', title: 'Move up', 'aria-label': 'Move "' + o.label + '" up' }, '↑');
+        const down = el('button', { type: 'button', class: 'rank-btn', title: 'Move down', 'aria-label': 'Move "' + o.label + '" down' }, '↓');
+        up.disabled = i === 0;
+        down.disabled = i === order.length - 1;
+        up.addEventListener('click', () => move(i, i - 1));
+        down.addEventListener('click', () => move(i, i + 1));
+        const item = el('div', { class: 'rank-item', draggable: 'true' },
+          el('span', { class: 'rank-badge', 'aria-hidden': 'true' }, String(i + 1)),
+          el('div', { class: 'rank-body' },
+            el('div', { class: 'ol' }, o.label),
+            o.description ? el('div', { class: 'od' }, o.description) : null),
+          el('div', { class: 'rank-ctrls' }, up, down)
+        );
+        item.addEventListener('dragstart', (e) => {
+          dragFrom = i; item.classList.add('dragging');
+          try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(i)); } catch (_) {}
+        });
+        item.addEventListener('dragend', () => { dragFrom = null; item.classList.remove('dragging'); });
+        item.addEventListener('dragover', (e) => { if (dragFrom !== null) { e.preventDefault(); item.classList.add('drop-into'); } });
+        item.addEventListener('dragleave', () => item.classList.remove('drop-into'));
+        item.addEventListener('drop', (e) => {
+          e.preventDefault();
+          const from = dragFrom; dragFrom = null;
+          if (from !== null && from !== i) move(from, i);
+        });
+        wrap.append(item);
+      });
+    }
+    paint();
+    return wrap;
+  }
 
   function toHex6(c) {
     const s = String(c || '').trim();
@@ -659,6 +722,7 @@
       else if (q.type === 'yesno') control.append(segButtons(q, ['yes', 'no'], ['Yes', 'No']));
       else if (q.type === 'scale') control.append(controlScale(q));
       else if (q.type === 'color') control.append(controlColor(q));
+      else if (q.type === 'rank') control.append(controlRank(q));
       else control.append(controlText(q, q.type === 'textarea'));
       card.append(control);
       if (q.note) {

@@ -196,10 +196,17 @@ rly view README.md CHANGELOG.md       # several, each under a filename heading
 | `textarea` | `"string"`                          |
 | `scale`    | number (`min`…`max`, default 1–5)   |
 | `color`    | hex string (e.g. `"#c2674b"`) — native picker + hex field; optional `presets:["#…"]` swatches |
+| `rank`     | `["b","a","c"]` — ordered option values, highest priority first |
+
+`rank` renders the `options` as a reorderable list (drag or ↑/↓ buttons); the
+user prioritizes them and the answer is the ordered array of values. Needs ≥2
+options, takes no "Other", and **always returns a value** (an untouched rank
+submits the authored order), so it never appears in `skipped`. Reach for it on
+roadmap / feature-prioritization questions instead of forcing a single pick.
 
 Aliases accepted: radio/choice/select→single, checkbox→multi,
 boolean/bool/yn→yesno, input→text, longtext→textarea, rating/likert→scale,
-colour/swatch→color.
+colour/swatch→color, ranking/order/ordering/prioritize/sort→rank.
 
 ### Result JSON (stdout)
 

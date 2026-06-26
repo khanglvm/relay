@@ -1298,5 +1298,42 @@ console.log('29. markdown mdFile + rly view');
   ok(noFile.code === 4 && /usage: rly view/.test(noFile.stderr), 'rly view with no file → exit 4');
 }
 
+// ---------- 30. rank question type ----------
+console.log('30. rank question type');
+{
+  const RANK_SPEC = {
+    title: 'Prioritize',
+    questions: [
+      { id: 'pri', type: 'rank', label: 'Order by priority',
+        options: [{ value: 'a', label: 'Alpha', description: 'first' }, 'b', 'c'] },
+      { id: 'pri2', type: 'ranking', label: 'Alias works', options: ['x', 'y'] },
+    ],
+  };
+  const p = path.join(HOME, 'rank-spec.json');
+  fs.writeFileSync(p, JSON.stringify(RANK_SPEC));
+  const { id, url, exited } = await spawnBlocking(['ask', '--file', p, '--no-open', '--timeout', '60']);
+  const spec = (await (await fetch(new URL('/api/board', url))).json()).spec;
+  const q = spec.questions[0];
+  ok(q.type === 'rank' && q.options.length === 3 && q.options[0].value === 'a' && q.options[0].label === 'Alpha',
+    'rank normalizes its options (string + object)');
+  ok(q.other === undefined, 'rank has no "Other" free-text option');
+  ok(spec.questions[1].type === 'rank', 'alias "ranking" normalizes to rank');
+
+  // submit a reordered array; the result echoes it verbatim
+  await post(url, '/api/submit', { answers: { pri: ['c', 'a', 'b'], pri2: ['y', 'x'] } });
+  const res = JSON.parse((await exited).stdout);
+  ok(Array.isArray(res.answers.pri) && res.answers.pri.join(',') === 'c,a,b',
+    'rank answer roundtrips as an ordered array');
+  ok(!res.skipped.includes('pri'), 'a rank question is never "skipped" (always carries an order)');
+
+  // a rank needs at least 2 options
+  const tooFew = await run(['ask', '--file', '-'], { input: JSON.stringify({ title: 'x', questions: [{ id: 'r', type: 'rank', label: 'r', options: ['only'] }] }) });
+  ok(tooFew.code === 4 && /needs at least 2 options/.test(tooFew.stderr), 'rank with <2 options → exit 4');
+
+  // schema advertises the new type
+  const schema = JSON.parse((await run(['schema'])).stdout);
+  ok(schema.properties.questions.items.properties.type.enum.includes('rank'), 'rly schema lists "rank" in the question type enum');
+}
+
 console.log(`\nAll ${passed} assertions passed. (storage: ${HOME})`);
 process.exit(0);

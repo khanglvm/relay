@@ -198,6 +198,37 @@ h1 {
 .scale button { width: 44px; height: 44px; padding: 0; }
 .scale .slabel { color: var(--muted); font-size: 0.8rem; }
 
+/* ranking — reorderable priority list (drag, or the ↑/↓ buttons for
+   keyboard/touch). Top = highest priority; the rank badge reflects position. */
+.rank { display: flex; flex-direction: column; gap: 8px; }
+.rank-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong); border-radius: 10px;
+  background: var(--card); cursor: grab;
+  transition: border-color 150ms var(--ease), box-shadow 150ms var(--ease), opacity 150ms var(--ease);
+}
+.rank-item:active { cursor: grabbing; }
+.rank-item.dragging { opacity: 0.5; }
+.rank-item.drop-into { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.rank-badge {
+  flex: none; width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent); color: var(--accent-fg);
+  font-weight: 600; font-size: 0.85rem;
+}
+.rank-body { flex: 1; min-width: 0; }
+.rank-ctrls { flex: none; display: flex; gap: 4px; }
+.rank-btn {
+  width: 30px; height: 30px; padding: 0;
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  background: var(--bg-sunken); color: var(--fg);
+  cursor: pointer; font-size: 14px; line-height: 1;
+  transition: border-color 150ms var(--ease);
+}
+.rank-btn:hover:not(:disabled) { border-color: var(--accent); }
+.rank-btn:disabled { opacity: 0.35; cursor: default; }
+
 input[type="text"], textarea {
   width: 100%;
   background: var(--bg-sunken); color: var(--fg);
