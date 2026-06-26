@@ -140,6 +140,14 @@ Read a markdown file (no questions; library-free renderer; submit reads "Done"):
 ```sh
 rly view PLAN.md                      # one file
 rly view README.md CHANGELOG.md       # several, each under a filename heading
+rly view data.csv                     # .csv/.tsv/.json → a sortable, filterable table
+```
+
+Show a git diff in one step (sugar — runs git diff, opens a diff board):
+
+```sh
+rly diff --detach                     # working-tree diff (git args pass through:
+rly diff --staged --split             #   --staged, HEAD~1, -- path, …); --split = side-by-side
 ```
 
 ## Board spec (JSON)
@@ -197,6 +205,8 @@ rly view README.md CHANGELOG.md       # several, each under a filename heading
 | `scale`    | number (`min`…`max`, default 1–5)   |
 | `color`    | hex string (e.g. `"#c2674b"`) — native picker + hex field; optional `presets:["#…"]` swatches |
 | `rank`     | `["b","a","c"]` — ordered option values, highest priority first |
+| `checklist`| `{ "login":"pass", "checkout":"fail" }` — per-item status map |
+| `allocate` | `{ "eng":50, "design":30, "ops":20 }` — budget distributed across options |
 
 `rank` renders the `options` as a reorderable list (drag or ↑/↓ buttons); the
 user prioritizes them and the answer is the ordered array of values. Needs ≥2
@@ -204,9 +214,16 @@ options, takes no "Other", and **always returns a value** (an untouched rank
 submits the authored order), so it never appears in `skipped`. Reach for it on
 roadmap / feature-prioritization questions instead of forcing a single pick.
 
+`checklist` gives each `option` a status control (default Pass / Fail / N·A;
+override with `"statuses"`); answer is `{optionValue: statusValue}`. `allocate`
+distributes a budget (`"total"`, default 100) across the options with sliders +
+a live total bar; answer is `{optionValue: number}`. Both take per-option
+`description`/`blocks` like single/multi.
+
 Aliases accepted: radio/choice/select→single, checkbox→multi,
 boolean/bool/yn→yesno, input→text, longtext→textarea, rating/likert→scale,
-colour/swatch→color, ranking/order/ordering/prioritize/sort→rank.
+colour/swatch→color, ranking/order/ordering/prioritize/sort→rank,
+signoff/qa→checklist, budget/distribute/points→allocate.
 
 ### Result JSON (stdout)
 
@@ -427,7 +444,16 @@ real path over telling the user to paste it into a terminal.
 | `video` | demos, screen recordings, walkthroughs — YouTube/Vimeo embeds, a media URL, or a local video file (streamed) |
 | `image` | screenshots, mockup exports, photos — local files embed and work offline |
 | `palette` | color palettes / themes — swatch cards with hover-hex + click-to-copy; pair with a `color` question to let the user pick |
+| `kpi` | big-number metric cards (`items:[{label,value,delta?,dir?,sub?}]`) with up/down/flat-tinted deltas — at-a-glance numbers without a chart |
+| `typography` | type specimens (`specimens:[{label?,size?,weight?,font?,text?}]`) — react to type choices like a palette |
+| `compare` | before/after images with a draggable divider (`before`/`after` = url/path/`{src,label}`) — redesigns, before-after fixes |
 | `html` | anything else — pixel-perfect mockups, custom widgets, embeds |
+
+Two cross-block fields work on **any** block: `"ref":"name"` makes it openable in
+a modal via a markdown `[label](#ref:name)` link (point a question at a visual
+shown earlier — no scrolling); `image` blocks also take `"pins":true` for
+click-to-drop coordinate pin-comments. `table` blocks take `"rowsFile"` (load
+rows from .csv/.tsv/.json), `"filterable"`, and `"exportable"` (CSV download).
 
 ### Height rules
 
