@@ -212,7 +212,7 @@ rly diff --staged --split             #   --staged, HEAD~1, -- path, …); --spl
 | `text`     | `"string"`                          |
 | `textarea` | `"string"`                          |
 | `scale`    | number (`min`…`max`, default 1–5)   |
-| `color`    | hex string (e.g. `"#c2674b"`) — native picker + hex field; optional `presets:["#…"]` swatches |
+| `color`    | color string (e.g. `"#c2674b"`, `"rgb(...)"`, a name) — native picker + hex field; optional `presets:["#…"]` small swatches, or a `palette:[…]` of labeled swatch CARDS (click = answer, each card commentable, any CSS color system) |
 | `rank`     | `["b","a","c"]` — ordered option values, highest priority first |
 | `checklist`| `{ "login":"pass", "checkout":"fail" }` — per-item status map |
 | `allocate` | `{ "eng":50, "design":30, "ops":20 }` — budget distributed across options |
