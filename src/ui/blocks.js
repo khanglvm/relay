@@ -1853,13 +1853,34 @@
   function openFullEl(host) {
     if (!host) return false;
     const viewer = host.classList.contains('blk-viewer') ? host : host.querySelector('.blk-viewer');
+    // Visuals open as a full-screen modal — context-safe (an overlay; × returns
+    // to the exact spot). Non-modal blocks (kpi/markdown/table-less) have no
+    // viewer, so we jump + highlight AND show a "↩ Back" button so the user can
+    // return after the jump — no lost context across the data↔question distance.
     if (viewer && viewer._rlyTools) { enterFull(viewer); return true; }
+    const fromY = window.scrollY || window.pageYOffset || 0;
     host.scrollIntoView({ behavior: 'smooth', block: 'center' });
     host.classList.remove('rly-refflash');
     void host.offsetWidth;
     host.classList.add('rly-refflash');
     setTimeout(() => host.classList.remove('rly-refflash'), 1200);
+    showRefBack(fromY);
     return true;
+  }
+
+  // A floating "↩ Back" pill that returns to the pre-jump scroll position. Self-
+  // removes once the user is back near where they started, or after a timeout.
+  let refBackBtn = null;
+  function showRefBack(fromY) {
+    if (refBackBtn) refBackBtn.remove();
+    const btn = el('button', { class: 'rly-refback', type: 'button', title: 'Back to where you were' }, '↩ Back');
+    const cleanup = () => { btn.remove(); window.removeEventListener('scroll', onScroll); if (refBackBtn === btn) refBackBtn = null; };
+    const onScroll = () => { if (Math.abs((window.scrollY || 0) - fromY) < 120) cleanup(); };
+    btn.addEventListener('click', () => { window.scrollTo({ top: fromY, behavior: 'smooth' }); cleanup(); });
+    window.addEventListener('scroll', onScroll, { passive: true });
+    document.body.append(btn);
+    refBackBtn = btn;
+    setTimeout(() => { if (refBackBtn === btn) cleanup(); }, 12000);
   }
   function openFull(blockId) {
     return openFullEl(document.querySelector('[data-block-id="' + cssEsc(blockId) + '"]'));

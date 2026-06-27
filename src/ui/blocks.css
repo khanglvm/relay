@@ -712,6 +712,18 @@ body.blk-full-open { overflow: hidden; }
   background: currentColor; right: -0.28em; bottom: 0.02em;
   transform: rotate(45deg); transform-origin: left center;
 }
+/* floating "↩ Back" pill shown after a reference jumps to a non-modal block */
+.rly-refback {
+  position: fixed; left: 18px; bottom: 18px; z-index: 60;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px; font: inherit; font-size: 0.85rem; font-weight: 500;
+  color: var(--accent-fg); background: var(--accent);
+  border: 0; border-radius: 999px; cursor: pointer;
+  box-shadow: var(--shadow-lift);
+  animation: rly-refback-in 180ms var(--ease);
+}
+.rly-refback:hover { filter: brightness(1.06); }
+@keyframes rly-refback-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 /* brief highlight when a reference jumps to a non-modal block */
 .rly-refflash { animation: rly-refflash 1.2s var(--ease); }
 @keyframes rly-refflash {
