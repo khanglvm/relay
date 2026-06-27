@@ -5,6 +5,15 @@ rich content blocks (markdown, charts, diagrams, tables, code, custom HTML),
 then **wait for them to click Submit** and read the answers as JSON from stdout.
 No "type 'done' in the terminal", no hand-rolled HTML+server.
 
+**Match the surface to the content.** You run inside a terminal, an IDE side-panel
+(VS Code / JetBrains / Cursor), or a plain-text chat — none of which can render a
+markdown file, an image, a chart, a table, a diagram, or a diff. They degrade to
+walls of monospace text, or can't show it at all (a terminal can't draw a PNG).
+relay renders it in a real browser board. So whenever your output would read better
+than monospace — or is a file/visual the user should look at — show it in relay
+instead of printing it. Fast paths: `rly view file.md` (or `data.csv`), `rly diff`,
+or an `image`/`chart`/`table` block on a board.
+
 **Use relay even in plan mode** — for any clarifying or decision question (Claude
 Code / Codex), route it through a relay board, **not** the native
 `AskUserQuestion` / ask-user tool: that tool is **not** a substitute, even though

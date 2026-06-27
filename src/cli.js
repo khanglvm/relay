@@ -853,23 +853,33 @@ function stampSkillVersion() {
 // AGENTS.md, …). A skill is only a tier-1 hint that agents can ignore; these
 // rules, appended to the instructions the agent always reads, enforce usage.
 // Printed to stdout so `rly skill rules >> CLAUDE.md` is the whole install.
-const SKILL_RULES = `## relay — ask & show in the browser, not the terminal
+const SKILL_RULES = `## relay — show it in the browser, don't dump it in the terminal
 
-- Need the user's decisions, feedback, requirements, or approval (anything
-  beyond one trivial yes/no)? Do NOT ask in plain terminal text **and do NOT use
-  the native \`AskUserQuestion\` / ask-user tool** — for anything beyond one
-  trivial yes/no, open a relay board. Build a board spec and run:
-  \`rly ask --file spec.json --detach\`, then \`rly wait <boardId>\`. **This holds
-  in plan mode too** — route clarifying/decision questions through relay there as
-  well; reserve \`ExitPlanMode\` for the final plan-approval gate only.
-- Presenting a plan, structure, architecture, data, or a prototype? Show a
-  relay board with mermaid/graphviz/chart/table/code/diff/video/image/html
-  blocks — never ASCII diagrams or walls of prose.
-- "Show me the diff / git diff / these changes"? Run \`git diff\` (or \`git show\`)
-  and render the output in a \`diff\` block — never paste a raw diff in the
-  terminal. Point the user at a file with a clickable local path in a markdown
-  block, and embed a screen recording with a \`video\` block.
-- When answer choices are visual (designs, layouts, variants), give each
+**Why:** your output surface — a terminal, an IDE side-panel (VS Code, JetBrains,
+Cursor), a plain-text chat — can't actually render a markdown file, an image, a
+chart, a table, a diagram, or a diff. It shows them as walls of monospace text, or
+not at all (a terminal can't display a PNG). relay opens a real browser board that
+renders them properly AND reads the user's reply back as JSON. **Rule of thumb: if
+what you're about to output would look better than monospace text — or is a file
+the user should view — put it in relay instead of printing it.**
+
+- **Markdown file / doc / README / plan / report** → \`rly view file.md\` (renders it
+  in the browser, no library; \`.csv\`/\`.json\` → a sortable table). Never \`cat\` a
+  doc into the terminal for the user to read.
+- **Image / screenshot / mockup / diagram / chart / table** → a relay board with an
+  \`image\` block (or \`mermaid\`/\`graphviz\`/\`chart\`/\`table\`/\`kpi\`/\`compare\`). The
+  terminal can't show pixels; relay can — with click-to-zoom and comment-in-place.
+- **The user's decisions, feedback, requirements, or approval** (anything beyond one
+  trivial yes/no) → a relay board, NOT plain terminal text and NOT the native
+  \`AskUserQuestion\` / ask-user tool. Build a spec and run
+  \`rly ask --file spec.json --detach\`, then \`rly wait <boardId>\`. **Holds in plan
+  mode too**; reserve \`ExitPlanMode\` for the final plan-approval gate only.
+- **A plan, structure, architecture, data, or prototype** → a relay board with
+  diagram/chart/table/code/image/html blocks — never ASCII diagrams or walls of prose.
+- **"Show me the diff / git diff / these changes"** → \`rly diff\` (runs git diff →
+  a diff board), or render diff text in a \`diff\` block — never paste a raw diff.
+- Point the user at a file with a clickable local path in a markdown block; embed a
+  screen recording with a \`video\` block; when answer choices are visual, give each
   option its own visual (\`options[].blocks\`) so the user picks by looking.
 - Read the result JSON from stdout; treat \`comment\` and \`annotations\` as
   first-class feedback. Full guide: \`rly agent\`.`;
