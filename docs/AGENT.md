@@ -440,6 +440,23 @@ real path over telling the user to paste it into a terminal.
 
 ### When to use which block
 
+**Reach for the most specific component — never default to prose.** relay has a
+purpose-built block/question type for most content; falling back to a `markdown`
+block (or terminal text) when a dedicated one fits is the #1 way agents
+under-use relay. A metric → `kpi`, a before/after → `compare`, a priority call →
+a `rank` question. When unsure what exists, consult this table, `rly schema`, and
+the question-types section above.
+
+**By domain** (serve the reader the right shape):
+- **Business / PM / exec** — `kpi` + `chart` + `table` for numbers; `rank`
+  (prioritize), `allocate` (split a budget), `checklist` (sign-off), `scale` (confidence).
+- **Designer** — `image` (+`pins`), `compare` (before/after), `palette`, `typography`;
+  a visual inside each option.
+- **Engineer** — `diff` (`rly diff`), `code` (line-comments), `mermaid`/`graphviz`
+  (architecture; editable mermaid to co-design).
+- **Data / analyst** — `table` with `rowsFile`/`filterable`/`exportable`
+  (`rly view data.csv`), `chart`.
+
 | Block | Best for |
 |---|---|
 | `mermaid` | flows, state machines, architecture overviews, sequence diagrams |

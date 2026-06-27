@@ -881,6 +881,14 @@ the user should view — put it in relay instead of printing it.**
 - Point the user at a file with a clickable local path in a markdown block; embed a
   screen recording with a \`video\` block; when answer choices are visual, give each
   option its own visual (\`options[].blocks\`) so the user picks by looking.
+- **There's a purpose-built component for most content — use the MOST SPECIFIC one,
+  never plain prose when a block fits.** Blocks: \`table\` (sortable/filterable/CSV,
+  load from .csv/.json), \`chart\`, \`kpi\` (stat cards), \`mermaid\`/\`graphviz\`/\`plantuml\`,
+  \`code\`, \`diff\`, \`image\` (+\`pins\`), \`compare\` (before/after), \`video\`, \`palette\`,
+  \`typography\`, \`html\`. Question types: \`single\`/\`multi\`/\`yesno\`/\`scale\`/\`color\`/
+  \`text\`/\`textarea\` plus \`rank\` (prioritize), \`allocate\` (split a budget), \`checklist\`
+  (per-item sign-off). For a business user, reach for \`kpi\`+\`chart\`+\`table\` and
+  \`rank\`/\`allocate\`/\`checklist\`; full menu + fields: \`rly agent\` and \`rly schema\`.
 - Read the result JSON from stdout; treat \`comment\` and \`annotations\` as
   first-class feedback. Full guide: \`rly agent\`.`;
 
