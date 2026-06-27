@@ -1553,10 +1553,12 @@
       alt: block.alt || 'image',
       loading: 'lazy',
     });
-    // The per-block height only caps the COMPACT inline preview — the viewer
-    // lifts it on zoom / full-screen so the user can always reach full detail.
-    const fitMaxHeight = block.height ? clampHeight(block.height, 360) : null;
-    if (fitMaxHeight) img.style.maxHeight = fitMaxHeight + 'px';
+    // Inline default: the image fills its full width (container width, never
+    // upscaled past natural) so it's readable without manual zoom; the CONTAINER
+    // caps the height (default 800 via CSS, or block.height) and SCROLLS — we
+    // never cap the image's own height, which would shrink its width. Full-screen
+    // lifts the cap (the .blk-full rule).
+    if (block.height != null) container.style.maxHeight = clampHeight(block.height, 800) + 'px';
     img.addEventListener('error', () => {
       container.replaceChildren(el('div', { class: 'blk-error' }, 'Image failed to load'));
     });
@@ -1567,7 +1569,6 @@
         natural: () => (img.naturalWidth > 0 ? { w: img.naturalWidth, h: img.naturalHeight } : null),
         label: 'image',
         comment: wholeBlockComment(ctx, blockId, 'image'),
-        fitMaxHeight,
       });
     if (img.complete && img.naturalWidth > 0) attachImgViewer();
     else img.addEventListener('load', attachImgViewer, { once: true });
