@@ -713,6 +713,23 @@ export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
         .map((c) => asStr(c).trim())
         .filter(Boolean);
       if (presets.length) q.presets = presets;
+      // Richer "pick from a palette": labeled swatch cards. Each click selects
+      // that color as the answer and each card is individually commentable.
+      // Items: a color string, or {value|color, label?}. Any CSS color system.
+      if (Array.isArray(rq.palette) && rq.palette.length) {
+        q.palette = rq.palette.map((p, k) => {
+          if (typeof p === 'string' || typeof p === 'number') {
+            const value = String(p).trim();
+            return { value, label: value };
+          }
+          if (p && typeof p === 'object') {
+            const value = asStr(p.value ?? p.color).trim();
+            if (!value) throw new CliError(`${where}.palette[${k}]: needs a "value" or "color".`);
+            return { value, label: asStr(p.label ?? p.name) || value };
+          }
+          throw new CliError(`${where}.palette[${k}]: must be a color string or {value/color, label?}.`);
+        }).filter((p) => p.value);
+      }
     }
 
     if (rq.default !== undefined) q.default = rq.default;
@@ -882,7 +899,8 @@ export const SPEC_SCHEMA = {
           max: { type: 'integer', default: 5, maximum: 10, description: 'scale only' },
           minLabel: { type: 'string', description: 'scale only' },
           maxLabel: { type: 'string', description: 'scale only' },
-          presets: { type: 'array', items: { type: 'string' }, description: 'color only: optional preset swatches (CSS colors) shown beside the native picker for one-click selection. The answer is returned as a hex string.' },
+          presets: { type: 'array', items: { type: 'string' }, description: 'color only: optional small preset swatches (CSS colors) shown beside the native picker for one-click selection. The answer is returned as a color string.' },
+          palette: { type: 'array', description: 'color only: a "pick from a palette" of labeled swatch CARDS — each click selects that color as the answer, and each card is individually commentable (per-color feedback). Items: a CSS color string (hex/rgb/hsl/named — multiple color systems supported via the browser, no library), or {value (or color), label?}. The native picker stays available for a custom color.', items: { anyOf: [{ type: 'string' }, { type: 'object' }] } },
           statuses: { type: 'array', description: 'checklist only: the per-item statuses (default Pass / Fail / N/A). Strings, or {value, label, tone?} where tone ∈ ok|bad|muted|warn tints the chip. Answer is a map {optionValue: statusValue} for the items the user set.', items: { anyOf: [{ type: 'string' }, { type: 'object' }] } },
           total: { type: 'integer', minimum: 1, default: 100, description: 'allocate only: the budget to distribute across options (default 100). Answer is a map {optionValue: number}.' },
           unit: { type: 'string', description: 'allocate only: optional unit label shown next to the total (e.g. "%", "pts", "hrs").' },

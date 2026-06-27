@@ -1429,5 +1429,34 @@ console.log('33. block ref + image pins');
   await exited;
 }
 
+// ---------- 34. color palette-as-answer + decision-type note defaults ----------
+console.log('34. color palette + note defaults');
+{
+  const SPEC = {
+    title: 'Color + notes',
+    questions: [
+      { id: 'brand', type: 'color', label: 'Pick a brand color',
+        palette: ['#c2674b', { value: 'rgb(77,138,102)', label: 'Forest' }, { color: 'rebeccapurple', name: 'Royal' }] },
+      { id: 'rk', type: 'rank', label: 'order', options: ['a', 'b'] },
+      { id: 'al', type: 'allocate', label: 'split', options: ['x', 'y'] },
+      { id: 'ck', type: 'checklist', label: 'signoff', options: ['p'] },
+      { id: 'mu', type: 'multi', label: 'pick', options: ['m', 'n'] },
+    ],
+  };
+  const p = path.join(HOME, 'c34-spec.json');
+  fs.writeFileSync(p, JSON.stringify(SPEC));
+  const { url, exited } = await spawnBlocking(['ask', '--file', p, '--no-open', '--timeout', '60']);
+  const qs = (await (await fetch(new URL('/api/board', url))).json()).spec.questions;
+  const brand = qs[0];
+  ok(Array.isArray(brand.palette) && brand.palette.length === 3, 'color question normalizes a palette array');
+  ok(brand.palette[0].value === '#c2674b' && brand.palette[1].value === 'rgb(77,138,102)' && brand.palette[1].label === 'Forest', 'palette accepts strings + {value/color,label/name}, any color system');
+  ok(brand.palette[2].value === 'rebeccapurple' && brand.palette[2].label === 'Royal', 'palette {color,name} shorthand works (named color)');
+  ok(qs[1].note === true && qs[2].note === true && qs[3].note === true, 'rank/allocate/checklist default to note:true');
+  ok(qs[4].note === false, 'multi still defaults to note:false');
+  await post(url, '/api/submit', { answers: { brand: 'rebeccapurple' } });
+  const res = JSON.parse((await exited).stdout);
+  ok(res.answers.brand === 'rebeccapurple', 'color answer preserves the authored color string (any system)');
+}
+
 console.log(`\nAll ${passed} assertions passed. (storage: ${HOME})`);
 process.exit(0);
