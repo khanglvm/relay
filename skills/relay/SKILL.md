@@ -1,6 +1,6 @@
 ---
 name: relay
-description: "The tool for collecting user requirements, decisions, and answers (choice, yes-no, text, scale) and for presenting prototypes, plans, structures, code changes, or reports with rich visuals - mermaid/graphviz/plantuml diagrams, charts, tables, code, diffs, video, custom HTML, clickable file-links - plus inline comments on any element. Opens a browser board, waits for Submit, returns JSON answers, per-question notes, comments, and annotations. Use PROACTIVELY instead of (a) native ask-user tools for 2+ answers or options needing explanation, (b) ASCII trees/tables/diagrams in the terminal or prose for structures/designs/plans, (c) hand-rolled HTML demos. Triggers: collect requirements, ask the user, get decisions/feedback, present a prototype, plan/design review, show me the structure/file tree, architecture or dependency graph, visualize, diagram, chart, table, compare alternatives, survey, edit the diagram, show me the diff / git diff, video walkthrough, open a file. Skip for a single yes/no confirmation."
+description: "Collect user decisions & answers — choice, multi, yes-no, text, scale, rank (prioritize), checklist (sign-off), allocate (split a budget), color — and present plans, data, code, or designs with blocks: diagrams (mermaid/graphviz/plantuml), charts, KPI cards, tables (sortable/filterable/CSV, load .csv/.json), code, multi-file diffs, before/after compare, typography, palettes, video, images (click-to-pin), HTML — plus inline element comments and links that open a visual in a modal. Opens a browser board (or inline in Claude/Codex), returns JSON answers/notes/comments/annotations on Submit. Use PROACTIVELY over native ask tools (2+ answers), ASCII/prose for structures/metrics/designs, or printing a file/image/chart/diff the terminal can't render. A dedicated component exists for most content — use the most specific, don't fall back to prose. Triggers: ask the user, decisions, prioritize, sign-off, allocate, plan review, chart, metrics, table, view a CSV, before/after, git diff, markdown file. Skip single yes/no."
 ---
 
 # relay (`rly`)
@@ -25,9 +25,19 @@ Schema).** The essentials are below.
 
 ## When to use rly vs your native question tool
 
+**The core principle — match the surface to the content.** You run inside a
+terminal, an IDE side-panel (VS Code / JetBrains / Cursor), or a plain-text chat.
+None of those can actually render a markdown file, an image, a chart, a table, a
+diagram, or a diff — they degrade to walls of monospace text, or can't show it at
+all (a terminal can't draw a PNG). relay opens a real browser board that renders it
+properly and reads the user's reply back as JSON. **So whenever what you're about to
+output would read better than monospace — or is a file/visual the user should look
+at — show it in a relay board instead of printing it.**
+
 | Situation | Use |
 |---|---|
 | One trivial confirmation ("proceed?") | native tool |
+| Show an image / screenshot / mockup / rendered output | **rly** (`image` block — the terminal can't display pixels) |
 | 2+ questions, or options that need descriptions | **rly** |
 | Choice is easier to make visually (layouts, designs, diagrams) | **rly** (blocks per question) |
 | Each OPTION has its own visual (design variants, screenshots, charts) | **rly** (blocks per option) |
@@ -38,6 +48,7 @@ Schema).** The essentials are below.
 | "Show me the diff" / git diff / code changes / before-after | **rly** (`diff` block — run `git diff`, render it; never dump it in the terminal) |
 | A demo, screen recording or walkthrough | **rly** (`video` block) |
 | Point the user at a file to open (log, capture, report) | **rly** (a clickable local file-link in markdown) |
+| Let the user read a markdown file (README, plan, report) | **rly view file.md** (or a `markdown` block with `mdFile`) — never dump the file into the terminal |
 | Plan-mode clarifying question (Claude Code / Codex) | **rly** (not AskUserQuestion / the native ask tool) |
 | Something you can decide yourself from context | neither — just decide |
 
@@ -50,6 +61,64 @@ transition, not a question).
 Once the user has answered one board in a session, prefer boards for later
 question rounds too — they've shown they engage with them. Batch related
 questions into ONE board rather than opening several in a row.
+
+## The full toolbox — reach for the MOST SPECIFIC component
+
+relay ships a purpose-built component for most kinds of content. **Before you
+build a board, scan this list and pick the most specific component that fits — do
+NOT fall back to a plain `markdown`/prose block (or the terminal) when a dedicated
+one renders it better.** A KPI belongs in `kpi`, a before/after in `compare`, a
+priority call in a `rank` question — not in paragraphs. Unsure which exists? Run
+`rly agent` (full guide) and `rly schema` (every field).
+
+**Blocks** — add under `"blocks": [...]` at the board, a question, or an option:
+
+| Block | Reach for it when you have… |
+|---|---|
+| `table` | tabular data — sortable, per-cell comments; `rowsFile` (.csv/.json), `filterable`, `exportable` |
+| `chart` | numbers / trends / comparisons (bar·line·pie·doughnut·radar·scatter) |
+| `kpi` | headline metrics — big-number cards with ↑/↓/flat deltas (no chart needed) |
+| `mermaid` | flows, sequences, state machines, architecture (set `editable:true` to co-edit) |
+| `graphviz` | precise dependency / call graphs |
+| `plantuml` | UML (sequence / class / component) |
+| `code` | source / config / command output — highlighted, line numbers, hover-a-line to comment |
+| `diff` | code changes — colored unified/split, multi-file (`rly diff` builds the whole board) |
+| `image` | screenshots / mockups / renders — zoom+pan; `pins:true` → click-to-drop point comments |
+| `compare` | a before/after pair — draggable divider |
+| `video` | a demo / screen recording / walkthrough |
+| `palette` | color schemes — swatch cards, hover-hex, click-to-copy |
+| `typography` | type choices — specimens at given size/weight/font |
+| `html` | anything bespoke — custom widgets, pixel-perfect mockups |
+| `markdown` | prose / context ONLY (not data, metrics, or visuals — those have their own block) |
+
+Any block also takes `"ref":"name"` → a question can link to it with
+`[label](#ref:name)` and it opens **in a full-screen modal**, so the user views the
+data without scrolling back up.
+
+**Question types** — pick by the shape of the answer you need:
+
+| Type | Reach for it when you need… | Answer JSON |
+|---|---|---|
+| `single` | one choice (radio; "Other" + a note are on by default) | `"value"` |
+| `multi` | several choices | `["a","b"]` |
+| `rank` | a **priority order** over options (roadmap, triage) | `["b","a","c"]` |
+| `allocate` | a **budget split** across options (tradeoffs, %, points) | `{opt: number}` |
+| `checklist` | **per-item sign-off / QA** (Pass·Fail·N·A, or custom) | `{opt: status}` |
+| `scale` | a rating on a 1–N scale | number |
+| `yesno` | a binary decision | `"yes"`/`"no"` |
+| `color` | a color pick — native picker + presets, or a `palette` of labeled swatch cards (each commentable); any CSS color system | color string |
+| `text` / `textarea` | short / long free text | string |
+
+**By who you're serving** (don't make a business user read a wall of prose):
+
+- **Business / PM / exec** → `kpi` + `chart` + `table` for the numbers; `rank` to
+  prioritize, `allocate` for tradeoffs, `checklist` for sign-off, `scale` for confidence.
+- **Designer** → `image` (+`pins` for point feedback), `compare` (before/after),
+  `palette`, `typography`; put a visual INSIDE each option so they pick by looking.
+- **Engineer** → `diff` (`rly diff`), `code` (line-comments), `mermaid`/`graphviz`
+  for architecture, editable mermaid to co-design.
+- **Data / analyst** → `table` with `rowsFile`/`filterable`/`exportable`
+  (`rly view data.csv`), `chart` for the shape of it.
 
 ## Choose a pattern
 
@@ -105,9 +174,48 @@ answers and any annotations written so far.
 ```
 
 Types: `single`, `multi`, `yesno`, `text`, `textarea`, `scale`, `color`
-(native picker + hex; optional `"presets":["#…"]`, returns a hex string). Users
-may submit with unanswered questions (returned in `skipped`) unless
+(native picker + hex; optional `"presets":["#…"]` or a `"palette"` of labeled,
+commentable swatch cards — any CSS color system), `rank`, `checklist`, `allocate`.
+Users may submit with unanswered questions (returned in `skipped`) unless
 `"allowPartial": false` or per-question `"required": true`.
+
+```jsonc
+{ "id": "brand", "type": "color", "label": "Pick a brand color",
+  "palette": [{ "value": "#c2674b", "label": "Terracotta" }, { "value": "rgb(77,138,102)", "label": "Forest" }, "rebeccapurple"] }
+// clicking a swatch = the answer; hover a swatch to comment on that specific color.
+```
+
+The optional per-question note box (`result.notes[id]`) defaults ON for the
+**decision types** — `single`, `rank`, `checklist`, `allocate` — so the user can
+qualify a pick; `"note": false` hides it, `"note": true` adds it to other types.
+
+`rank` — the user drags (or uses ↑/↓) to order the `options` by priority; the
+answer is the **ordered array of option values**, highest first. Needs ≥2
+options; always returns a value (an untouched rank submits the authored order),
+so it's never `skipped`. Use for roadmap/feature prioritization instead of a
+single pick. Options take `description` and per-option `blocks` like single/multi.
+
+```json
+{ "id": "roadmap", "type": "rank", "label": "Order these by priority",
+  "options": [{ "value": "diff", "label": "rly diff", "description": "git diff → board" }, "rank type", "image pins"] }
+```
+
+`checklist` — each `option` gets a per-item status (default **Pass / Fail / N·A**;
+override with `"statuses"`). Answer is a map `{optionValue: statusValue}`. For QA
+passes and sign-off gates.
+
+```json
+{ "id": "qa", "type": "checklist", "label": "Release sign-off", "options": ["login","search","checkout"] }
+```
+
+`allocate` — the user distributes a budget (`"total"`, default 100) across the
+`options` with sliders + a live running-total bar. Answer is a map
+`{optionValue: number}`. Captures intensity/tradeoffs, not just a pick.
+
+```json
+{ "id": "spend", "type": "allocate", "label": "Split the quarter", "total": 100, "unit": "pts",
+  "options": ["features","tech debt","infra"] }
+```
 
 Set `"note": true` on a question to add a small optional free-text field under
 it — use when the user may want to qualify their choice. Returned as
@@ -127,6 +235,7 @@ single/multi question.
 
 ```jsonc
 { "type": "markdown", "md": "## Section\n**prose**" }
+{ "type": "markdown", "mdFile": "README.md" }   // render a local .md file (no lib)
 { "type": "mermaid",  "code": "graph TD; A-->B",     "height": 400 }
 { "type": "graphviz", "dot": "digraph { a -> b }",   "height": 300 }
 { "type": "plantuml", "code": "@startuml\nA->B\n@enduml", "height": 300 }
@@ -137,6 +246,19 @@ single/multi question.
 { "type": "table",    "columns": ["A","B"], "rows": [["x","y"]], "sortable": true }
 // ^ use a `table` block for tabular data — sortable + per-cell comments.
 //   (markdown blocks render GFM pipe tables too, but those are display-only.)
+{ "type": "table",    "rowsFile": "data.csv", "filterable": true, "exportable": true }
+// ^ load rows from a local .csv/.tsv/.json; filterable = live filter box,
+//   exportable = CSV download. (`rly view data.csv` does all of this for you.)
+{ "type": "kpi",      "title": "This quarter", "items": [
+  { "label": "Revenue", "value": "$1.2M", "delta": "12%", "dir": "up" },
+  { "label": "Churn",   "value": "2.1%",  "delta": "0.4pp", "dir": "down", "sub": "lower=better" } ] }
+// ^ big-number metric cards with up/down/flat-tinted deltas — no chart needed.
+{ "type": "typography", "font": "Georgia, serif", "specimens": [
+  { "label": "Display", "size": "40px", "weight": "600", "text": "Ship faster" },
+  { "label": "Body",    "size": "16px", "text": "The quick brown fox…" } ] }
+// ^ type specimens at given size/weight/font — react to type like a palette.
+{ "type": "compare",  "before": "v1.png", "after": "v2.png", "beforeLabel": "Old", "afterLabel": "New" }
+// ^ before/after images with a draggable divider (redesign / before-after fix).
 { "type": "code",     "lang": "js",  "code": "const x = 1;", "filename": "demo.js" }
 { "type": "code",     "codeFile": "src/server.js" }   // load text from a local file
 { "type": "diff",     "lang": "js",  "filename": "src/auth.js", "view": "split",
@@ -159,6 +281,23 @@ single/multi question.
 { "type": "palette",  "palettes": [{ "name":"Brand", "colors":["#3B8EA5","#6DBAD1","#1E6278"], "featured": true }] }
 // ^ color palettes as swatch cards: hover=hex, click=copy. Shorthand {"type":"palette","colors":[…]}; pair with a `color` question.
 ```
+
+### View a markdown file quickly
+
+To let the user *read* a `.md` file (README, a plan you wrote, a generated
+report), don't paste it into the terminal — render it:
+
+```sh
+rly view PLAN.md                 # one file → board titled "PLAN.md", "Done" button
+rly view README.md CHANGELOG.md  # several files, each with a filename heading
+rly view docs/spec.md --detach   # detached like ask/show; then `rly wait <id>`
+```
+
+`rly view` is sugar over `rly show` with `markdown` blocks (`mdFile`). The
+built-in renderer is library-free and covers headings, lists, `**/_` emphasis,
+code, quotes, GFM pipe tables, remote/data images, and click-to-open local
+links. To mix a file into a larger board, use a `markdown` block with
+`"mdFile"` alongside questions or other blocks.
 
 ### Visual options — show each choice, don't describe it
 
@@ -197,6 +336,43 @@ renders as a click-to-open link that opens the file in the user's OS default app
 wrote on the board can be opened (same-origin + allowlist guarded). Surface a real
 clickable path instead of telling the user to paste it into a terminal.
 
+### Connect a question to a visual shown above (reference modal)
+
+When a board has visuals up top and questions below, the user loses the link
+between them. Give any block a stable `"ref"` name, then reference it from a
+markdown link — clicking it opens that visual in a full-screen modal **in place**,
+no scrolling:
+
+```jsonc
+{ "type": "chart", "ref": "velocity", "kind": "line", "labels": [...], "series": [...] }
+// then in the intro, a markdown block, or a question's own markdown block:
+{ "type": "markdown", "md": "Decide from the [📈 Velocity](#ref:velocity) chart above." }
+```
+
+`[label](#ref:name)` opens the block named `name`; `[label](#block:b2)` opens by
+id. Use it so every question that depends on data points right at it.
+
+### Pin comments on a mockup (image coordinates)
+
+Add `"pins": true` to an `image` block: the user clicks any point on the image to
+drop a comment anchored to that exact spot (Figma-style), returned as an
+`{kind:"image-point", x, y}` annotation. Ideal for design/mockup review.
+
+### Show a git diff in one step — `rly diff`
+
+`rly diff [git args…]` runs `git diff` and opens the result as a diff board —
+sugar for the "show me the diff" flow. Git args/flags pass straight through; a
+multi-file diff renders with a per-file header + a jump bar.
+
+```sh
+rly diff --detach              # working-tree diff
+rly diff --staged --split      # staged changes, side-by-side
+rly diff HEAD~1 HEAD -- src/   # a commit's diff, scoped to a path
+```
+
+`code` blocks also support **line-anchored comments**: hover a line number to
+comment on that exact line (returned as `{kind:"code-line", line}`).
+
 ## Annotations
 
 Users can hover chart points, diagram nodes (mermaid + graphviz), table cells,
@@ -213,7 +389,7 @@ mention annotation in the board intro.
   "id": "a1",
   "questionId": "q-id or null",
   "blockId": "b2",
-  "target": { "kind": "chart-element | mermaid-node | graphviz-node | table-cell | text | html-element | image", "..." },
+  "target": { "kind": "chart-element | mermaid-node | graphviz-node | table-cell | text | html-element | image | image-point | code-line", "..." },
   "text": "user comment",
   "author": "user",
   "createdAt": "ISO",
