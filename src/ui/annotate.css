@@ -73,8 +73,10 @@
   border-top: 1px solid var(--border);
 }
 .ann-thread-head { display: flex; align-items: center; gap: 6px; }
-.ann-thread-head .ann-del { margin-left: auto; }
+.ann-thread-actions { margin-left: auto; display: flex; align-items: center; gap: 4px; }
 .ann-pop-text { font-size: 0.88rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ann-edit-form { margin-top: 4px; }
+.ann-edit-ta { width: 100%; }
 
 /* author chips: "you" muted, "agent" accent */
 .ann-chip {
@@ -167,6 +169,18 @@
   transition: color 150ms var(--ease), background 150ms var(--ease);
 }
 .ann-del:hover { color: var(--danger); background: var(--accent-soft); }
+
+/* edit button: same shape as delete, accent (not danger) on hover */
+.ann-edit {
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; color: var(--muted);
+  border: none; border-radius: 7px;
+  width: 26px; height: 26px;
+  cursor: pointer;
+  transition: color 150ms var(--ease), background 150ms var(--ease);
+}
+.ann-edit:hover { color: var(--accent); background: var(--accent-soft); }
 
 /* ---------- delete confirmation modal ---------- */
 .ann-confirm-scrim {

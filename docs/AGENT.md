@@ -326,7 +326,7 @@ Rules of thumb:
 // Quick view of whole file(s) with no questions: `rly view file.md [more.md …]`.
 { "type": "markdown", "mdFile": "README.md" }
 
-// Mermaid diagram — vendored, lazy-loaded; natural height, max 1200 px + scroll
+// Mermaid diagram — vendored, lazy-loaded; natural height, max 800 px + scroll (set height: to override)
 { "type": "mermaid", "code": "graph TD; A-->B; B-->C", "height": 400 }
 
 // Graphviz diagram — vendored viz-standalone.js (Graphviz-WASM), fully offline

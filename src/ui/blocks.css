@@ -364,7 +364,7 @@
 /* ---------- mermaid ---------- */
 .blk-mermaid {
   overflow: auto;
-  max-height: 1200px;
+  max-height: 800px;
   text-align: center;
 }
 .blk-mermaid svg {
@@ -440,7 +440,7 @@
 /* ---------- graphviz (offline, vendored Viz.js) ---------- */
 .blk-graphviz {
   overflow: auto;
-  max-height: 1200px;
+  max-height: 800px;
   text-align: center;
   /* graphviz draws on its own white canvas; frame it as a deliberate card so
      it reads intentional in dark mode instead of a stray white rectangle */
@@ -459,7 +459,7 @@
 /* ---------- plantuml (server-rendered image) ---------- */
 .blk-plantuml {
   overflow: auto;
-  max-height: 1200px;
+  max-height: 800px;
   text-align: center;
   background: #fff;
   border: 1px solid var(--border);
@@ -474,7 +474,7 @@
 /* ---------- image ---------- */
 .blk-imagewrap {
   overflow: auto;
-  max-height: 1200px;
+  max-height: 800px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg-sunken);
@@ -530,6 +530,13 @@ body.blk-full-open { overflow: hidden; }
   margin: 0; padding: 0 12px;
   background: var(--card); border-bottom: 1px solid var(--border);
   z-index: 51;
+}
+/* When the comment rail is docked open (≥980px), inset the full-screen overlay
+   AND its toolbar from the right by the rail width — otherwise the overlay slides
+   under the (higher z-index) rail and its close/comment buttons get hidden. */
+@media (min-width: 980px) {
+  body.ann-rail-open .blk-full { right: 340px; }
+  body.ann-rail-open .blk-full > .blk-tools { right: 340px; }
 }
 .blk-chart.blk-full {
   height: 100vh !important; width: auto !important;

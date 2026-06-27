@@ -627,10 +627,12 @@ export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
       label,
       description: asStr(rq.description),
       required: rq.required === true,
-      // Radio (single) questions show the optional per-answer note by default so
-      // the user can qualify their pick; other types stay opt-in. An explicit
-      // note:false turns it off for a single question.
-      note: rq.note === undefined ? type === 'single' : rq.note === true,
+      // Decision types (single/rank/checklist/allocate) show the optional
+      // per-answer note by default so the user can qualify their pick; other
+      // types stay opt-in. An explicit note:false turns it off.
+      note: rq.note === undefined
+        ? (type === 'single' || type === 'rank' || type === 'checklist' || type === 'allocate')
+        : rq.note === true,
       blocks: buildBlocks(rq, cwd, where, `${id}-`),
       placeholder: asStr(rq.placeholder),
     };
@@ -821,7 +823,7 @@ const BLOCK_SCHEMA = {
       after: { description: 'compare: the "after" image — an http(s)/data URL, a local file path, or {src, label}.' },
       beforeLabel: { type: 'string', description: 'compare: caption for the before side (default "Before").' },
       afterLabel: { type: 'string', description: 'compare: caption for the after side (default "After").' },
-      height: { type: 'integer', minimum: BLOCK_HEIGHT.min, maximum: BLOCK_HEIGHT.max, description: 'Block height in px. Defaults: chart 320, html 360; markdown/table/code flow naturally; mermaid/graphviz/plantuml/image/compare natural (max 1200, scrolls).' },
+      height: { type: 'integer', minimum: BLOCK_HEIGHT.min, maximum: BLOCK_HEIGHT.max, description: 'Block height in px. Defaults: chart 320, html 360; markdown/table/code flow naturally; mermaid/graphviz/plantuml natural (max 800, scrolls; set a larger height to override); image/compare natural.' },
     },
   },
 };
@@ -873,7 +875,7 @@ export const SPEC_SCHEMA = {
             },
           },
           other: { type: 'boolean', description: 'Add a free-text "Other" option (a multi-line textarea); its text is returned verbatim as the value. Defaults ON for "single" (radio) questions so the user is never boxed in — set other:false to remove it; "multi" stays opt-in (other:true).' },
-          note: { type: 'boolean', description: 'Small optional free-text field under the question (to qualify an answer). Returned separately as result.notes[questionId]. Defaults to true for "single" (radio) questions so users can comment on their pick, false for other types; set note:false to hide it on a single question.' },
+          note: { type: 'boolean', description: 'Small optional free-text field under the question (to qualify an answer). Returned separately as result.notes[questionId]. Defaults to true for the decision types — single, rank, checklist, allocate — so users can qualify their pick; false for other types. Set note:false to hide it, note:true to add it.' },
           placeholder: { type: 'string', description: 'For text/textarea.' },
           default: { description: 'Pre-selected value. Shape matches the answer shape for the type.' },
           min: { type: 'integer', default: 1, description: 'scale only' },

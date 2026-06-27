@@ -505,6 +505,9 @@
   const ICON_TRASH =
     '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
     '<path d="M2.5 4h11M6 4V2.5h4V4M5 4l.5 9h5l.5-9"/></svg>';
+  const ICON_PENCIL =
+    '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M11.5 2.5l2 2L6 12l-2.5.5.5-2.5 7.5-7.5z"/></svg>';
   const DEL_SKIP_KEY = 'relay-ann-del-skip';
   let delConfirmSkip = false;
   try { delConfirmSkip = localStorage.getItem(DEL_SKIP_KEY) === '1'; } catch { /* sandbox: no storage */ }
@@ -561,9 +564,30 @@
         const del = el('button', { class: 'ann-del', type: 'button', title: 'Delete comment', 'aria-label': 'Delete comment' });
         del.innerHTML = ICON_TRASH;
         del.addEventListener('click', () => requestDelete(a.id, renderExisting));
+        const edit = el('button', { class: 'ann-edit', type: 'button', title: 'Edit comment', 'aria-label': 'Edit comment' });
+        edit.innerHTML = ICON_PENCIL;
+        const textEl = el('div', { class: 'ann-pop-text' }, a.text);
+        // Inline edit: swap the text for a textarea + Save/Cancel; Save commits
+        // via editAnnotation, then re-renders. Only the user's own comment is editable.
+        edit.addEventListener('click', () => {
+          const ta = el('textarea', { class: 'ann-ta ann-edit-ta', rows: '3' });
+          ta.value = a.text;
+          const save = el('button', { class: 'ann-save', type: 'button' }, 'Save');
+          const cancel = el('button', { class: 'ann-cancel', type: 'button' }, 'Cancel');
+          save.addEventListener('click', () => { editAnnotation(a.id, ta.value); renderExisting(); });
+          cancel.addEventListener('click', renderExisting);
+          ta.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { e.stopPropagation(); renderExisting(); }
+            else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); editAnnotation(a.id, ta.value); renderExisting(); }
+          });
+          textEl.replaceWith(el('div', { class: 'ann-edit-form' }, ta, el('div', { class: 'ann-pop-actions' }, save, cancel)));
+          ta.focus();
+        });
+        // agent replies aren't editable here — only the top-level user comment
+        const actions = el('div', { class: 'ann-thread-actions' }, a.author === 'user' ? edit : null, del);
         const thread = el('div', { class: 'ann-thread' },
-          el('div', { class: 'ann-thread-head' }, chip(a.author), timeEl(a.createdAt), del),
-          el('div', { class: 'ann-pop-text' }, a.text)
+          el('div', { class: 'ann-thread-head' }, chip(a.author), timeEl(a.createdAt), actions),
+          textEl
         );
         if (Array.isArray(a.replies) && a.replies.length) {
           const list = el('div', { class: 'ann-replies' });
@@ -672,6 +696,16 @@
       text: String(text).slice(0, 5000),
       createdAt: new Date().toISOString(),
     });
+    changed();
+  }
+
+  // Edit a top-level comment's text in place (author edits their own comment).
+  function editAnnotation(id, text) {
+    const a = annotations.find((x) => x.id === id);
+    if (!a) return;
+    const t = String(text).slice(0, 5000).trim();
+    if (!t) return;
+    a.text = t;
     changed();
   }
 

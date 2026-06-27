@@ -2017,7 +2017,9 @@
         // (contain — enlarge a small one, shrink a big one) so it's readable at
         // a glance without reaching for the zoom buttons. CSS margin:auto centers
         // it; it stays pannable once the user zooms past this fit.
-        const availW = window.innerWidth - FULL_PAD_X * 2;
+        // subtract the docked comment rail (≥980px) so the fit doesn't run under it
+        const railInset = (document.body.classList.contains('ann-rail-open') && window.innerWidth >= 980) ? 340 : 0;
+        const availW = window.innerWidth - railInset - FULL_PAD_X * 2;
         const availH = window.innerHeight - FULL_PAD_TOP - FULL_PAD_BOTTOM;
         const scale = Math.min(availW / nat.w, availH / nat.h);
         target.style.maxWidth = 'none';

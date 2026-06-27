@@ -231,7 +231,7 @@
         label: String(rq.label || rq.question || rq.text || ''),
         description: typeof rq.description === 'string' ? rq.description : '',
         required: rq.required === true,
-        note: rq.note === undefined ? type === 'single' : rq.note === true,
+        note: rq.note === undefined ? (type === 'single' || type === 'rank' || type === 'checklist' || type === 'allocate') : rq.note === true,
         placeholder: typeof rq.placeholder === 'string' ? rq.placeholder : '',
         blocks: normBlocks(rq.blocks, id + '-'),
       };
