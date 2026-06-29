@@ -453,13 +453,22 @@
     const rows = [];
     let oldNo = 0;
     let newNo = 0;
+    // Diff content (+/-/context) only has meaning INSIDE a hunk. Lines before the
+    // first @@ are either recognized headers (handled below) or the commit
+    // header/message of `git show`/`git log -p` output — skip the latter so it
+    // isn't rendered as bogus context rows (which split view duplicates on both
+    // sides as long unwrapped lines, shoving the new side off-screen).
+    let inHunk = false;
     for (const line of lines) {
       if (/^@@/.test(line)) {
         const m = line.match(/@@\s*-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s*@@/);
         if (m) { oldNo = Number(m[1]) - 1; newNo = Number(m[2]) - 1; }
+        inHunk = true;
         rows.push({ kind: 'hunk', text: line });
       } else if (/^(diff |index |--- |\+\+\+ |new file|deleted file|old mode|new mode|similarity|rename |copy )/.test(line)) {
         rows.push({ kind: 'meta', text: line });
+      } else if (!inHunk) {
+        continue; // commit header/message preamble before the first hunk — drop it
       } else if (line[0] === '+') {
         rows.push({ kind: 'add', text: line.slice(1), newNo: newNo++ });
       } else if (line[0] === '-') {
