@@ -450,6 +450,13 @@ let annBoardId;
   const htmlAnn = result.annotations.find((a) => a.id === 'a5');
   ok(htmlAnn.questionId === 'pick' && htmlAnn.target.detail === '#buy', 'html-element annotation question scope + detail intact');
   ok(htmlAnn.target.ref === 'div>button:nth-of-type(2)', 'html-element annotation stable element ref round-trips');
+  // Truncation-proof result: full payload is written to a sidecar file and the
+  // path is surfaced (first field) so a shell that caps stdout can't drop data.
+  ok(typeof result.resultFile === 'string' && result.resultFile.endsWith(`${id}.result.json`), 'result advertises a resultFile sidecar path');
+  ok(Object.keys(result)[0] === 'resultFile', 'resultFile is the FIRST field (survives head-truncation)');
+  const fileResult = JSON.parse(fs.readFileSync(result.resultFile, 'utf8'));
+  ok(Array.isArray(fileResult.annotations) && fileResult.annotations.length === 5, 'resultFile holds the complete, untruncated annotations');
+  ok(fileResult.boardId === id && fileResult.comment === 'with annotations', 'resultFile is the full result payload');
 }
 
 // ---------- 13. draft annotations prefill on reload ----------

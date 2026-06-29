@@ -53,9 +53,25 @@ export function loadBoard(id) {
   }
 }
 
+// Write the full result to its own file (just the result, not the whole board
+// record with its bulky spec). An agent's shell may truncate `rly wait`/`result`
+// stdout for a board with many annotations — this file is the complete payload
+// it can read with a file tool instead. Returns the path (null on failure).
+export function saveResultFile(id, result) {
+  try {
+    ensureDirs();
+    const p = path.join(BOARDS_DIR, `${id}.result.json`);
+    fs.writeFileSync(p, JSON.stringify(result, null, 2));
+    return p;
+  } catch {
+    return null;
+  }
+}
+
 export function deleteBoard(id) {
   try {
     fs.unlinkSync(boardPath(id));
+    try { fs.unlinkSync(path.join(BOARDS_DIR, `${id}.result.json`)); } catch { /* no sidecar */ }
     return true;
   } catch {
     return false;
@@ -66,7 +82,7 @@ export function listBoards(limit = 20) {
   ensureDirs();
   const records = [];
   for (const f of fs.readdirSync(BOARDS_DIR)) {
-    if (!f.endsWith('.json')) continue;
+    if (!f.endsWith('.json') || f.endsWith('.result.json')) continue; // skip result sidecars
     try {
       records.push(JSON.parse(fs.readFileSync(path.join(BOARDS_DIR, f), 'utf8')));
     } catch {

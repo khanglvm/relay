@@ -417,6 +417,18 @@ the matching `answers` value (e.g. `answers.approach = "a"` but
 `notes.approach = "actually B"` → the user means B). Reconcile them before
 generating output. The same channels appear under `draft` on timeout/cancel.
 
+**Don't let your shell truncate the result.** A board with several annotations
+prints a large JSON blob, and most agent shell tools cap stdout — so you silently
+get only the first few annotations and miss the rest. Two rules:
+
+- **Never pipe `rly wait`/`rly result` through `head`/`tail`/`sed`** (or any
+  output cap). That's exactly how annotations get dropped.
+- The full result is **always written to a file**, surfaced as the FIRST field
+  of the output: `"resultFile": "~/.relay/boards/<id>.result.json"`. If the
+  output looks cut off (or to be safe on any board with annotations), **read
+  that file with your file tool** instead of trusting stdout — it's the complete,
+  untruncated payload.
+
 ### Reply to annotations (agent → user conversation)
 
 ```sh

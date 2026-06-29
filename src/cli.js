@@ -15,6 +15,7 @@ import {
   loadRunning,
   removeRunning,
   isAlive,
+  saveResultFile,
   HOME,
 } from './store.js';
 import { runBoard } from './server.js';
@@ -74,6 +75,17 @@ export function parseArgs(argv) {
 
 function printJson(obj) {
   process.stdout.write(JSON.stringify(obj, null, 2) + '\n');
+}
+
+// Print a terminal result. A board with many annotations produces a large JSON
+// payload, and an agent's shell harness commonly truncates long stdout — so the
+// agent silently misses annotations past the cut. We write the FULL result to a
+// sidecar file and surface its path FIRST (`resultFile`), so even a truncated
+// stdout shows where the complete payload is; the agent reads that file with its
+// file tool. Falls back to a plain print if the sidecar can't be written.
+function printResult(result) {
+  const resultFile = result && result.boardId ? saveResultFile(result.boardId, result) : null;
+  printJson(resultFile ? { resultFile, ...result } : result);
 }
 
 // Push-wake for `rly wait --notify-cmd`: run the agent's local shell command
@@ -225,7 +237,7 @@ async function runOrDetach(record, args) {
 
   const { done } = await runBoard({ id: record.id, port, open, timeoutSec });
   const result = await done;
-  printJson(result);
+  printResult(result);
   return exitCodeFor(result.status);
 }
 
@@ -490,7 +502,7 @@ async function cmdWait(args) {
   // Push-wake: run the agent's --notify-cmd after a TERMINAL result, then print.
   const finishResult = (result) => {
     if (notifyCmd) runNotifyCmd(notifyCmd, result);
-    printJson(result);
+    printResult(result);
     return exitCodeFor(result.status);
   };
 
@@ -506,7 +518,7 @@ async function cmdWait(args) {
       if (again?.result?.finishedAt) {
         return finishResult(again.result);
       }
-      printJson({
+      printResult({
         status: 'lost',
         boardId: id,
         draft: again?.draft ?? null,
@@ -552,7 +564,7 @@ async function cmdWaitLoop(id, deadline, opts) {
   const { whileActive, idleGrace, notifyCmd } = opts;
   const finishResult = (result) => {
     if (notifyCmd) runNotifyCmd(notifyCmd, result);
-    printJson(result);
+    printResult(result);
     return exitCodeFor(result.status);
   };
   while (Date.now() < deadline) {
@@ -567,7 +579,7 @@ async function cmdWaitLoop(id, deadline, opts) {
       if (again?.result?.finishedAt) {
         return finishResult(again.result);
       }
-      printJson({
+      printResult({
         status: 'lost',
         boardId: id,
         draft: again?.draft ?? null,
@@ -603,7 +615,7 @@ async function cmdWaitLoop(id, deadline, opts) {
 async function cmdResult(args) {
   const record = mustLoad(args._[0]);
   if (record.result && record.result.finishedAt) {
-    printJson(record.result);
+    printResult(record.result);
     return exitCodeFor(record.result.status);
   }
   const running = loadRunning(record.id);
@@ -613,10 +625,10 @@ async function cmdResult(args) {
     const out = { status: 'open', boardId: record.id, url: running.url, draft: record.draft ?? null };
     const presence = await fetchPresence(running.url);
     if (presence) out.presence = presence;
-    printJson(out);
+    printResult(out); // draft can hold many annotations — sidecar it too
     return 0;
   }
-  printJson({ status: 'lost', boardId: record.id, draft: record.draft ?? null });
+  printResult({ status: 'lost', boardId: record.id, draft: record.draft ?? null });
   return 5;
 }
 
@@ -1380,6 +1392,8 @@ USAGE
                                       --while-active [--idle-grace 180]: keep waiting past the deadline
                                         while the user is still viewing/focused & recently active
                                       --notify-cmd "<cmd>": run <cmd> on a terminal result (JSON on stdin)
+                                      NB: also writes the FULL result to "resultFile" (first field) —
+                                        read that file if your shell truncates stdout; never pipe to head/tail
   rly result <id>                     result/status now (includes live autosaved draft + presence while open)
   rly list [--json]                   running boards
   rly open [id]                       re-open the browser tab of a running board
