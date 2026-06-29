@@ -349,7 +349,10 @@ async function cmdReopen(args) {
     printJson({ status: 'open', boardId: record.id, url: running.url, note: 'already running — browser re-opened' });
     return 0;
   }
-  return runOrDetach(record, args);
+  // Reuse the board's last port (unless the user forced one) so a tab still open
+  // from a previous run reconnects on its own instead of being stranded on a
+  // dead port. runBoard falls back to a random port if it's been taken.
+  return runOrDetach(record, { ...args, port: args.port ?? record.lastPort });
 }
 
 // Rescue a board whose browser tab is still open but disconnected (its server

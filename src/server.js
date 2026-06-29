@@ -693,9 +693,25 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
     }
   });
 
+  // Bind the requested port (reopen/rescue reuse the board's last port so a
+  // still-open tab reconnects). If that port was grabbed by another process in
+  // the meantime, fall back to a random free one rather than failing to boot.
   await new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(port, '127.0.0.1', resolve);
+    const bind = (p, allowFallback) => {
+      const onErr = (e) => {
+        if (allowFallback && e && e.code === 'EADDRINUSE' && p !== 0) {
+          bind(0, false); // desired port busy → random free one
+        } else {
+          reject(e);
+        }
+      };
+      server.once('error', onErr);
+      server.listen(p, '127.0.0.1', () => {
+        server.removeListener('error', onErr);
+        resolve();
+      });
+    };
+    bind(port, true);
   });
   const actualPort = server.address().port;
   const url = `http://127.0.0.1:${actualPort}/`;
