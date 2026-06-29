@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
+import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -1463,6 +1464,23 @@ console.log('34. color palette + note defaults');
   await post(url, '/api/submit', { answers: { brand: 'rebeccapurple' } });
   const res = JSON.parse((await exited).stdout);
   ok(res.answers.brand === 'rebeccapurple', 'color answer preserves the authored color string (any system)');
+}
+
+// ---------- 35. binding a briefly-busy port retries instead of falling back ----------
+console.log('35. port-reuse retries a briefly-busy port');
+{
+  // Occupy a free port and free it ~500ms later (mimicking a just-stopped
+  // board's close grace), then start a detached board ON that port. It should
+  // RETRY and win the port — so a reopen/rescue reconnects the user's open tab
+  // — rather than immediately falling back to a random one.
+  const blocker = net.createServer().listen(0, '127.0.0.1');
+  await new Promise((r) => blocker.once('listening', r));
+  const want = blocker.address().port;
+  setTimeout(() => blocker.close(), 500);
+  const r = await run(['ask', '-q', 'ok?::yesno', '--title', 'retry', '--port', String(want), '--detach', '--no-open', '--timeout', '30']);
+  const info = JSON.parse(r.stdout);
+  ok(info.port === want, 'detached board retries a briefly-busy port and binds it (not a random fallback)');
+  await run(['stop', info.boardId]);
 }
 
 console.log(`\nAll ${passed} assertions passed. (storage: ${HOME})`);

@@ -694,13 +694,22 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
   });
 
   // Bind the requested port (reopen/rescue reuse the board's last port so a
-  // still-open tab reconnects). If that port was grabbed by another process in
-  // the meantime, fall back to a random free one rather than failing to boot.
+  // still-open tab reconnects). A board just stopped on that port holds its
+  // listening socket through a short close grace, so a stop-then-reopen on the
+  // same port can briefly hit EADDRINUSE — retry for ~2s to ride that out before
+  // giving up. Only then fall back to a random free port rather than failing.
   await new Promise((resolve, reject) => {
+    const RETRY_MS = 200;
+    const MAX_RETRIES = 10; // ~2s — covers a prior server's ~600ms close grace
+    let retries = 0;
     const bind = (p, allowFallback) => {
       const onErr = (e) => {
         if (allowFallback && e && e.code === 'EADDRINUSE' && p !== 0) {
-          bind(0, false); // desired port busy → random free one
+          if (retries++ < MAX_RETRIES) {
+            setTimeout(() => bind(p, true), RETRY_MS); // port freeing up — retry it
+          } else {
+            bind(0, false); // still busy after retries → random free port
+          }
         } else {
           reject(e);
         }
