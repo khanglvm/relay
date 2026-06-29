@@ -472,8 +472,30 @@ one yesno "Does this match your mental model?" + a textarea for notes.
 `rly history` (saved boards) · `rly spec <id>` (print spec to modify) ·
 `rly reuse <id>` (re-run blank) · `rly reopen <id>` (re-open with saved
 answers prefilled) · `rly reopen <id> --replies file.json` (add agent replies) ·
+`rly rescue <id>` (re-serve a dropped board on its ORIGINAL port) ·
 `rly list` / `rly open` / `rly stop <id>` · `rly rm <id>`.
 Multiple boards can run concurrently.
+
+### Continue a board — reconnect, NEVER recreate it
+
+When the user refers to a board that already exists — a URL/port ("the board on
+`127.0.0.1:59926`"), "the board from yesterday", "reopen it", "it disconnected"
+— do **NOT** run `rly ask`/`rly show`. A fresh board lands on a **new port**,
+**strands the user's open tab** on the dead one, and **loses their comments**.
+Find the real board and reconnect it:
+
+1. **Identify it** — `rly list` (running) and `rly history` (saved) print each
+   board's id, title, and url/port. Match by what the user said (port, title).
+2. **Tab still open but "connection lost"** (server died / machine slept) →
+   `rly rescue <id>`. Re-serves on the SAME port so that tab reconnects on its
+   own and re-flushes any comments it buffered — no new tab, no lost input.
+3. **Want a fresh tab** with prior answers prefilled → `rly reopen <id>` (also
+   reuses the board's last port, so an old tab still reconnects).
+4. `rly reuse <id>` is the ONLY "make a new board from this one" path — use it
+   solely for a deliberately blank re-run, never to "continue" or "reconnect".
+
+Rule of thumb: **an existing board is reconnected (`rescue`/`reopen`), never
+re-asked.** Only call `rly ask`/`rly show` for a genuinely new question.
 
 ### Live mutation — `rly update`
 
