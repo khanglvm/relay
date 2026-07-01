@@ -61,10 +61,11 @@ rly mcp config
 
 When the agent calls a relay tool, the host renders relay's `ui://relay/board`
 resource in a sandboxed iframe, hands it the board spec, and the user's answers
-flow back to the agent over the bridge (`ui/update-model-context`) — markdown,
-code, diffs, tables, charts, mermaid/graphviz diagrams, images, and forms, all
-in-chat. The classic browser board (`rly ask` / `rly show`) is unchanged; pick
-whichever surface fits.
+flow back to the agent as a `ui/message` user turn, with
+`ui/update-model-context` used as a best-effort structured context sync —
+markdown, code, diffs, tables, charts, mermaid/graphviz diagrams, images, and
+forms, all in-chat. The classic browser board (`rly ask` / `rly show`) is
+unchanged; pick whichever surface fits.
 
 ## What it improves
 
@@ -114,10 +115,11 @@ npm test     # zero-dep smoke tests (spawns real servers, fake-submits)
 - **Same board, postMessage transport.** The inline board reuses relay's block
   renderer (markdown, code, diff, table, chart, mermaid, graphviz, image, html)
   over the MCP Apps JSON-RPC bridge: the spec arrives as the tool result, the
-  user's answers go back via `ui/update-model-context`, the iframe auto-sizes
-  via `ui/notifications/size-changed`, and vendored Chart.js / Mermaid / Viz.js
-  load on demand through the host's `resources/read` (no `/vendor` route, no
-  server in the sandbox).
+  user's submit goes back via `ui/message` so the agent resumes, the structured
+  payload is also offered through `ui/update-model-context`, the iframe
+  auto-sizes via `ui/notifications/size-changed`, and vendored Chart.js /
+  Mermaid / Viz.js load on demand through the host's `resources/read` (no
+  `/vendor` route, no server in the sandbox).
 - **One-command setup** — `rly mcp install --target claude|codex` writes the
   host config; `rly mcp config` prints the snippet for any MCP host. The classic
   browser board is untouched.

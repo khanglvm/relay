@@ -4,8 +4,9 @@
 // host app (Claude desktop/mobile, Codex, …) as a sandboxed inline iframe.
 // There is no local HTTP server here: every exchange with the host travels over
 // JSON-RPC on window.postMessage — the spec arrives as the tool result, the
-// user's answers go back via `ui/update-model-context`, and vendored libraries
-// (Chart.js / Mermaid / Viz.js) are pulled through the host's `resources/read`.
+// user's final submission goes back as a `ui/message` user turn, and vendored
+// libraries (Chart.js / Mermaid / Viz.js) are pulled through the host's
+// `resources/read`.
 //
 // Rich blocks are rendered by the SAME window.RelayBlocks as the browser board
 // (markdown, code, diff, table, chart, mermaid, graphviz, image, html), so the
@@ -957,19 +958,30 @@
       annotations: data.annotations,
     };
     const text = summarize(data);
-    let delivered = false;
+    let messageDelivered = false;
+    let contextDelivered = false;
     try {
-      await request('ui/update-model-context', { content: [{ type: 'text', text }], structuredContent: structured });
-      delivered = true;
+      // A completed relay form is a user reply, not passive context. Some hosts
+      // ACK `ui/update-model-context` without starting a new model turn, so send
+      // the transcript as a user message first to wake the agent reliably.
+      await request('ui/message', { role: 'user', content: { type: 'text', text } });
+      messageDelivered = true;
     } catch {
-      // Fallback for hosts without update-model-context: post a chat message.
-      try { await request('ui/message', { role: 'user', content: { type: 'text', text } }); delivered = true; } catch { /* give up gracefully */ }
+      // Older/leaner hosts may not expose app-initiated messages.
+    }
+    try {
+      // Keep the structured payload available to hosts that attach app context.
+      // This is best-effort because context updates are intentionally silent.
+      await request('ui/update-model-context', { content: [{ type: 'text', text }], structuredContent: structured });
+      contextDelivered = true;
+    } catch {
+      // If ui/message worked, the agent still receives the submission transcript.
     }
     submitted = true;
-    showDone(delivered);
+    showDone(messageDelivered, contextDelivered);
   }
 
-  function showDone(delivered) {
+  function showDone(messageDelivered, contextDelivered) {
     // Collapse: leave fullscreen, drop the whole form for a one-line confirmation
     // so the host shrinks the iframe to a small footprint in the transcript.
     if (Annotate) { try { Annotate.teardown(); } catch { /* nothing to tear down */ } }
@@ -977,8 +989,10 @@
     app.replaceChildren(el('div', { class: 'mcp-done' },
       el('span', { class: 'mark' }, '✓'),
       el('span', { class: 'lead' }, QS.length ? 'Submitted' : 'Acknowledged'),
-      el('span', { class: 'sub' }, delivered
+      el('span', { class: 'sub' }, messageDelivered
         ? '· sent back to the agent'
+        : contextDelivered
+          ? '· saved; send the agent a message to continue'
         : '· tell the agent you’ve responded')));
     // Report the small height immediately, then again next frame / after layout
     // settles — beats hosts that only grow on debounced size events.

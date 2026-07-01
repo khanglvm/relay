@@ -8,8 +8,8 @@
 //   • the tools `relay_ask` / `relay_show` link to it via _meta.ui.resourceUri
 //   • calling a tool returns the (normalized) board spec as structuredContent;
 //     the host renders the resource in a sandboxed iframe and forwards the spec
-//   • the iframe collects the user's answers and sends them back to the model
-//     via `ui/update-model-context`
+//   • the iframe collects the user's answers and sends them back as a user
+//     message; it also syncs model context when the host supports it
 //
 // Framing is the MCP stdio transport: newline-delimited JSON-RPC, one message
 // per line, never embedded newlines. stdout carries ONLY protocol messages;
@@ -156,7 +156,7 @@ function buildResult(method, params, clientProtocol) {
         },
         serverInfo: { name: 'relay', version: PKG.version },
         instructions:
-          'relay renders interactive boards inline. Call relay_ask to collect decisions/feedback with real form controls, or relay_show to present plans/diagrams/data — instead of asking in plain text. Read the user\'s answers from the structuredContent that returns after they submit.',
+          'relay renders interactive boards inline. Call relay_ask to collect decisions/feedback with real form controls, or relay_show to present plans/diagrams/data — instead of asking in plain text. When the user submits, relay sends their answers back as a user message so the agent continues.',
       };
     case 'ping':
       return {};
@@ -198,9 +198,10 @@ function readResource(params) {
 
 // A tool call: normalize the spec and hand it to the host as structuredContent.
 // The host renders ui://relay/board and forwards this spec to the iframe, which
-// collects the answers and returns them via ui/update-model-context. Spec errors
-// come back as an isError tool result (not a protocol error) so the model can
-// see and fix them.
+// collects the answers and returns them via a UI-originated user message (with
+// ui/update-model-context as a best-effort context sync). Spec errors come back
+// as an isError tool result (not a protocol error) so the model can see and fix
+// them.
 function callTool(params) {
   const name = params && params.name;
   if (name !== 'relay_ask' && name !== 'relay_show') {

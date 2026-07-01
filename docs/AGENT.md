@@ -111,7 +111,8 @@ finalizes when your call completes — so the user sees it build, not a blank wa
 Both take **the exact same board spec** documented below (the tool `inputSchema`
 *is* this spec). Call the tool with your spec; the host shows the board, the user
 fills it in, and their answers come back to you (answers, per-question notes,
-comment) — read them just as you would the CLI's result JSON. There is **no
+comment) as a user-message turn, with structured context synced when the host
+supports it — read them just as you would the CLI's result JSON. There is **no
 `--detach`/`rly wait` dance, no stdout parsing, and no timeout** in this mode; the
 board stays live until the user submits and the host delivers the result.
 
