@@ -278,6 +278,14 @@
 .blk-video-embed { aspect-ratio: 16 / 9; height: auto; }
 .blk-videocap { margin-top: 8px; font-size: 0.84rem; color: var(--muted); text-align: center; }
 
+/* ---------- PDF (local stream / direct URL) ---------- */
+.blk-pdfwrap { margin: 0; }
+.blk-pdf {
+  display: block; width: 100%; height: min(900px, 78vh); min-height: 420px;
+  border: 0; border-radius: 10px; background: var(--card);
+}
+.blk-pdfwrap.blk-full .blk-pdf { height: calc(100vh - 92px); min-height: 0; }
+
 /* ---------- table ---------- */
 .blk-table {
   width: 100%;

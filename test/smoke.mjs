@@ -1275,8 +1275,10 @@ console.log('29. markdown mdFile + rly view');
 {
   const mdA = path.join(HOME, 'doc-a.md');
   const mdB = path.join(HOME, 'doc-b.md');
+  const pdf = path.join(HOME, 'sample.pdf');
   fs.writeFileSync(mdA, '# Title A\n\nBody **A**.\n');
   fs.writeFileSync(mdB, '# Title B\n\nBody _B_.\n');
+  fs.writeFileSync(pdf, '%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n');
 
   // markdown block loads its body from mdFile (mirrors codeFile/diffFile)
   const fileSpec = { title: 'x', blocks: [{ type: 'markdown', mdFile: mdA }] };
@@ -1299,6 +1301,20 @@ console.log('29. markdown mdFile + rly view');
   ok(mds[0].md === '## doc-a.md' && mds[1].md.includes('Body **A**'), 'rly view prepends a filename heading before each file');
   await post(v.url, '/api/submit', {});
   await v.exited;
+
+  // `rly view file.pdf` streams the PDF in a pdf block instead of dumping raw
+  // binary into a markdown block.
+  const pv = await spawnBlocking(['view', pdf, '--no-open', '--timeout', '60']);
+  const pb = (await (await fetch(new URL('/api/board', pv.url))).json()).spec;
+  ok(pb.blocks[0].type === 'pdf' && pb.blocks[0].file === pdf && pb.blocks[0].mime === 'application/pdf', 'rly view <pdf> renders a pdf block');
+  const pdfPage = await (await fetch(pv.url)).text();
+  ok(pdfPage.includes('"type":"pdf"') && pdfPage.includes('"hasFile":true'), 'local pdf block ships hasFile flag');
+  ok(!pdfPage.includes(pdf) && !pdfPage.includes('%PDF-1.4'), 'local pdf path and bytes are NOT in the page payload');
+  const pdfRes = await fetch(new URL('/pdf/b/' + pb.blocks[0].id, pv.url));
+  ok(pdfRes.status === 200 && (pdfRes.headers.get('content-type') || '').includes('application/pdf'), '/pdf/b/<id> serves the local pdf');
+  ok((await fetch(new URL('/pdf/b/nope', pv.url))).status === 404, '/pdf/b/<unknown> → 404');
+  await post(pv.url, '/api/submit', {});
+  await pv.exited;
 
   // empty markdown (no md, no mdFile) → usage error
   const noMd = await run(['ask', '--file', '-'], { input: JSON.stringify({ title: 'x', blocks: [{ type: 'markdown' }] }) });

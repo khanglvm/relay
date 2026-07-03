@@ -88,7 +88,7 @@ Node ≥ 18; Chart.js / Mermaid / Graphviz are vendored and lazy-loaded offline.
 | | |
 |---|---|
 | `rly help` | every command at a glance |
-| `rly view <file.md> …` | open a quick read-only board that renders local markdown file(s) — library-free; great for plans, READMEs, reports |
+| `rly view <file.md> …` | open a quick read-only board that renders local markdown file(s), data files, or PDFs — library-free; great for plans, READMEs, reports, quotes |
 | `rly install --target <agent>` | write relay's rules into an agent's instruction file — `claude` `codex` `cursor` `copilot` `kiro` `windsurf` `cline` `gemini` `opencode` `droid` `agents`; `--all`, `--scope`, `--print`, `--list` |
 | `rly upgrade` | update the CLI **and** refresh the skill in one step (safe around open boards; `--dry-run`, `--cli-only`, `--skill-only`) |
 | `rly mcp` | run relay as an MCP App server so boards render **inline** in the chat — **stdio** for local desktop hosts (Claude Desktop, Codex), or `rly mcp --http` (Streamable HTTP) for web/mobile/remote; `rly mcp config` / `rly mcp install --target claude\|codex` to register it |
@@ -164,6 +164,8 @@ npm test     # zero-dep smoke tests (spawns real servers, fake-submits)
 - **`video` block** — YouTube/Vimeo embeds, a direct media URL, or a local
   video file streamed from the server with HTTP Range (seekable), never
   embedded in the payload.
+- **`pdf` block** — render local `.pdf` files or PDF URLs inline. Local PDFs
+  stream from the board server and are never embedded in the page payload.
 - **Durable drafts / rescue** — every autosave mirrors to `localStorage`; a
   board whose connection drops blocks further input instead of losing it, and
   `rly rescue <id>` re-serves on the same port so an open tab reconnects.

@@ -40,7 +40,9 @@ function readUi(name) {
 
 // Strips block bodies for the client payload: html blocks ship only metadata
 // (their bodies are served via /html/b/<id>), embedded images ship only
-// metadata (bytes served via /img/b/<id>), everything else ships as-is.
+// metadata (bytes served via /img/b/<id>), streamed local media ships only
+// metadata (bytes served via /video/b/<id> or /pdf/b/<id>), everything else
+// ships as-is.
 function clientBlock(b) {
   // Cross-block fields preserved when we ship metadata-only (ref = reference-link
   // target name; pins = image coordinate comments). The default `return b` path
@@ -57,6 +59,9 @@ function clientBlock(b) {
   // flag + mime and loads the bytes (Range-streamed) from /video/b/<id>.
   if (b && b.type === 'video' && typeof b.file === 'string') {
     return { id: b.id, type: 'video', title: b.title, height: b.height, mime: b.mime, hasFile: true, ...extra };
+  }
+  if (b && b.type === 'pdf' && typeof b.file === 'string') {
+    return { id: b.id, type: 'pdf', title: b.title, height: b.height, mime: b.mime, hasFile: true, ...extra };
   }
   return b;
 }
@@ -619,6 +624,12 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         const block = findBlock(record.spec, blockId, 'video');
         if (!block || typeof block.file !== 'string') return sendJson(res, 404, { error: `no local video block "${blockId}"` });
         streamFile(req, res, block.file, block.mime || 'application/octet-stream');
+      } else if ((req.method === 'GET' || req.method === 'HEAD') && pathname.startsWith('/pdf/b/')) {
+        // Local PDF bytes, Range-streamed for the browser's built-in PDF viewer.
+        const blockId = decodeURIComponent(pathname.slice('/pdf/b/'.length));
+        const block = findBlock(record.spec, blockId, 'pdf');
+        if (!block || typeof block.file !== 'string') return sendJson(res, 404, { error: `no local pdf block "${blockId}"` });
+        streamFile(req, res, block.file, block.mime || 'application/pdf');
       } else if (req.method === 'GET' && pathname === '/html/board') {
         // Legacy alias → the board's first html block.
         const block = firstBoardHtml(record.spec);

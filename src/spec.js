@@ -39,7 +39,7 @@ const HTML_HEIGHT = { min: 100, max: 2400, boardDefault: 400, questionDefault: 3
 
 // Block heights clamp to the same window; defaults vary per block type.
 const BLOCK_HEIGHT = { min: 100, max: 2400 };
-export const BLOCK_TYPES = ['markdown', 'mermaid', 'graphviz', 'plantuml', 'chart', 'table', 'code', 'diff', 'video', 'html', 'image', 'palette', 'kpi', 'typography', 'compare'];
+export const BLOCK_TYPES = ['markdown', 'mermaid', 'graphviz', 'plantuml', 'chart', 'table', 'code', 'diff', 'video', 'pdf', 'html', 'image', 'palette', 'kpi', 'typography', 'compare'];
 const CHART_KINDS = ['bar', 'line', 'pie', 'doughnut', 'radar', 'scatter'];
 
 // code/diff blocks may load their text from a local file (like htmlFile). Caps
@@ -54,6 +54,9 @@ const VIDEO_MIMES = {
   ogg: 'video/ogg', mov: 'video/quicktime', mkv: 'video/x-matroska',
 };
 const VIDEO_MAX_BYTES = 512 * 1024 * 1024;
+
+const PDF_MIME = 'application/pdf';
+const PDF_MAX_BYTES = 512 * 1024 * 1024;
 
 // image blocks: local files are embedded as data URIs at spec time (the page
 // then loads them via /img/b/<id>), so boards stay self-contained offline.
@@ -339,6 +342,37 @@ function normalizeBlock(rawBlock, id, cwd, where) {
     }
     block.file = p;
     block.mime = mime;
+    if (!block.title) block.title = path.basename(p);
+    return block;
+  }
+
+  if (type === 'pdf') {
+    const src = asStr(rawBlock.src ?? rawBlock.file ?? rawBlock.url).trim();
+    if (!src) throw new CliError(`${where}: pdf block needs a "src" (http(s) PDF URL or local .pdf file path).`);
+    const block = { id, type: 'pdf' };
+    if (rawBlock.title !== undefined) block.title = asStr(rawBlock.title);
+    if (rawBlock.alt !== undefined && block.title === undefined) block.title = asStr(rawBlock.alt);
+    if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
+    if (/^https?:/i.test(src)) {
+      block.src = src;
+      block.mime = PDF_MIME;
+      if (!block.title) block.title = path.basename(src.split(/[?#]/)[0]) || 'PDF';
+      return block;
+    }
+    const p = path.resolve(cwd, src);
+    const ext = path.extname(p).slice(1).toLowerCase();
+    if (ext !== 'pdf') throw new CliError(`${where}: unsupported pdf extension ".${ext}" — use a local .pdf file or an http(s) PDF URL.`);
+    let stat;
+    try {
+      stat = fs.statSync(p);
+    } catch {
+      throw new CliError(`${where}: cannot read pdf "${src}" (resolved: ${p})`);
+    }
+    if (stat.size > PDF_MAX_BYTES) {
+      throw new CliError(`${where}: pdf "${src}" is ${(stat.size / 1024 / 1024).toFixed(0)}MB — max ${PDF_MAX_BYTES / 1024 / 1024}MB.`);
+    }
+    block.file = p;
+    block.mime = PDF_MIME;
     if (!block.title) block.title = path.basename(p);
     return block;
   }

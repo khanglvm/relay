@@ -279,13 +279,12 @@ async function cmdDiff(rest) {
   return runOrDetach(record, args);
 }
 
-// `rly view <file.md> [more.md …]` — quick read-only board that renders one or
-// more markdown files (README, plan, report) with the built-in no-library
-// renderer. Each file becomes a markdown block; with 2+ files a small filename
-// heading separates them. Sugar over `rly show` with markdown mdFile blocks.
+// `rly view <file.md> [more.md …]` — quick read-only board that renders files
+// with purpose-built blocks (markdown, data tables, PDF). With 2+ files a small
+// filename heading separates them. Sugar over `rly show`.
 async function cmdView(args) {
   const files = args._;
-  if (!files.length) throw new CliError('usage: rly view <file.md|.csv|.json> [more …] [--title T] [--detach]');
+  if (!files.length) throw new CliError('usage: rly view <file.md|.csv|.json|.pdf> [more …] [--title T] [--detach]');
   const multi = files.length > 1;
   const DATA_EXT = new Set(['csv', 'tsv', 'json']);
   const blocks = [];
@@ -293,6 +292,7 @@ async function cmdView(args) {
     if (multi) blocks.push({ type: 'markdown', md: `## ${path.basename(f)}` });
     const ext = path.extname(f).slice(1).toLowerCase();
     if (DATA_EXT.has(ext)) blocks.push({ type: 'table', rowsFile: f, sortable: true, filterable: true, exportable: true });
+    else if (ext === 'pdf') blocks.push({ type: 'pdf', src: f, title: path.basename(f) });
     else blocks.push({ type: 'markdown', mdFile: f });
   }
   const raw = { blocks };
@@ -879,8 +879,8 @@ what you're about to output would look better than monospace text — or is a fi
 the user should view — put it in relay instead of printing it.**
 
 - **Markdown file / doc / README / plan / report** → \`rly view file.md\` (renders it
-  in the browser, no library; \`.csv\`/\`.json\` → a sortable table). Never \`cat\` a
-  doc into the terminal for the user to read.
+  in the browser, no library; \`.csv\`/\`.json\` → a sortable table; \`.pdf\` → an
+  inline PDF viewer). Never \`cat\` a doc into the terminal for the user to read.
 - **Image / screenshot / mockup / diagram / chart / table** → a relay board with an
   \`image\` block (or \`mermaid\`/\`graphviz\`/\`chart\`/\`table\`/\`kpi\`/\`compare\`). The
   terminal can't show pixels; relay can — with click-to-zoom and comment-in-place.
@@ -889,6 +889,15 @@ the user should view — put it in relay instead of printing it.**
   \`AskUserQuestion\` / ask-user tool. Build a spec and run
   \`rly ask --file spec.json --detach\`, then \`rly wait <boardId>\`. **Holds in plan
   mode too**; reserve \`ExitPlanMode\` for the final plan-approval gate only.
+- **Codex-specific browser-board pattern:** Codex does not have a normal,
+  user-facing "wake this agent turn from a browser submit" command. In Codex,
+  keep the waiter in the foreground until the user submits:
+  \`rly ask --file spec.json --detach\` then
+  \`rly wait <boardId> --timeout 1800 --while-active --idle-grace 300\`.
+  If wait exits with \`wait-timeout\`, immediately run \`rly result <boardId>\`;
+  if it is still open and the user may continue, run \`rly wait\` again. Do not
+  use \`--on-result\` as the primary Codex return path; normal Codex CLI sessions
+  do not expose a portable inbound API that wakes the current agent turn.
 - **A plan, structure, architecture, data, or prototype** → a relay board with
   diagram/chart/table/code/image/html blocks — never ASCII diagrams or walls of prose.
 - **"Show me the diff / git diff / these changes"** → \`rly diff\` (runs git diff →
@@ -899,7 +908,7 @@ the user should view — put it in relay instead of printing it.**
 - **There's a purpose-built component for most content — use the MOST SPECIFIC one,
   never plain prose when a block fits.** Blocks: \`table\` (sortable/filterable/CSV,
   load from .csv/.json), \`chart\`, \`kpi\` (stat cards), \`mermaid\`/\`graphviz\`/\`plantuml\`,
-  \`code\`, \`diff\`, \`image\` (+\`pins\`), \`compare\` (before/after), \`video\`, \`palette\`,
+  \`code\`, \`diff\`, \`image\` (+\`pins\`), \`compare\` (before/after), \`video\`, \`pdf\`, \`palette\`,
   \`typography\`, \`html\`. Question types: \`single\`/\`multi\`/\`yesno\`/\`scale\`/\`color\`/
   \`text\`/\`textarea\` plus \`rank\` (prioritize), \`allocate\` (split a budget), \`checklist\`
   (per-item sign-off). For a business user, reach for \`kpi\`+\`chart\`+\`table\` and
@@ -1385,7 +1394,8 @@ USAGE
   rly ask ... --on-result "<cmd>"     push-wake: run <cmd> when the board finishes (result JSON on stdin)
   rly show --html-file viz.html       visualization-only board (submit button = acknowledge)
   rly view <file.md> [more.md …]      quick read-only board rendering markdown file(s) (no lib)
-                                      (.csv/.tsv/.json render as a filterable, sortable table)
+                                      (.csv/.tsv/.json render as a filterable, sortable table;
+                                       .pdf streams in an inline PDF viewer)
   rly diff [git args…]                run git diff and show it in a diff board (--split, --detach,
                                       --title; other args pass to git: rly diff --staged | HEAD~1 | -- path)
   rly wait <id> [--timeout 3600]      block until board finishes, print result JSON

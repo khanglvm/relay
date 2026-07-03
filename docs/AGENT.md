@@ -151,6 +151,7 @@ Read a markdown file (no questions; library-free renderer; submit reads "Done"):
 rly view PLAN.md                      # one file
 rly view README.md CHANGELOG.md       # several, each under a filename heading
 rly view data.csv                     # .csv/.tsv/.json → a sortable, filterable table
+rly view report.pdf                   # .pdf → inline PDF viewer
 ```
 
 Show a git diff in one step (sugar — runs git diff, opens a diff board):
@@ -405,6 +406,10 @@ Rules of thumb:
 { "type": "video", "src": "https://youtu.be/dQw4w9WgXcQ", "title": "Demo walkthrough" }
 { "type": "video", "src": "recordings/demo.mp4", "title": "Local capture", "height": 360 }
 
+// PDF — an http(s) PDF URL or a local .pdf file rendered inline. Local PDFs
+// stream from the server and are never embedded in the page payload.
+{ "type": "pdf", "src": "reports/quote.pdf", "title": "Quote", "height": 900 }
+
 // HTML — sandboxed iframe; default height 360
 { "type": "html", "html": "<h1>Hello</h1>", "height": 360 }
 { "type": "html", "htmlFile": "viz.html",   "height": 400 }
@@ -469,6 +474,7 @@ the question-types section above.
 | `code` | code snippets, config examples, command output — syntax-highlighted + line-numbered; load from a file with `codeFile` |
 | `diff` | proposed code changes / before-after — a unified diff rendered as a colored git-style comparison (no git needed) |
 | `video` | demos, screen recordings, walkthroughs — YouTube/Vimeo embeds, a media URL, or a local video file (streamed) |
+| `pdf` | quotes, reports, exports, forms — local `.pdf` files or PDF URLs rendered inline; local files stream from the board server |
 | `image` | screenshots, mockup exports, photos — local files embed and work offline |
 | `palette` | color palettes / themes — swatch cards with hover-hex + click-to-copy; pair with a `color` question to let the user pick |
 | `kpi` | big-number metric cards (`items:[{label,value,delta?,dir?,sub?}]`) with up/down/flat-tinted deltas — at-a-glance numbers without a chart |
@@ -645,6 +651,25 @@ cancelled — with the full result JSON piped to stdin and `RLY_BOARD_ID`,
 `RLY_STATUS`, `RLY_URL` in the environment. `--notify-cmd` does the same from
 a `wait` that obtains a terminal result. Write a file your harness watches,
 hit a webhook — whatever wakes you.
+
+### Codex browser-board pattern
+
+Codex does not have a normal, user-facing "wake this agent turn from a browser
+submit" command. If the Codex turn stops waiting, a later board submit can leave
+the user needing to prompt manually. So when an agent is running in Codex and
+uses the browser board path, keep the waiter in the foreground until the user
+submits:
+
+```sh
+rly ask --file spec.json --detach
+rly wait b-xxxxx --timeout 1800 --while-active --idle-grace 300
+```
+
+If `rly wait` exits with `wait-timeout`, immediately run `rly result <boardId>`.
+If it is still open and the user may continue, run `rly wait` again. Do not use
+`--on-result` as the primary Codex return path; it can write files or hit
+webhooks, but normal Codex CLI sessions do not expose a portable inbound API
+that wakes the current agent turn.
 
 ## Editable diagrams — let the user redraw your mermaid
 

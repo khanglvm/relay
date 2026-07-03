@@ -86,6 +86,7 @@ priority call in a `rank` question — not in paragraphs. Unsure which exists? R
 | `image` | screenshots / mockups / renders — zoom+pan; `pins:true` → click-to-drop point comments |
 | `compare` | a before/after pair — draggable divider |
 | `video` | a demo / screen recording / walkthrough |
+| `pdf` | a quote / report / exported document that should render inline |
 | `palette` | color schemes — swatch cards, hover-hex, click-to-copy |
 | `typography` | type choices — specimens at given size/weight/font |
 | `html` | anything bespoke — custom widgets, pixel-perfect mockups |
@@ -144,6 +145,22 @@ rly result b-xxxxx        # while open also shows presence {visible, focused, se
 Push-wake instead of polling: add --on-result '<shell cmd>' to ask/show/reopen
 (or --notify-cmd on wait) - the command runs the moment the board finishes,
 with the full result JSON on stdin and RLY_BOARD_ID/RLY_STATUS/RLY_URL in env.
+
+**Codex browser-board pattern.** Codex does not have a normal, user-facing
+"wake this agent turn from a browser submit" command. If the Codex turn stops
+waiting, a later board submit can leave the user needing to prompt manually.
+So in Codex, keep the waiter in the foreground until the user submits:
+
+```sh
+rly ask --file spec.json --detach
+rly wait b-xxxxx --timeout 1800 --while-active --idle-grace 300
+```
+
+If `rly wait` exits with `wait-timeout`, immediately run `rly result <boardId>`.
+If it is still open and the user may continue, run `rly wait` again. Do not use
+`--on-result` as the primary Codex return path; it can write files or hit
+webhooks, but normal Codex CLI sessions do not expose a portable inbound API
+that wakes the current agent turn.
 
 Blocking mode (`rly ask --file spec.json --timeout 1800`, no --detach) is fine
 ONLY when your shell tool has no execution time limit.
@@ -270,6 +287,8 @@ single/multi question.
 { "type": "video",    "src": "recordings/demo.mp4", "title": "Local capture", "height": 360 }
 // ^ YouTube/Vimeo URL embeds a player; an http(s) media URL or a local video
 //   file (mp4/webm/ogv/mov/mkv/m4v) plays inline (local files stream, not embedded).
+{ "type": "pdf",      "src": "reports/quote.pdf", "title": "Quote", "height": 900 }
+// ^ local .pdf files and http(s) PDF URLs render inline; local files stream, not embedded.
 { "type": "html",     "html": "<p>hi</p>",           "height": 360 }
 { "type": "html",     "htmlFile": "viz.html",         "height": 400 }
 { "type": "image",    "src": "screenshot.png" }       // local file, URL, or data URI
