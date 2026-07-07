@@ -221,6 +221,11 @@ console.log('7. validation & misc');
 {
   const bad = await run(['ask', '--file', '-'], { input: '{"questions":[{"type":"nope","label":"x"}]}' });
   ok(bad.code === 4 && /unknown type/.test(bad.stderr), 'bad type → usage error (exit 4)');
+  const badMermaid = await run(['ask', '--file', '-'], {
+    input: JSON.stringify({ title: 'bad diagram', blocks: [{ type: 'mermaid', code: 'graph TD; A-->' }] }),
+  });
+  ok(badMermaid.code === 4 && /invalid mermaid syntax/.test(badMermaid.stderr), 'invalid mermaid syntax → usage error before opening a board');
+  ok(/board\.blocks\[0\]/.test(badMermaid.stderr), 'invalid mermaid error points at the authored block location');
   const empty = await run(['ask']);
   ok(empty.code === 4, 'ask with no spec → usage error');
   const schema = await run(['schema']);
@@ -713,6 +718,17 @@ let updateId;
   const status2 = await (await fetch(new URL('/api/status', url))).json();
   ok(status2.rev === 2, 'rejected malformed update did not bump rev');
 
+  // Reject render-invalid content before publishing it to the visible board.
+  const badMermaidUp = await fetch(new URL('/api/update', url), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-relay-token': running.token },
+    body: JSON.stringify({ spec: { ...newSpec, blocks: [{ id: 'b1', type: 'mermaid', code: 'graph TD; A-->' }] } }),
+  });
+  const badMermaidBody = await badMermaidUp.json();
+  ok(badMermaidUp.status === 400 && /invalid mermaid syntax/.test(badMermaidBody.error || ''), 'invalid mermaid update → 400 before board rev changes');
+  const status3 = await (await fetch(new URL('/api/status', url))).json();
+  ok(status3.rev === 2, 'rejected invalid-mermaid update did not bump rev');
+
   await post(url, '/api/submit', { answers: { keep: 'yes' } });
   await exited;
 }
@@ -1158,6 +1174,7 @@ function mcpRoundtrip(messages) {
     { jsonrpc: '2.0', id: 10, method: 'tools/call', params: { name: 'relay_show', arguments: { blocks: [{ type: 'palette', title: 'Trending', palettes: [{ name: 'Mocha', sub: 'warm', tag: 'Pantone', tagTone: 'warm', featured: true, colors: ['#C4956A', '#A67B52'] }] }] } } },
     { jsonrpc: '2.0', id: 11, method: 'tools/call', params: { name: 'relay_ask', arguments: { questions: [{ id: 'brand', type: 'color', label: 'Brand color', presets: ['#c2674b', '#185FA5'], default: '#c2674b' }] } } },
     { jsonrpc: '2.0', id: 12, method: 'tools/call', params: { name: 'relay_ask', arguments: { questions: [{ id: 'pick', type: 'single', label: 'Pick one', options: ['a', 'b'] }, { id: 'env', type: 'single', label: 'Env', options: ['dev', 'prod'], other: false }] } } },
+    { jsonrpc: '2.0', id: 13, method: 'tools/call', params: { name: 'relay_show', arguments: { blocks: [{ type: 'mermaid', code: 'graph TD; A-->' }] } } },
   ]);
 
   // stdout must be pure protocol — every non-blank line is valid JSON-RPC.
@@ -1210,6 +1227,7 @@ function mcpRoundtrip(messages) {
   const sq = byId[12].result.structuredContent.spec.questions;
   ok(sq[0].other === true && sq[1].other === false, 'single questions default "other" ON (opt out with other:false)');
   ok(/\[pick\] Pick one \(single/.test(byId[12].result.content[0].text), 'tool-result text carries a fallback question list for non-rendering surfaces');
+  ok(byId[13].result.isError && /invalid mermaid syntax/.test(byId[13].result.content[0].text), 'MCP invalid mermaid returns an isError tool result instead of a displayable board');
 }
 
 // ---------- 27. rly mcp config / install ----------
@@ -1263,6 +1281,9 @@ console.log('28. mcp app server (streamable http)');
   ok(JSON.parse(rd.body).result.contents[0].mimeType === 'text/html;profile=mcp-app', 'http: resources/read returns the board html');
   const call = await httpRpc({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'relay_ask', arguments: { questions: [{ id: 'c', type: 'color', label: 'pick' }] } } }, { authorization: 'Bearer tkn' });
   ok(JSON.parse(call.body).result.structuredContent.spec.questions[0].type === 'color', 'http: tools/call normalizes + returns the spec');
+  const badMermaidCall = await httpRpc({ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'relay_show', arguments: { blocks: [{ type: 'mermaid', code: 'graph TD; A-->' }] } } }, { authorization: 'Bearer tkn' });
+  const badMermaidRpc = JSON.parse(badMermaidCall.body).result;
+  ok(badMermaidRpc.isError && /invalid mermaid syntax/.test(badMermaidRpc.content[0].text), 'http: invalid mermaid returns an isError tool result before display');
   const evil = await httpRpc({ jsonrpc: '2.0', id: 5, method: 'ping' }, { authorization: 'Bearer tkn', origin: 'https://evil.example' });
   ok(evil.status === 403, 'http: a non-localhost Origin is rejected → 403 (DNS-rebind guard)');
   const note = await httpRpc({ jsonrpc: '2.0', method: 'notifications/initialized' }, { authorization: 'Bearer tkn' });

@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { loadBoard, saveBoard, saveRunning, removeRunning, loadPref, savePref } from './store.js';
 import { openUrl } from './open.js';
+import { assertSpecReady } from './spec.js';
 
 const UI_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'ui');
 const PKG_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -591,6 +592,11 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         if (next === null || typeof next !== 'object' || Array.isArray(next) ||
             !Array.isArray(next.questions) || !Array.isArray(next.blocks)) {
           return sendJson(res, 400, { error: 'spec must be an object with questions[] and blocks[] arrays' });
+        }
+        try {
+          await assertSpecReady(next);
+        } catch (err) {
+          return sendJson(res, 400, { error: err && err.message ? err.message : String(err) });
         }
         record.spec = next;
         rev++;

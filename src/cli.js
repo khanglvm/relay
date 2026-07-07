@@ -4,7 +4,7 @@ import os from 'node:os';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { CliError, sleep, pollFor } from './util.js';
-import { normalizeSpec, questionFromInline, SPEC_SCHEMA } from './spec.js';
+import { assertSpecReady, normalizeSpec, questionFromInline, SPEC_SCHEMA } from './spec.js';
 import {
   createBoard,
   loadBoard,
@@ -197,6 +197,7 @@ function readFileOrThrow(p) {
 }
 
 async function runOrDetach(record, args) {
+  await assertSpecReady(record.spec);
   const timeoutSec = args.timeout !== undefined ? Math.max(0, Number.parseInt(args.timeout, 10) || 0) : 1800;
   const port = args.port !== undefined ? Number.parseInt(args.port, 10) || 0 : 0;
   const open = args.open !== false;
@@ -244,6 +245,7 @@ async function runOrDetach(record, args) {
 async function cmdAsk(args, mode) {
   const raw = await resolveSpecInput(args, mode);
   const spec = normalizeSpec(raw);
+  await assertSpecReady(spec);
   const record = createBoard(spec);
   return runOrDetach(record, args);
 }
@@ -275,6 +277,7 @@ async function cmdDiff(rest) {
   }
   const title = args.title || ('git diff' + (gitArgs.length ? ' ' + gitArgs.join(' ') : ''));
   const spec = normalizeSpec({ title, blocks: [{ type: 'diff', diff, view: args.split ? 'split' : 'unified' }] });
+  await assertSpecReady(spec);
   const record = createBoard(spec);
   return runOrDetach(record, args);
 }
@@ -299,6 +302,7 @@ async function cmdView(args) {
   raw.title = args.title || (multi ? `${files.length} files` : path.basename(files[0]));
   raw.submitLabel = args.submitLabel || 'Done';
   const spec = normalizeSpec(raw); // reads + validates each file, clear error if unreadable
+  await assertSpecReady(spec);
   const record = createBoard(spec);
   return runOrDetach(record, args);
 }
@@ -445,6 +449,7 @@ async function cmdUpdate(args) {
   } else {
     throw new CliError('update needs --file <spec.json>, --title, --intro, or -q "...".', 4);
   }
+  await assertSpecReady(spec);
 
   let res;
   try {

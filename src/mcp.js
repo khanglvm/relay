@@ -19,7 +19,7 @@ import path from 'node:path';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { normalizeSpec, SPEC_SCHEMA } from './spec.js';
+import { assertSpecReady, normalizeSpec, SPEC_SCHEMA } from './spec.js';
 import { CliError } from './util.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -143,7 +143,7 @@ function resourceMeta() {
 }
 
 // ---------- request routing ----------
-function buildResult(method, params, clientProtocol) {
+async function buildResult(method, params, clientProtocol) {
   switch (method) {
     case 'initialize':
       return {
@@ -202,7 +202,7 @@ function readResource(params) {
 // ui/update-model-context as a best-effort context sync). Spec errors come back
 // as an isError tool result (not a protocol error) so the model can see and fix
 // them.
-function callTool(params) {
+async function callTool(params) {
   const name = params && params.name;
   if (name !== 'relay_ask' && name !== 'relay_show') {
     return { content: [{ type: 'text', text: 'unknown tool: ' + name }], isError: true };
@@ -211,6 +211,7 @@ function callTool(params) {
   let spec;
   try {
     spec = normalizeSpec(args);
+    await assertSpecReady(spec);
   } catch (err) {
     const msg = err instanceof CliError ? err.message : String((err && err.message) || err);
     return { content: [{ type: 'text', text: 'relay: invalid board spec — ' + msg }], isError: true };
@@ -265,7 +266,7 @@ export function runMcp() {
     catch { stdoutOpen = false; }
   };
 
-  function handleLine(line) {
+  async function handleLine(line) {
     let msg;
     try { msg = JSON.parse(line); } catch {
       send({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } });
@@ -278,7 +279,7 @@ export function runMcp() {
       if (typeof m.method !== 'string') continue; // a response to us — we issue none
       let result;
       try {
-        result = buildResult(m.method, m.params || {});
+        result = await buildResult(m.method, m.params || {});
       } catch (err) {
         if (isRequest) {
           send({ jsonrpc: '2.0', id: m.id, error: { code: err.code || -32603, message: err.message || String(err) } });
@@ -290,6 +291,7 @@ export function runMcp() {
   }
 
   let buf = '';
+  let queue = Promise.resolve();
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (chunk) => {
     buf += chunk;
@@ -298,7 +300,7 @@ export function runMcp() {
       const line = buf.slice(0, idx);
       buf = buf.slice(idx + 1);
       const trimmed = line.trim();
-      if (trimmed) handleLine(trimmed);
+      if (trimmed) queue = queue.then(() => handleLine(trimmed)).catch(() => {});
     }
   });
 
@@ -406,7 +408,7 @@ export function runMcpHttp({ port = DEFAULT_HTTP_PORT, host = '127.0.0.1', token
     let body = '';
     let aborted = false;
     req.on('data', (c) => { body += c; if (body.length > MAX_BODY) { aborted = true; req.destroy(); } });
-    req.on('end', () => {
+    req.on('end', async () => {
       if (aborted) { res.writeHead(413, base); return res.end(); }
       let msg;
       try { msg = JSON.parse(body); } catch {
@@ -421,7 +423,7 @@ export function runMcpHttp({ port = DEFAULT_HTTP_PORT, host = '127.0.0.1', token
         if (m.method === 'initialize') isInit = true;
         const isRequest = m.id !== undefined && m.id !== null;
         try {
-          const result = buildResult(m.method, m.params || {});
+          const result = await buildResult(m.method, m.params || {});
           if (isRequest) responses.push({ jsonrpc: '2.0', id: m.id, result });
         } catch (err) {
           if (isRequest) responses.push({ jsonrpc: '2.0', id: m.id, error: { code: err.code || -32603, message: err.message || String(err) } });
