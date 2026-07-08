@@ -492,6 +492,10 @@ function normalizeBlock(rawBlock, id, cwd, where) {
     const block = { id, type: 'diff', diff };
     if (rawBlock.lang !== undefined) block.lang = asStr(rawBlock.lang);
     if (rawBlock.filename !== undefined) block.filename = asStr(rawBlock.filename);
+    if (rawBlock.title !== undefined) block.title = asStr(rawBlock.title);
+    if (rawBlock.review === true) block.review = true;
+    if (rawBlock.reviewKind !== undefined) block.reviewKind = asStr(rawBlock.reviewKind);
+    if (rawBlock.commit !== undefined) block.commit = asStr(rawBlock.commit);
     const view = asStr(rawBlock.view).trim().toLowerCase();
     if (view === 'split' || view === 'unified') block.view = view;
     if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
@@ -1035,6 +1039,9 @@ const BLOCK_SCHEMA = {
       diff: { type: 'string', description: 'diff: a unified diff (git diff / diff -u output) — rendered as a colored, line-numbered comparison with +added / −removed / context rows and file/hunk headers. No git needed; just write/paste the diff text.' },
       diffFile: { type: 'string', description: 'diff: path to a local file containing a unified diff (alternative to "diff"). Resolved against the CWD.' },
       view: { type: 'string', enum: ['unified', 'split'], description: 'diff: initial layout — "unified" (default, one column) or "split" (side-by-side old vs new). The viewer also has a live toggle either way.' },
+      review: { type: 'boolean', description: 'diff: when true, render per-hunk Apply / Skip / Hold controls and return choices in result.blockEdits[blockId] as {type:"diff-review", hunks:{...}}. Used by `rly git cherry-pick --code`.' },
+      reviewKind: { type: 'string', description: 'diff review: optional label for the review workflow, such as "cherry-pick" or "pick".' },
+      commit: { type: 'string', description: 'diff review: optional commit SHA associated with this diff.' },
       content: { type: 'string', description: 'git-conflict: inline file content containing conflict markers (<<<<<<< / ======= / >>>>>>>). The board auto-detects each hunk and returns resolutions in result.blockEdits[blockId].' },
       text: { type: 'string', description: 'git-conflict: alias for inline "content".' },
       file: { type: 'string', description: 'git-conflict: local conflicted file path to load, parse, and resolve. Resolved against the CWD.' },
@@ -1179,7 +1186,7 @@ export const SPEC_SCHEMA = {
       type: 'object',
       readOnly: true,
       description:
-        'Returned in the result (not part of the input spec). A map blockId→edited block payload. Editable mermaid blocks return edited source strings. git-conflict blocks return {type:"git-conflict-resolution", resolutions, content, resolved, filename, file}. null when the user made no edits.',
+        'Returned in the result (not part of the input spec). A map blockId→edited block payload. Editable mermaid blocks return edited source strings. git-conflict blocks return {type:"git-conflict-resolution", resolutions, content, resolved, filename, file}. diff review blocks return {type:"diff-review", hunks, resolved, commit}. null when the user made no edits.',
     },
   },
   anyOf: [{ required: ['questions'] }, { required: ['blocks'] }, { required: ['html'] }, { required: ['htmlFile'] }],

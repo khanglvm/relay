@@ -582,8 +582,159 @@
   // Per-file header lines are redundant once we render a filename header bar.
   const DIFF_NOISE = /^(diff --git |index |--- |\+\+\+ )/;
 
+  function buildDiffReviewHunks(files, block) {
+    const hunks = [];
+    files.forEach((f) => {
+      const name = f.name || (files.length === 1 ? (block.filename || '') : '') || 'file';
+      let rows = parseDiff(f.text);
+      if (name) rows = rows.filter((r) => !(r.kind === 'meta' && DIFF_NOISE.test(r.text)));
+      let current = null;
+      const push = () => {
+        if (!current) return;
+        const hasChange = current.rows.some((r) => r.kind === 'add' || r.kind === 'del');
+        if (hasChange) hunks.push(current);
+        current = null;
+      };
+      rows.forEach((r) => {
+        if (r.kind === 'hunk') {
+          push();
+          current = { id: 'h' + (hunks.length + 1), file: name, header: r.text, rows: [r] };
+        } else if (current) {
+          current.rows.push(r);
+        } else if (r.kind === 'add' || r.kind === 'del' || r.kind === 'ctx') {
+          current = { id: 'h' + (hunks.length + 1), file: name, header: 'Change', rows: [r] };
+        }
+      });
+      push();
+    });
+    return hunks;
+  }
+
+  function renderDiffReview(block, ctx, blockId, files) {
+    const hunks = buildDiffReviewHunks(files, block);
+    let view = block.view === 'split' ? 'split' : 'unified';
+    const prior = ctx && ctx.edits && ctx.edits[blockId] && typeof ctx.edits[blockId] === 'object'
+      ? ctx.edits[blockId]
+      : {};
+    const choices = prior.hunks && typeof prior.hunks === 'object' ? { ...prior.hunks } : {};
+    const buttonsByHunk = new Map();
+    const wrap = el('div', { class: 'blk-codewrap blk-diffwrap diff-review' });
+    const status = el('span', { class: 'diff-review-status' }, '');
+    const list = el('div', { class: 'diff-review-list' });
+
+    const emit = () => {
+      const picked = {};
+      hunks.forEach((h) => {
+        const r = choices[h.id];
+        if (!r || !['apply', 'skip', 'hold'].includes(r.choice)) return;
+        picked[h.id] = { choice: r.choice, file: h.file, header: h.header };
+      });
+      const touched = Object.keys(picked).length;
+      const payload = touched
+        ? {
+            type: 'diff-review',
+            reviewKind: block.reviewKind || '',
+            commit: block.commit || '',
+            title: block.title || block.filename || '',
+            resolved: touched === hunks.length,
+            hunks: picked,
+          }
+        : null;
+      if (ctx && typeof ctx.onBlockEdit === 'function') ctx.onBlockEdit(blockId, payload);
+      wrap.dispatchEvent(new CustomEvent('relay:block-edit', {
+        bubbles: true,
+        detail: { blockId, value: payload },
+      }));
+      status.textContent = `${touched}/${hunks.length} reviewed`;
+      status.classList.toggle('is-complete', hunks.length > 0 && touched === hunks.length);
+      for (const h of hunks) {
+        const set = buttonsByHunk.get(h.id) || [];
+        const chosen = choices[h.id] && choices[h.id].choice;
+        set.forEach((b) => b.el.classList.toggle('sel', b.choice === chosen));
+      }
+    };
+
+    const setChoice = (h, choice) => {
+      choices[h.id] = { choice, file: h.file, header: h.header };
+      emit();
+    };
+
+    const setAll = (choice) => {
+      hunks.forEach((h) => {
+        choices[h.id] = { choice, file: h.file, header: h.header };
+      });
+      emit();
+    };
+
+    const makeReviewButton = (label, onClick, extraClass = '') => {
+      const b = el('button', { type: 'button', class: 'diff-review-btn' + (extraClass ? ' ' + extraClass : '') }, label);
+      b.addEventListener('mousedown', (e) => e.stopPropagation());
+      b.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick();
+      });
+      return b;
+    };
+
+    const repaint = () => {
+      list.replaceChildren();
+      hunks.forEach((h) => {
+        const actionbar = el('div', { class: 'diff-review-hunkbar' },
+          el('div', { class: 'diff-review-hunkmeta' },
+            el('span', { class: 'diff-review-file' }, h.file),
+            el('span', { class: 'diff-review-header' }, h.header)
+          )
+        );
+        const rowButtons = [
+          { choice: 'apply', label: 'Apply hunk' },
+          { choice: 'skip', label: 'Skip hunk' },
+          { choice: 'hold', label: 'Hold' },
+        ].map((item) => ({
+          choice: item.choice,
+          el: makeReviewButton(item.label, () => setChoice(h, item.choice), 'diff-review-choice'),
+        }));
+        buttonsByHunk.set(h.id, rowButtons);
+        actionbar.append(el('div', { class: 'diff-review-actions' }, rowButtons.map((b) => b.el)));
+        list.append(el('section', { class: 'diff-review-hunk' },
+          actionbar,
+          view === 'split' ? buildSplitDiff(h.rows, block.lang) : buildUnifiedDiff(h.rows, block.lang)
+        ));
+      });
+      emit();
+    };
+
+    const toggle = makeReviewButton('', () => {
+      view = view === 'split' ? 'unified' : 'split';
+      wrap.classList.toggle('is-split', view === 'split');
+      toggle.textContent = view === 'split' ? 'Unified view' : 'Split view';
+      repaint();
+    }, 'blk-difftoggle');
+    toggle.title = 'Toggle side-by-side view';
+    toggle.textContent = view === 'split' ? 'Unified view' : 'Split view';
+
+    const title = block.title || block.filename || (files.length > 1 ? `${files.length} files changed` : 'Diff review');
+    wrap.append(el('div', { class: 'blk-codehead diff-review-head' },
+      el('span', { class: 'blk-codename' }, title),
+      el('div', { class: 'diff-review-topactions' },
+        status,
+        makeReviewButton('Apply all', () => setAll('apply')),
+        makeReviewButton('Skip all', () => setAll('skip')),
+        makeReviewButton('Hold all', () => setAll('hold')),
+        toggle
+      )
+    ));
+    wrap.classList.toggle('is-split', view === 'split');
+    wrap.append(list);
+    repaint();
+    ctx && ctx.annotate && ctx.annotate.enableTextSelection(list, { blockId, questionId: ctx.questionId });
+    attachViewer(wrap, { zoomEl: null, label: 'diff review', comment: wholeBlockComment(ctx, blockId, 'diff review') });
+    return wrap;
+  }
+
   function renderDiff(block, ctx, blockId) {
     const files = splitDiffFiles(block.diff);
+    if (block.review === true) return renderDiffReview(block, ctx, blockId, files);
     const named = files.filter((f) => f.name);
     const multi = named.length > 1;
     let view = block.view === 'split' ? 'split' : 'unified';

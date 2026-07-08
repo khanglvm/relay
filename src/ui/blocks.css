@@ -260,6 +260,68 @@
 }
 .diff-file-chip:hover { color: var(--accent); border-color: var(--accent); }
 
+/* diff review: cherry-pick/apply hunk choices on top of the diff renderer */
+.diff-review-head {
+  align-items: flex-start;
+}
+.diff-review-topactions {
+  display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px;
+}
+.diff-review-status {
+  flex: none; border: 1px solid rgba(185, 145, 63, 0.34);
+  background: rgba(185, 145, 63, 0.12); color: var(--warn);
+  border-radius: 999px; padding: 3px 8px; font-size: 0.72rem; font-weight: 760;
+}
+.diff-review-status.is-complete {
+  border-color: rgba(77, 138, 102, 0.42);
+  background: rgba(77, 138, 102, 0.14); color: var(--ok);
+}
+.diff-review-btn {
+  flex: none; cursor: pointer; font: inherit; font-size: 0.72rem; font-weight: 700;
+  color: var(--fg-2); background: var(--card);
+  border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px;
+  transition: color 150ms var(--ease), border-color 150ms var(--ease), background 150ms var(--ease);
+}
+.diff-review-btn:hover {
+  color: var(--accent); border-color: var(--accent);
+}
+.diff-review-choice.sel {
+  color: var(--accent); border-color: var(--accent); background: var(--accent-soft);
+}
+.diff-review-list {
+  border: 1px solid var(--border); border-radius: 0 0 10px 10px;
+  overflow: hidden; background: var(--bg-sunken);
+}
+.diff-review-hunk + .diff-review-hunk {
+  border-top: 1px solid var(--border);
+}
+.diff-review-hunkbar {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 6px 8px 6px 12px; background: var(--card); border-bottom: 1px solid var(--border);
+}
+.diff-review-hunkmeta {
+  min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.diff-review-file {
+  max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--fg-2); font-size: 0.76rem; font-weight: 760;
+}
+.diff-review-header {
+  color: var(--muted); font-size: 0.72rem;
+}
+.diff-review-actions {
+  flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px;
+}
+.diff-review-hunk .blk-difftable {
+  min-width: 760px;
+}
+@media (max-width: 720px) {
+  .diff-review-head, .diff-review-hunkbar { flex-direction: column; align-items: flex-start; }
+  .diff-review-topactions, .diff-review-actions { justify-content: flex-start; }
+  .diff-review-file { max-width: 100%; }
+}
+
 /* ---------- git conflict resolver ---------- */
 .gitconf {
   border: 1px solid var(--border); border-radius: 10px; overflow: hidden;

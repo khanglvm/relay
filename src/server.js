@@ -218,9 +218,40 @@ function sanitizeConflictResolution(value) {
   return Object.keys(out.resolutions).length ? out : null;
 }
 
+function sanitizeDiffReview(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (value.type !== 'diff-review') return null;
+  const out = {
+    type: 'diff-review',
+    reviewKind: limitString(value.reviewKind, 80),
+    commit: limitString(value.commit, 120),
+    title: limitString(value.title, 500),
+    resolved: value.resolved === true,
+    hunks: {},
+  };
+  const raw = value.hunks && typeof value.hunks === 'object' && !Array.isArray(value.hunks)
+    ? value.hunks
+    : {};
+  let n = 0;
+  for (const id of Object.keys(raw)) {
+    if (n >= 500) break;
+    const h = raw[id];
+    if (!h || typeof h !== 'object' || Array.isArray(h)) continue;
+    const choice = limitString(h.choice, 30);
+    if (!['apply', 'skip', 'hold'].includes(choice)) continue;
+    out.hunks[limitString(id, 80)] = {
+      choice,
+      file: limitString(h.file, 1200),
+      header: limitString(h.header, 500),
+    };
+    n++;
+  }
+  return Object.keys(out.hunks).length ? out : null;
+}
+
 // Validates + sanitizes an incoming blockEdits map (from draft/submit).
 // String values are editable Mermaid source. Structured git-conflict-resolution
-// values carry per-hunk choices plus resolved file content. Caps prevent a draft
+// and diff-review values carry bounded per-hunk choices. Caps prevent a draft
 // from bloating board storage; invalid entries are dropped.
 function sanitizeBlockEdits(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
@@ -234,7 +265,7 @@ function sanitizeBlockEdits(value) {
       if (v.length > 20000) continue;
       out[key] = v;
     } else {
-      const edit = sanitizeConflictResolution(v);
+      const edit = sanitizeConflictResolution(v) || sanitizeDiffReview(v);
       if (!edit) continue;
       out[key] = edit;
     }

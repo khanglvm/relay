@@ -313,6 +313,19 @@ function gitCommitRows(range, limit) {
     .filter((r) => r.sha && r.short);
 }
 
+function gitCommitDiff(commit) {
+  return runGit([
+    '--no-pager',
+    'show',
+    '--format=',
+    '--patch',
+    '--find-renames',
+    '--find-copies',
+    '--no-ext-diff',
+    commit,
+  ], `git show ${commit} failed`).trimEnd();
+}
+
 async function cmdGit(rest) {
   const args = parseArgs(rest);
   const modes = new Set(['pick', 'cherry-pick', 'cherrypick', 'conflict', 'conflicts', 'resolve']);
@@ -323,11 +336,13 @@ async function cmdGit(rest) {
 
   const blocks = [];
   const questions = [];
+  let reviewDiffCount = 0;
 
   if (mode === 'pick' || mode === 'cherry-pick') {
     const range = args.range || args._[0] || '';
     const commits = gitCommitRows(range, args.limit);
     if (!commits.length) throw new CliError(`git log${range ? ` ${range}` : ''} produced no commits to show.`);
+    const withCode = args.code === true || args.patch === true || args.diff === true;
     blocks.push({
       type: 'table',
       columns: ['short', 'date', 'author', 'subject'],
@@ -351,13 +366,32 @@ async function cmdGit(rest) {
         ? [{ value: 'cherry-pick', label: 'Cherry-pick', tone: 'ok' }, { value: 'skip', label: 'Skip', tone: 'muted' }, { value: 'hold', label: 'Hold', tone: 'warn' }]
         : [{ value: 'pick', label: 'Pick', tone: 'ok' }, { value: 'cherry-pick', label: 'Cherry-pick', tone: 'warn' }, { value: 'drop', label: 'Drop', tone: 'bad' }],
     });
-    questions.push({
-      id: 'commit_order',
-      type: 'rank',
-      label: mode === 'cherry-pick' ? 'Cherry-pick order' : 'Preferred commit order',
-      description: 'Drag or move commits into the order the agent should apply them.',
-      options,
-    });
+    if (options.length > 1) {
+      questions.push({
+        id: 'commit_order',
+        type: 'rank',
+        label: mode === 'cherry-pick' ? 'Cherry-pick order' : 'Preferred commit order',
+        description: 'Drag or move commits into the order the agent should apply them.',
+        options,
+      });
+    }
+    if (withCode) {
+      for (const c of commits) {
+        const diff = gitCommitDiff(c.sha);
+        if (!diff.trim()) continue;
+        blocks.push({
+          type: 'diff',
+          title: `${c.short} ${c.subject}`,
+          filename: `${c.short} ${c.subject}`,
+          commit: c.sha,
+          reviewKind: mode,
+          review: true,
+          view: 'split',
+          diff,
+        });
+        reviewDiffCount++;
+      }
+    }
   }
 
   const paths = mode === 'conflict' ? gitConflictPaths(args._) : gitConflictPaths([]);
@@ -381,7 +415,9 @@ async function cmdGit(rest) {
     : mode === 'cherry-pick' ? 'Cherry-pick commits' : 'Pick commits');
   const intro = args.intro || (conflictCount
     ? 'Resolve each conflict on the board. The submitted result includes result.blockEdits with per-hunk choices and a full resolved file preview for every conflict block.'
-    : 'Pick commit actions and order on the board. Submit returns the selected actions and rank order as JSON.');
+    : reviewDiffCount
+      ? 'Review commit code hunks on the board. Apply, skip, or hold each hunk; submit returns commit actions plus diff-review hunk choices as JSON.'
+      : 'Pick commit actions and order on the board. Submit returns the selected actions and rank order as JSON.');
   const spec = normalizeSpec({ title, intro, blocks, questions, submitLabel: 'Submit git choices' });
   await assertSpecReady(spec);
   const record = createBoard(spec);
@@ -1515,6 +1551,7 @@ USAGE
                                       --title; other args pass to git: rly diff --staged | HEAD~1 | -- path)
   rly git pick [range]                board for choosing pick/cherry-pick/drop actions plus commit order
   rly git cherry-pick [range]         board for choosing commits and cherry-pick order
+                                      add --code for split code view with per-hunk Apply/Skip/Hold
   rly git conflict [files…]           board for resolving conflict-marker files; with no files, auto-detects
                                       unmerged git files and returns resolved content in result.blockEdits
   rly wait <id> [--timeout 3600]      block until board finishes, print result JSON

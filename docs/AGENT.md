@@ -166,6 +166,7 @@ Pick/cherry-pick commits or resolve conflicts on a board:
 ```sh
 rly git pick --limit 20               # checklist: pick/cherry-pick/drop + rank order
 rly git cherry-pick main..feature     # checklist: cherry-pick/skip/hold + rank order
+rly git cherry-pick --code main..feature # adds split code review with Apply/Skip/Hold per hunk
 rly git conflict                      # auto-detect unmerged files with conflict markers
 rly git conflict src/app.js           # resolve a specific conflicted file
 ```

@@ -46,7 +46,7 @@ at — show it in a relay board instead of printing it.**
 | Gather requirements / plan approval / feedback round | **rly** |
 | Architecture or flow that benefits from a diagram | **rly** (mermaid block) |
 | "Show me the diff" / git diff / code changes / before-after | **rly** (`diff` block — run `git diff`, render it; never dump it in the terminal) |
-| Pick/cherry-pick commits or resolve conflict files | **rly git** (`rly git pick`, `rly git cherry-pick`, `rly git conflict`) |
+| Pick/cherry-pick commits or resolve conflict files | **rly git** (`rly git pick`, `rly git cherry-pick --code`, `rly git conflict`) |
 | A demo, screen recording or walkthrough | **rly** (`video` block) |
 | Point the user at a file to open (log, capture, report) | **rly** (a clickable local file-link in markdown) |
 | Let the user read a markdown file (README, plan, report) | **rly view file.md** (or a `markdown` block with `mdFile`) — never dump the file into the terminal |

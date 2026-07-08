@@ -1139,12 +1139,58 @@ console.log('24b. git conflict blocks & git command');
   await post(c.url, '/api/submit', { blockEdits: {} });
   await c.exited;
 
+  const reviewDiff = [
+    'diff --git a/demo.js b/demo.js',
+    '--- a/demo.js',
+    '+++ b/demo.js',
+    '@@ -1,2 +1,2 @@',
+    ' const ready = true;',
+    '-const label = "old";',
+    '+const label = "new";',
+    '',
+  ].join('\n');
+  const reviewSpec = {
+    title: 'Diff review',
+    blocks: [{ type: 'diff', diff: reviewDiff, review: true, reviewKind: 'cherry-pick', commit: 'abc123', view: 'split' }],
+    questions: [{ id: 'ok', type: 'yesno', label: 'OK?' }],
+  };
+  const reviewPath = path.join(HOME, 'diff-review-spec.json');
+  fs.writeFileSync(reviewPath, JSON.stringify(reviewSpec));
+  const review = await spawnBlocking(['ask', '--file', reviewPath, '--no-open', '--timeout', '60']);
+  const rb = (await (await fetch(new URL('/api/board', review.url))).json()).spec.blocks[0];
+  ok(rb.type === 'diff' && rb.review === true && rb.reviewKind === 'cherry-pick' && rb.commit === 'abc123',
+    'diff review block preserves review metadata');
+  await post(review.url, '/api/submit', {
+    answers: { ok: 'yes' },
+    blockEdits: {
+      b1: {
+        type: 'diff-review',
+        reviewKind: 'cherry-pick',
+        commit: 'abc123',
+        resolved: true,
+        hunks: { h1: { choice: 'apply', file: 'demo.js', header: '@@ -1,2 +1,2 @@' } },
+      },
+    },
+  });
+  const reviewDone = await review.exited;
+  const reviewResult = JSON.parse(reviewDone.stdout);
+  ok(reviewResult.blockEdits?.b1?.type === 'diff-review' && reviewResult.blockEdits.b1.hunks.h1.choice === 'apply',
+    'structured diff-review blockEdits survive server sanitization');
+
   const g = await spawnBlocking(['git', 'pick', '--limit', '2', '--no-open', '--timeout', '60']);
   const gs = (await (await fetch(new URL('/api/board', g.url))).json()).spec;
   ok(gs.questions.some((q) => q.id === 'commit_actions' && q.type === 'checklist'), 'rly git pick creates commit action checklist');
   ok(gs.questions.some((q) => q.id === 'commit_order' && q.type === 'rank'), 'rly git pick creates commit order rank control');
   await post(g.url, '/api/submit', { answers: {} });
   await g.exited;
+
+  const cp = await spawnBlocking(['git', 'cherry-pick', '--code', '--limit', '1', '--no-open', '--timeout', '60']);
+  const cps = (await (await fetch(new URL('/api/board', cp.url))).json()).spec;
+  ok(cps.blocks.some((b) => b.type === 'diff' && b.review === true && b.reviewKind === 'cherry-pick' && /diff --git/.test(b.diff || '')),
+    'rly git cherry-pick --code creates split diff review blocks');
+  ok(!cps.questions.some((q) => q.id === 'commit_order'), 'single-commit git board omits unnecessary rank control');
+  await post(cp.url, '/api/submit', { answers: {}, blockEdits: {} });
+  await cp.exited;
 }
 
 // ---------- 25. video blocks: youtube embed, local stream (Range), URL passthrough ----------

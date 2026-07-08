@@ -89,7 +89,7 @@ Node ≥ 18; Chart.js / Mermaid / Graphviz are vendored and lazy-loaded offline.
 | | |
 |---|---|
 | `rly help` | every command at a glance |
-| `rly git pick` / `rly git cherry-pick` | choose commit actions and rank the order directly on a board |
+| `rly git pick` / `rly git cherry-pick` | choose commit actions and rank the order directly on a board; add `--code` to cherry-pick with split code review and per-hunk Apply/Skip/Hold |
 | `rly git conflict [files…]` | auto-detect unmerged conflict files, or open specific local paths, and return resolved content in `result.blockEdits` |
 | `rly view <file.md> …` | open a quick read-only board that renders local markdown file(s), data files, or PDFs — library-free; great for plans, READMEs, reports, quotes |
 | `rly install --target <agent>` | write relay's rules into an agent's instruction file — `claude` `codex` `cursor` `copilot` `kiro` `windsurf` `cline` `gemini` `opencode` `droid` `agents`; `--all`, `--scope`, `--print`, `--list` |
