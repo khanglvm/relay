@@ -341,7 +341,58 @@ textarea { min-height: 90px; resize: vertical; }
 .done h2 { font-family: var(--serif); font-weight: 500; letter-spacing: -0.015em; margin: 0 0 8px; }
 .done p { color: var(--muted); margin: 0; }
 
-.qb-footer { color: var(--muted); font-size: 0.75rem; text-align: center; margin-top: 28px; }
+.qb-footer {
+  color: var(--muted); font-size: 0.75rem; text-align: center; margin-top: 28px;
+  display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.share-wrap { position: relative; display: inline-flex; }
+.share-btn, .share-copy, .share-choice, .share-close {
+  font: inherit;
+}
+.share-btn {
+  border: 1px solid var(--border-strong); border-radius: 999px;
+  background: var(--card); color: var(--fg-2);
+  padding: 5px 12px; cursor: pointer;
+}
+.share-btn:hover { border-color: var(--accent); color: var(--accent); }
+.share-panel {
+  position: absolute; left: 50%; bottom: calc(100% + 10px); transform: translateX(-50%);
+  width: min(360px, calc(100vw - 28px));
+  background: var(--card); color: var(--fg);
+  border: 1px solid var(--border-strong); border-radius: 12px;
+  box-shadow: var(--shadow-lift);
+  padding: 16px; text-align: left; z-index: 45;
+}
+.share-close {
+  position: absolute; top: 8px; right: 8px;
+  border: 0; background: transparent; color: var(--muted);
+  cursor: pointer; font-size: 1.1rem; line-height: 1;
+}
+.share-title { font-weight: 650; font-size: 0.95rem; margin-right: 24px; }
+.share-desc { color: var(--muted); font-size: 0.78rem; margin: 4px 20px 12px 0; }
+.share-choice {
+  width: 100%; display: flex; flex-direction: column; gap: 2px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg-sunken); color: var(--fg);
+  padding: 10px 12px; margin-top: 8px; cursor: pointer; text-align: left;
+}
+.share-choice:hover { border-color: var(--accent); }
+.share-choice-title { font-weight: 650; }
+.share-choice-sub { color: var(--muted); font-size: 0.76rem; }
+.share-result { margin-top: 12px; color: var(--fg-2); font-size: 0.78rem; overflow-wrap: anywhere; }
+.share-ready { color: var(--ok); font-weight: 650; margin-bottom: 4px; }
+.share-url { color: var(--accent); display: block; margin-bottom: 8px; }
+.share-copy {
+  border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-fg);
+  padding: 7px 12px; cursor: pointer; font-weight: 650;
+}
+.share-mode { color: var(--fg-2); }
+.access-note {
+  color: var(--fg-2); background: var(--accent-soft);
+  border-radius: 10px; padding: 10px 14px; font-size: 0.86rem;
+}
+.relay-review .ann-del,
+.relay-review .ann-edit { display: none !important; }
 
 @media (max-width: 480px) {
   .wrap { padding: 18px 12px 18px; }

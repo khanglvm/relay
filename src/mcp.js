@@ -1,8 +1,9 @@
 // mcp.js — relay as an MCP App (SEP-1865, extension "io.modelcontextprotocol/ui").
 //
-// `rly mcp` starts a zero-dependency MCP server over stdio. Register it with a
-// host that supports MCP Apps (Claude desktop/mobile, Codex, …) and relay's
-// boards render INLINE in the conversation instead of opening a browser tab:
+// `rly mcp` starts an MCP server over stdio with no npm runtime dependencies.
+// Register it with a host that supports MCP Apps (Claude desktop/mobile, Codex,
+// …) and relay's boards render INLINE in the conversation instead of opening a
+// browser tab:
 //
 //   • the server declares a UI resource  ui://relay/board  (text/html;profile=mcp-app)
 //   • the tools `relay_ask` / `relay_show` link to it via _meta.ui.resourceUri

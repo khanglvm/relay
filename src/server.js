@@ -96,7 +96,46 @@ function vendorPresent(file) {
   }
 }
 
-function buildPage(record, rev) {
+function cleanShareHost(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  let host = s;
+  try {
+    host = s.includes('://') ? new URL(s).hostname : s;
+  } catch {
+    host = s;
+  }
+  host = host.replace(/^https?:\/\//, '').split('/')[0].split(':')[0].trim();
+  if (!host || host === '127.0.0.1' || host === 'localhost') return null;
+  return host;
+}
+
+function isPrivateIpv4(address) {
+  if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(address)) return false;
+  const parts = address.split('.').map((n) => Number(n));
+  if (parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return false;
+  return (
+    parts[0] === 10 ||
+    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+    (parts[0] === 192 && parts[1] === 168)
+  );
+}
+
+function shareHost() {
+  const forced = cleanShareHost(process.env.RLY_SHARE_HOST);
+  if (forced) return forced;
+  const candidates = [];
+  const nets = os.networkInterfaces();
+  for (const list of Object.values(nets)) {
+    for (const net of list || []) {
+      if (!net || net.internal || net.family !== 'IPv4') continue;
+      candidates.push(net.address);
+    }
+  }
+  return candidates.find(isPrivateIpv4) || candidates[0] || null;
+}
+
+function buildPage(record, rev, { access = null, draftRev = 0 } = {}) {
   const html = fs.readFileSync(path.join(UI_DIR, 'index.html'), 'utf8');
   const css = readUi('style.css');
   const blocksCss = readUi('blocks.css');
@@ -136,7 +175,7 @@ function buildPage(record, rev) {
         updatedAt: record.draft.updatedAt || null,
       }
     : null;
-  const boot = { boardId: record.id, spec: clientSpec, prefill, pref: loadPref(), vendor, rev };
+  const boot = { boardId: record.id, spec: clientSpec, prefill, pref: loadPref(), vendor, rev, draftRev, access };
   const json = JSON.stringify(boot).replace(/</g, '\\u003c');
   return html
     .split('__TITLE__').join(escapeHtml(spec.title))
@@ -147,6 +186,14 @@ function buildPage(record, rev) {
     .split('/*__ANNOTATE_JS__*/').join(annotateJs)
     .split('/*__APP_JS__*/').join(appJs)
     .split('__BOOT_JSON__').join(json);
+}
+
+function buildLockedPage(title = 'Relay board') {
+  return '<!doctype html><html><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+    '<title>' + escapeHtml(title) + '</title>' +
+    '<style>body{margin:0;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#fcfbf9;color:#1c1b19;display:grid;min-height:100vh;place-items:center}.box{max-width:420px;padding:28px;text-align:center}.title{font-size:22px;font-weight:650;margin-bottom:8px}.sub{color:#57534e}</style>' +
+    '</head><body><div class="box"><div class="title">Share link not active</div><div class="sub">Ask the board owner to use Share and choose a permission before opening this board from another device.</div></div></body></html>';
 }
 
 // Validates + sanitizes one annotation's threaded replies. Keeps only
@@ -182,6 +229,50 @@ function sanitizeAnnotations(value) {
     out.push(clean);
   }
   return out;
+}
+
+function nextAnnotationId(existing, used) {
+  let max = 0;
+  for (const a of existing) {
+    const m = /^a(\d+)$/.exec(String(a && a.id || ''));
+    if (m) max = Math.max(max, Number.parseInt(m[1], 10) || 0);
+  }
+  let id;
+  do {
+    id = 'a' + (++max);
+  } while (used.has(id));
+  used.add(id);
+  return id;
+}
+
+function sameReply(a, b) {
+  return a && b && a.author === b.author && a.text === b.text && a.createdAt === b.createdAt;
+}
+
+function mergeReviewAnnotations(existingValue, incomingValue) {
+  const existing = sanitizeAnnotations(existingValue);
+  const incoming = sanitizeAnnotations(incomingValue);
+  const out = existing.map((a) => ({ ...a, replies: Array.isArray(a.replies) ? [...a.replies] : [] }));
+  const byId = new Map(out.map((a) => [String(a.id || ''), a]));
+  const used = new Set(out.map((a) => String(a.id || '')).filter(Boolean));
+  for (const ann of incoming) {
+    const id = String(ann.id || '');
+    const current = byId.get(id);
+    if (!current) {
+      const next = { ...ann, id: id && !used.has(id) ? id : nextAnnotationId(out, used) };
+      next.replies = Array.isArray(next.replies) ? next.replies : [];
+      out.push(next);
+      byId.set(next.id, next);
+      used.add(next.id);
+      continue;
+    }
+    const replies = Array.isArray(current.replies) ? current.replies : (current.replies = []);
+    for (const r of Array.isArray(ann.replies) ? ann.replies : []) {
+      if (replies.length >= 50) break;
+      if (!replies.some((x) => sameReply(x, r))) replies.push(r);
+    }
+  }
+  return out.slice(0, 500);
 }
 
 function limitString(v, max) {
@@ -390,12 +481,13 @@ function buildOpenAllowlist(spec, baseCwd) {
 // True when an Origin header (if present) belongs to this board's own server.
 // Same-origin fetches send no Origin or our own; a foreign Origin is a
 // cross-site POST and must not be allowed to open a local file.
-function sameOrigin(req, port) {
+function sameOrigin(req, port, extraHosts = []) {
   const origin = req.headers.origin;
   if (!origin) return true;
   try {
-    const h = new URL(origin).host;
-    return h === `127.0.0.1:${port}` || h === `localhost:${port}`;
+    const u = new URL(origin);
+    if (u.port !== String(port)) return false;
+    return new Set(['127.0.0.1', 'localhost', ...extraHosts.filter(Boolean)]).has(u.hostname);
   } catch {
     return false;
   }
@@ -606,7 +698,13 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
   // Mutation token: only `rly update` (which reads the running-file record)
   // can authenticate to POST /api/update. Never embedded in the page/boot.
   const token = crypto.randomBytes(16).toString('hex');
+  const shareTokens = {
+    collab: crypto.randomBytes(16).toString('hex'),
+    review: crypto.randomBytes(16).toString('hex'),
+  };
+  const activeShares = { collab: false, review: false };
   let rev = 1;
+  let draftRev = Number.isFinite(record.draftRev) ? record.draftRev : 0;
   let status = 'open';
   let finished = false;
   // Soft timeout: the board's time is up and a `timeout` result was handed back
@@ -616,6 +714,58 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
   let softTimedOut = false;
   // Latest client presence ping (null until the first ping arrives).
   let presence = null;
+  let actualPort = 0;
+  let url = '';
+  const advertisedHost = shareHost();
+  const accessFor = (req, reqUrl = null) => {
+    const host = String(req.headers.host || '').split(':')[0];
+    if (host === '127.0.0.1' || host === 'localhost') {
+      return {
+        role: 'owner',
+        canShare: true,
+        canSubmit: true,
+        canEditAnswers: true,
+        canComment: true,
+        canEditComments: true,
+        canDeleteComments: true,
+      };
+    }
+    const tokenValue = String(req.headers['x-relay-share-token'] || (reqUrl && reqUrl.searchParams.get('token')) || '');
+    if (activeShares.collab && tokenValue === shareTokens.collab) {
+      return {
+        role: 'collab',
+        token: shareTokens.collab,
+        canShare: false,
+        canSubmit: true,
+        canEditAnswers: true,
+        canComment: true,
+        canEditComments: true,
+        canDeleteComments: true,
+      };
+    }
+    if (activeShares.review && tokenValue === shareTokens.review) {
+      return {
+        role: 'review',
+        token: shareTokens.review,
+        canShare: false,
+        canSubmit: false,
+        canEditAnswers: false,
+        canComment: true,
+        canEditComments: false,
+        canDeleteComments: false,
+      };
+    }
+    return {
+      role: 'locked',
+      canShare: false,
+      canSubmit: false,
+      canEditAnswers: false,
+      canComment: false,
+      canEditComments: false,
+      canDeleteComments: false,
+    };
+  };
+  const shareUrlFor = (role) => advertisedHost ? `http://${advertisedHost}:${actualPort}/?share=${role}&token=${shareTokens[role]}` : null;
   let resolveDone;
   const done = new Promise((r) => {
     resolveDone = r;
@@ -627,11 +777,20 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
     const theme = reqUrl.searchParams.get('theme') === 'dark' ? 'dark' : 'light';
     try {
       if (req.method === 'GET' && pathname === '/') {
-        sendHtml(res, buildPage(record, rev));
+        const access = accessFor(req, reqUrl);
+        if (access.role === 'locked') {
+          sendHtml(res, buildLockedPage(record.spec.title));
+        } else {
+          sendHtml(res, buildPage(record, rev, { access, draftRev }));
+        }
       } else if (req.method === 'GET' && pathname === '/api/board') {
+        if (accessFor(req, reqUrl).role === 'locked') return sendJson(res, 403, { error: 'share link is not active' });
         sendJson(res, 200, { id: record.id, spec: record.spec, draft: record.draft, result: record.result });
       } else if (req.method === 'GET' && pathname === '/api/status') {
-        sendJson(res, 200, { status, rev, softTimedOut });
+        sendJson(res, 200, { status, rev, draftRev, softTimedOut });
+      } else if (req.method === 'GET' && pathname === '/api/draft') {
+        if (accessFor(req, reqUrl).role === 'locked') return sendJson(res, 403, { error: 'share link is not active' });
+        sendJson(res, 200, { draft: record.draft || null, draftRev });
       } else if (req.method === 'POST' && pathname === '/api/ping') {
         const body = JSON.parse((await readBody(req)) || '{}');
         // Validate body shape: visible/focused booleans, idleMs finite >= 0.
@@ -728,7 +887,9 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
       } else if (req.method === 'POST' && pathname === '/api/open') {
         // Open a board-referenced local file in the OS default app. Guarded by
         // a same-origin check + an allowlist of paths the board actually links.
-        if (!sameOrigin(req, actualPort)) return sendJson(res, 403, { error: 'cross-origin requests cannot open files' });
+        if (!sameOrigin(req, actualPort, [advertisedHost])) return sendJson(res, 403, { error: 'cross-origin requests cannot open files' });
+        const access = accessFor(req, reqUrl);
+        if (access.role !== 'owner' && access.role !== 'collab') return sendJson(res, 403, { error: 'this share cannot open local files' });
         const body = JSON.parse((await readBody(req)) || '{}');
         const raw = typeof body.path === 'string' ? body.path : '';
         if (!raw.trim()) return sendJson(res, 400, { error: 'missing "path"' });
@@ -748,18 +909,36 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         if (!openUrl(target)) return sendJson(res, 500, { error: 'could not open the file' });
         sendJson(res, 200, { ok: true, path: target, name: path.basename(target) });
       } else if (req.method === 'POST' && pathname === '/api/draft') {
+        const access = accessFor(req, reqUrl);
+        if (access.role === 'locked') return sendJson(res, 403, { error: 'share link is not active' });
         const body = JSON.parse((await readBody(req)) || '{}');
-        record.draft = {
-          answers: body.answers && typeof body.answers === 'object' ? body.answers : {},
-          comment: typeof body.comment === 'string' ? body.comment : '',
-          notes: body.notes && typeof body.notes === 'object' ? body.notes : {},
-          annotations: sanitizeAnnotations(body.annotations),
-          blockEdits: sanitizeBlockEdits(body.blockEdits),
-          updatedAt: new Date().toISOString(),
-        };
+        if (access.role === 'review') {
+          const current = record.draft && typeof record.draft === 'object' ? record.draft : {};
+          record.draft = {
+            answers: current.answers && typeof current.answers === 'object' ? current.answers : {},
+            comment: typeof current.comment === 'string' ? current.comment : '',
+            notes: current.notes && typeof current.notes === 'object' ? current.notes : {},
+            annotations: mergeReviewAnnotations(current.annotations, body.annotations),
+            blockEdits: current.blockEdits && typeof current.blockEdits === 'object' ? current.blockEdits : {},
+            updatedAt: new Date().toISOString(),
+          };
+        } else {
+          record.draft = {
+            answers: body.answers && typeof body.answers === 'object' ? body.answers : {},
+            comment: typeof body.comment === 'string' ? body.comment : '',
+            notes: body.notes && typeof body.notes === 'object' ? body.notes : {},
+            annotations: sanitizeAnnotations(body.annotations),
+            blockEdits: sanitizeBlockEdits(body.blockEdits),
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        record.draftRev = ++draftRev;
         saveBoard(record);
-        sendJson(res, 200, { ok: true });
+        sendJson(res, 200, { ok: true, draftRev });
       } else if (req.method === 'POST' && pathname === '/api/submit') {
+        const access = accessFor(req, reqUrl);
+        if (access.role === 'locked') return sendJson(res, 403, { error: 'share link is not active' });
+        if (!access.canSubmit) return sendJson(res, 403, { error: 'this share can comment only' });
         if (status !== 'open') return sendJson(res, 409, { error: 'board already finished' });
         const body = JSON.parse((await readBody(req)) || '{}');
         const answers = body.answers && typeof body.answers === 'object' ? body.answers : {};
@@ -774,6 +953,36 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
           annotations: sanitizeAnnotations(body.annotations),
           blockEdits: sanitizeBlockEdits(body.blockEdits),
         });
+      } else if (req.method === 'GET' && pathname === '/api/share') {
+        if (accessFor(req, reqUrl).role !== 'owner') return sendJson(res, 403, { error: 'only the board owner can manage sharing' });
+        const roles = {};
+        for (const role of ['collab', 'review']) {
+          roles[role] = {
+            active: activeShares[role] === true,
+            url: activeShares[role] === true ? shareUrlFor(role) : null,
+          };
+        }
+        sendJson(res, 200, { ok: true, roles });
+      } else if (req.method === 'POST' && pathname === '/api/share') {
+        if (accessFor(req, reqUrl).role !== 'owner') return sendJson(res, 403, { error: 'only the board owner can activate sharing' });
+        if (!advertisedHost) return sendJson(res, 400, { error: 'no LAN IPv4 address found for sharing' });
+        const body = JSON.parse((await readBody(req)) || '{}');
+        const role = body.role === 'review' ? 'review' : body.role === 'collab' ? 'collab' : null;
+        if (!role) return sendJson(res, 400, { error: 'role must be "collab" or "review"' });
+        activeShares[role] = true;
+        sendJson(res, 200, { ok: true, role, url: shareUrlFor(role) });
+      } else if (req.method === 'DELETE' && pathname === '/api/share') {
+        if (accessFor(req, reqUrl).role !== 'owner') return sendJson(res, 403, { error: 'only the board owner can manage sharing' });
+        const body = JSON.parse((await readBody(req)) || '{}');
+        const role = body.role === 'review' ? 'review' : body.role === 'collab' ? 'collab' : body.role === 'all' ? 'all' : null;
+        if (!role) return sendJson(res, 400, { error: 'role must be "collab", "review", or "all"' });
+        if (role === 'all') {
+          activeShares.collab = false;
+          activeShares.review = false;
+        } else {
+          activeShares[role] = false;
+        }
+        sendJson(res, 200, { ok: true, role, active: false });
       } else {
         sendJson(res, 404, { error: 'not found' });
       }
@@ -804,15 +1013,15 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         }
       };
       server.once('error', onErr);
-      server.listen(p, '127.0.0.1', () => {
+      server.listen(p, '0.0.0.0', () => {
         server.removeListener('error', onErr);
         resolve();
       });
     };
     bind(port, true);
   });
-  const actualPort = server.address().port;
-  const url = `http://127.0.0.1:${actualPort}/`;
+  actualPort = server.address().port;
+  url = `http://127.0.0.1:${actualPort}/`;
   // Remember the port this board last bound, so `rly rescue <id>` can re-serve
   // on the SAME port — letting a still-open (but disconnected) browser tab
   // reconnect to its relative /api/* URLs without the user touching anything.

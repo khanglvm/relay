@@ -71,6 +71,28 @@ Answers **autosave in real time** as the user fills the board — a page reload
 restores them, and a draft survives timeouts/cancellation (included in those
 results), so partial input is never lost.
 
+## Same-Wi-Fi sharing
+
+Browser boards are local-owner only by default. A same-Wi-Fi phone/tablet/other
+laptop gets a locked page until sharing is explicitly activated. The owner can
+click **Share** at the bottom of the board, or you can manage the same links for
+the user:
+
+```sh
+rly share b-xxxxx                         # list active share roles
+rly share b-xxxxx --role review           # reviewer: add comments only
+rly share b-xxxxx --role collab           # collaborator: edit/comment/submit
+rly share b-xxxxx --role review --revoke  # revoke one role
+rly share b-xxxxx --revoke --all          # revoke all active links
+```
+
+Use `review` unless the user explicitly wants the other device to submit as the
+owner. Reviewers cannot change answers, submit, edit comments, or delete
+comments; their autosaves merge new comments into the existing draft.
+Collaborators can edit answers, comment, open allowed local file links, and
+submit. Shared viewers refresh from the live draft when another viewer saves,
+deferred while someone is typing/commenting.
+
 ## Inline mode — relay as an MCP App (Claude & Codex apps)
 
 Everything above is the **CLI** surface (you run `rly` in a terminal and read

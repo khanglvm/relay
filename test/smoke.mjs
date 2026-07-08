@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = path.join(ROOT, 'bin', 'rly.js');
 const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'rly-test-'));
+const TEST_SHARE_HOST = '192.0.2.10';
 // A no-launch opener for POST /api/open: instead of the OS handler, log the
 // path it was asked to open so the test can assert it without launching apps.
 const OPEN_LOG = path.join(HOME, 'opened.log');
@@ -22,7 +23,7 @@ fs.chmodSync(OPENER, 0o755);
 // HOME points at the temp dir too, so anything resolved from os.homedir()
 // (skill dirs, the `rly mcp install` host-config paths) stays inside the
 // sandbox and never touches the real user's ~/.codex / ~/.claude.
-const ENV = { ...process.env, HOME, USERPROFILE: HOME, RLY_HOME: HOME, QUEST_BOARD_HOME: HOME, RLY_OPEN_CMD: OPENER };
+const ENV = { ...process.env, HOME, USERPROFILE: HOME, RLY_HOME: HOME, QUEST_BOARD_HOME: HOME, RLY_OPEN_CMD: OPENER, RLY_SHARE_HOST: TEST_SHARE_HOST };
 
 let passed = 0;
 function ok(cond, name) {
@@ -82,6 +83,37 @@ async function post(url, pathname, body) {
     body: JSON.stringify(body),
   });
   return res;
+}
+
+function requestViaHost(localUrl, pathname, { method = 'GET', host = TEST_SHARE_HOST, token = '', body = null, origin = '' } = {}) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(localUrl);
+    const payload = body === null ? null : JSON.stringify(body);
+    const headers = { host: `${host}:${u.port}` };
+    if (payload !== null) headers['content-type'] = 'application/json';
+    if (payload !== null) headers['content-length'] = Buffer.byteLength(payload);
+    if (token) headers['x-relay-share-token'] = token;
+    if (origin) headers.origin = origin;
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port: Number(u.port),
+      method,
+      path: pathname,
+      headers,
+    }, (res) => {
+      let raw = '';
+      res.setEncoding('utf8');
+      res.on('data', (d) => { raw += d; });
+      res.on('end', () => {
+        let json = null;
+        try { json = JSON.parse(raw); } catch {}
+        resolve({ status: res.statusCode, body: raw, json });
+      });
+    });
+    req.on('error', reject);
+    if (payload !== null) req.write(payload);
+    req.end();
+  });
 }
 
 const SPEC = {
@@ -1045,6 +1077,73 @@ console.log('23. file-link open endpoint');
 
   await post(url, '/api/submit', { answers: { ok: 'yes' } });
   await exited;
+}
+
+// ---------- 23b. same-Wi-Fi share activation + permissions ----------
+console.log('23b. share activation permissions');
+{
+  const { id, url, exited } = await spawnBlocking(['ask', '-q', 'Ship?::yesno', '--no-open', '--timeout', '60']);
+  const remoteLocked = await requestViaHost(url, '/api/board');
+  ok(remoteLocked.status === 403, 'remote board API without an activated share token → 403');
+  const lockedPage = await requestViaHost(url, '/');
+  ok(lockedPage.status === 200 && /Share link not active/.test(lockedPage.body), 'remote page without an activated share token shows the locked page');
+  const emptyShares = await run(['share', id]);
+  const emptyBody = JSON.parse(emptyShares.stdout);
+  ok(emptyShares.code === 0 && emptyBody.roles.review.active === false && emptyBody.roles.collab.active === false, 'rly share <id> lists inactive share roles');
+
+  const reviewShare = await run(['share', id, '--role', 'review']);
+  const reviewBody = JSON.parse(reviewShare.stdout);
+  ok(reviewShare.code === 0 && reviewBody.url.includes(`http://${TEST_SHARE_HOST}:`), 'agent can activate a reviewer share link on the LAN host');
+  const reviewUrl = new URL(reviewBody.url);
+  const reviewToken = reviewUrl.searchParams.get('token');
+  const reviewPage = await requestViaHost(url, reviewUrl.pathname + reviewUrl.search, { token: reviewToken });
+  ok(reviewPage.status === 200 && reviewPage.body.includes('"role":"review"') && reviewPage.body.includes('"canSubmit":false'), 'review link boots in comment-only mode');
+  const reviewSubmit = await requestViaHost(url, '/api/submit', {
+    method: 'POST',
+    token: reviewToken,
+    body: { answers: { q1: 'yes' } },
+    origin: `http://${TEST_SHARE_HOST}:${new URL(url).port}`,
+  });
+  ok(reviewSubmit.status === 403, 'reviewer share cannot submit');
+
+  await post(url, '/api/draft', {
+    answers: { q1: 'no' },
+    annotations: [{ id: 'a1', blockId: null, questionId: null, target: { kind: 'html-element', label: 'Title' }, text: 'keep me' }],
+  });
+  const reviewDraft = await requestViaHost(url, '/api/draft', {
+    method: 'POST',
+    token: reviewToken,
+    body: {
+      answers: { q1: 'yes' },
+      annotations: [{ id: 'a2', blockId: null, questionId: null, target: { kind: 'html-element', label: 'Title' }, text: 'review note' }],
+    },
+  });
+  ok(reviewDraft.status === 200 && reviewDraft.json?.draftRev >= 2, 'reviewer draft autosave is accepted for comments');
+  const draft = await (await fetch(new URL('/api/draft', url))).json();
+  ok(draft.draft.answers.q1 === 'no', 'reviewer draft cannot change selected answers');
+  ok(draft.draft.annotations.length === 2 && draft.draft.annotations.some((a) => a.text === 'keep me') && draft.draft.annotations.some((a) => a.text === 'review note'), 'reviewer draft adds comments without deleting existing comments');
+  const revokedReview = await run(['share', id, '--role', 'review', '--revoke']);
+  ok(revokedReview.code === 0 && JSON.parse(revokedReview.stdout).status === 'revoked', 'agent can revoke a reviewer share link');
+  const oldReview = await requestViaHost(url, '/api/draft', { method: 'POST', token: reviewToken, body: { annotations: [] } });
+  ok(oldReview.status === 403, 'revoked reviewer token stops working');
+
+  const collabShare = await run(['share', id, '--role', 'collab']);
+  const collabBody = JSON.parse(collabShare.stdout);
+  const collabUrl = new URL(collabBody.url);
+  const collabToken = collabUrl.searchParams.get('token');
+  const collabPage = await requestViaHost(url, collabUrl.pathname + collabUrl.search, { token: collabToken });
+  ok(collabPage.status === 200 && collabPage.body.includes('"role":"collab"') && collabPage.body.includes('"canSubmit":true'), 'collaborator link boots with edit/submit permission');
+  const collabSubmit = await requestViaHost(url, '/api/submit', {
+    method: 'POST',
+    token: collabToken,
+    body: { answers: { q1: 'yes' }, comment: '' },
+    origin: `http://${TEST_SHARE_HOST}:${new URL(url).port}`,
+  });
+  ok(collabSubmit.status === 200, 'collaborator share can submit as owner');
+  const done = await exited;
+  const result = JSON.parse(done.stdout);
+  ok(result.status === 'submitted' && result.answers.q1 === 'yes', 'collaborator submit returns through the normal result path');
+  void id;
 }
 
 // ---------- 24. code (codeFile + lang default) & diff blocks normalize ----------

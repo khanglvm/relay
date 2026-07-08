@@ -3,6 +3,16 @@
 
   const boot = JSON.parse(document.getElementById('boot').textContent);
   const spec = boot.spec;
+  const access = boot.access || {
+    role: 'owner',
+    canShare: true,
+    canSubmit: true,
+    canEditAnswers: true,
+    canComment: true,
+    canEditComments: true,
+    canDeleteComments: true,
+  };
+  if (access.role) document.documentElement.dataset.accessRole = access.role;
   const QS = spec.questions || [];
   const app = document.getElementById('app');
   const banner = document.getElementById('banner');
@@ -10,6 +20,11 @@
   // compares /api/status.rev to this and reloads the board when it advances
   // (an agent ran `rly update`).
   const bootRev = typeof boot.rev === 'number' ? boot.rev : null;
+  let seenDraftRev = typeof boot.draftRev === 'number' ? boot.draftRev : 0;
+
+  function authHeaders(extra = {}) {
+    return access.token ? { ...extra, 'x-relay-share-token': access.token } : extra;
+  }
 
   // ---------- helpers ----------
   function el(tag, attrs = {}, ...children) {
@@ -453,10 +468,12 @@
     try {
       const r = await fetch('/api/draft', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: authHeaders({ 'content-type': 'application/json' }),
         body: JSON.stringify(payload()),
       });
       if (!r.ok) throw new Error('draft rejected');
+      const body = await r.json().catch(() => null);
+      if (body && typeof body.draftRev === 'number') seenDraftRev = body.draftRev;
       saveFailures = 0;
       if (seq === saveSeq && saveEl && !submitted && !persistenceLost) saveEl.textContent = 'draft saved ✓';
     } catch {
@@ -513,6 +530,12 @@
   if (Annotate) {
     Annotate.init({
       initial: state.annotations,
+      permissions: {
+        add: access.canComment !== false,
+        edit: access.canEditComments !== false,
+        delete: access.canDeleteComments !== false,
+        reply: access.canComment !== false,
+      },
       onChange: (list) => {
         state.annotations = list;
         scheduleSave();
@@ -1019,6 +1042,10 @@
       sessionStorage.removeItem('relay-updated');
       showToast('Board updated by the agent');
     }
+    if (sessionStorage.getItem('relay-draft-updated') === '1') {
+      sessionStorage.removeItem('relay-draft-updated');
+      showToast('Board refreshed with shared changes');
+    }
   } catch {
     // sessionStorage may be unavailable (privacy mode) — non-fatal
   }
@@ -1099,8 +1126,112 @@
   saveEl = el('span', { class: 'savestate' }, '');
   const hint = el('span', { class: 'hint' },
     QS.length && spec.allowPartial ? 'Unanswered questions are returned as skipped.' : '');
-  app.append(el('div', { class: 'submitbar' }, submitBtn, hint, saveEl));
-  app.append(el('footer', { class: 'qb-footer' }, `relay · ${boot.boardId}`));
+  const submitbar = el('div', { class: 'submitbar' }, submitBtn, hint, saveEl);
+  app.append(submitbar);
+
+  function copyText(text, btn) {
+    const done = () => {
+      if (!btn) return;
+      const old = btn.textContent;
+      btn.textContent = 'Copied';
+      setTimeout(() => { btn.textContent = old; }, 1800);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => {});
+      return;
+    }
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.append(ta);
+    ta.select();
+    try { document.execCommand('copy'); done(); } catch {}
+    ta.remove();
+  }
+
+  function openSharePanel(host) {
+    const panel = el('div', { class: 'share-panel' },
+      el('div', { class: 'share-title' }, 'Share this board'),
+      el('div', { class: 'share-desc' }, 'Choose a permission. The link starts working only after you confirm.'),
+      el('button', { class: 'share-choice', type: 'button', 'data-role': 'collab' },
+        el('span', { class: 'share-choice-title' }, 'Collaborator'),
+        el('span', { class: 'share-choice-sub' }, 'Can edit answers, comment, and submit as owner.')
+      ),
+      el('button', { class: 'share-choice', type: 'button', 'data-role': 'review' },
+        el('span', { class: 'share-choice-title' }, 'Reviewer'),
+        el('span', { class: 'share-choice-sub' }, 'Can add comments only. No submit, answer edits, edit, or delete.')
+      ),
+      el('div', { class: 'share-result' })
+    );
+    const close = () => panel.remove();
+    const closeBtn = el('button', { class: 'share-close', type: 'button', 'aria-label': 'Close share panel' }, '×');
+    closeBtn.addEventListener('click', close);
+    panel.prepend(closeBtn);
+    const result = panel.querySelector('.share-result');
+    for (const btn of panel.querySelectorAll('.share-choice')) {
+      btn.addEventListener('click', async () => {
+        const role = btn.getAttribute('data-role');
+        const label = role === 'collab' ? 'collaborator' : 'reviewer';
+        if (!window.confirm(`Activate a ${label} link for same-Wi-Fi devices?`)) return;
+        btn.disabled = true;
+        result.textContent = 'Activating...';
+        try {
+          const res = await fetch('/api/share', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ role }),
+          });
+          const body = await res.json().catch(() => null);
+          if (!res.ok || !body || !body.url) throw new Error(body && body.error ? body.error : 'share failed');
+          const copy = el('button', { class: 'share-copy', type: 'button' }, 'Copy link');
+          copy.addEventListener('click', () => copyText(body.url, copy));
+          result.replaceChildren(
+            el('div', { class: 'share-ready' }, role === 'collab' ? 'Collaborator link active' : 'Reviewer link active'),
+            el('a', { class: 'share-url', href: body.url, target: '_blank', rel: 'noreferrer' }, body.url),
+            copy
+          );
+        } catch (err) {
+          result.textContent = err && err.message ? err.message : 'Could not activate sharing.';
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    }
+    host.append(panel);
+  }
+
+  function buildFooter() {
+    const footer = el('footer', { class: 'qb-footer' }, el('span', {}, `relay · ${boot.boardId}`));
+    if (access.canShare) {
+      const wrap = el('span', { class: 'share-wrap' });
+      const shareBtn = el('button', { class: 'share-btn', type: 'button' }, 'Share');
+      shareBtn.addEventListener('click', () => {
+        const existing = wrap.querySelector('.share-panel');
+        if (existing) existing.remove();
+        else openSharePanel(wrap);
+      });
+      wrap.append(shareBtn);
+      footer.append(wrap);
+    } else if (access.role === 'review') {
+      footer.append(el('span', { class: 'share-mode' }, 'reviewer · comments only'));
+    } else if (access.role === 'collab') {
+      footer.append(el('span', { class: 'share-mode' }, 'collaborator'));
+    }
+    return footer;
+  }
+
+  if (!access.canSubmit) {
+    submitbar.style.display = 'none';
+    app.append(el('div', { class: 'access-note' }, 'Reviewer mode: comments are saved live. Answers and submission are disabled.'));
+  }
+  if (!access.canEditAnswers) {
+    document.documentElement.classList.add('relay-review');
+    for (const node of app.querySelectorAll('.card input, .card textarea, .card button, .card select')) {
+      node.disabled = true;
+    }
+  }
+  app.append(buildFooter());
 
   // ---------- validation & submit ----------
   function validate() {
@@ -1154,7 +1285,7 @@
       try {
         res = await fetch('/api/submit', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: authHeaders({ 'content-type': 'application/json' }),
           body: JSON.stringify(payload()),
         });
       } catch (netErr) {
@@ -1364,6 +1495,23 @@
         }
         try {
           sessionStorage.setItem('relay-updated', '1');
+        } catch {
+          // sessionStorage may be unavailable — the reload still applies the update
+        }
+        location.reload();
+        return;
+      }
+      if (body && typeof body.draftRev === 'number' && body.draftRev > seenDraftRev && !submitted && !reloading) {
+        if (userIsComposing()) {
+          showNotice('Another viewer updated this board — it’ll refresh as soon as you finish typing.', 'info');
+          return;
+        }
+        reloading = true;
+        stopHeartbeat();
+        clearTimeout(saveTimer);
+        clearLocalDraft();
+        try {
+          sessionStorage.setItem('relay-draft-updated', '1');
         } catch {
           // sessionStorage may be unavailable — the reload still applies the update
         }

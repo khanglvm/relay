@@ -43,7 +43,7 @@ step, leaving any boards you have open untouched.
 relay also runs as an **MCP App** ([SEP-1865](https://modelcontextprotocol.io/seps/1865-mcp-apps-interactive-user-interfaces-for-mcp))
 — so the same board renders **inline, right in the conversation**, on Claude
 desktop **and mobile** and in Codex, no browser tab. `rly mcp` is a
-zero-dependency stdio MCP server; register it once and the agent gets two tools,
+stdio MCP server with no npm runtime dependencies; register it once and the agent gets two tools,
 `relay_ask` (collect decisions/feedback with real form controls) and
 `relay_show` (present a plan, diagram, diff, table, or prototype):
 
@@ -81,8 +81,9 @@ unchanged; pick whichever surface fits.
 | Feedback = another wall of text | Click any chart point, diagram node, table cell, or sentence to comment — the agent replies and the thread grows on the board |
 
 Everything autosaves in real time (drafts survive timeouts), multiple boards
-run at once, and the package has **zero runtime dependencies** — plain
-Node ≥ 18; Chart.js / Mermaid / Graphviz are vendored and lazy-loaded offline.
+run at once, and the package has **zero npm runtime dependencies** — plain
+Node ≥ 18. Browser-side Chart.js, Mermaid, and Viz.js assets are vendored in
+the package and lazy-loaded offline when a board actually needs them.
 
 ## Learn more
 
@@ -91,6 +92,7 @@ Node ≥ 18; Chart.js / Mermaid / Graphviz are vendored and lazy-loaded offline.
 | `rly help` | every command at a glance |
 | `rly git pick` / `rly git cherry-pick` | choose commit actions and rank the order directly on a board; add `--code` to cherry-pick with split code review and per-hunk Apply/Skip/Hold |
 | `rly git conflict [files…]` | auto-detect unmerged conflict files, or open specific local paths, and return resolved content in `result.blockEdits` |
+| `rly share <board-id>` | activate/list/revoke same-Wi-Fi reviewer or collaborator links for a running browser board |
 | `rly view <file.md> …` | open a quick read-only board that renders local markdown file(s), data files, or PDFs — library-free; great for plans, READMEs, reports, quotes |
 | `rly install --target <agent>` | write relay's rules into an agent's instruction file — `claude` `codex` `cursor` `copilot` `kiro` `windsurf` `cline` `gemini` `opencode` `droid` `agents`; `--all`, `--scope`, `--print`, `--list` |
 | `rly upgrade` | update the CLI **and** refresh the skill in one step (safe around open boards; `--dry-run`, `--cli-only`, `--skill-only`) |
@@ -102,14 +104,14 @@ Node ≥ 18; Chart.js / Mermaid / Graphviz are vendored and lazy-loaded offline.
 ## Development
 
 ```sh
-npm test     # zero-dep smoke tests (spawns real servers, fake-submits)
+npm test     # smoke tests with no external services (spawns real servers, fake-submits)
 ```
 
 ## Changelog
 
 ### 0.11.0 — render inline inside the Claude & Codex apps (MCP App)
 - **`rly mcp` — relay as an MCP App** ([SEP-1865](https://modelcontextprotocol.io/seps/1865-mcp-apps-interactive-user-interfaces-for-mcp),
-  extension `io.modelcontextprotocol/ui`). A zero-dependency stdio MCP server
+  extension `io.modelcontextprotocol/ui`). A stdio MCP server with no npm runtime dependencies
   that declares a `ui://relay/board` resource (`text/html;profile=mcp-app`) and
   two tools, **`relay_ask`** and **`relay_show`**, linked to it via
   `_meta.ui.resourceUri` (plus `openai/outputTemplate` for ChatGPT/Codex). The
@@ -172,7 +174,8 @@ npm test     # zero-dep smoke tests (spawns real servers, fake-submits)
 - **Durable drafts / rescue** — every autosave mirrors to `localStorage`; a
   board whose connection drops blocks further input instead of losing it, and
   `rly rescue <id>` re-serves on the same port so an open tab reconnects.
-- Still **zero runtime dependencies**, offline, and cross-platform.
+- Still **zero npm runtime dependencies**, offline, and cross-platform. Vendored
+  browser libraries are loaded only for boards that need them.
 
 ### 0.9.1
 - The board **intro renders as markdown** (bold/italic/code/links/lists).

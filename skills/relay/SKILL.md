@@ -174,6 +174,28 @@ Exit codes: 0 submitted · 2 timeout · 3 cancelled · 5 not found. On
 timeout/cancel the result still contains the autosaved `draft` of partial
 answers and any annotations written so far.
 
+## Same-Wi-Fi sharing
+
+Browser boards are local-owner only by default. A phone/tablet/other laptop on
+the same Wi-Fi gets a locked page until sharing is explicitly activated. The
+owner can click **Share** at the bottom of the board, or an agent can manage the
+same links with `rly share`:
+
+```sh
+rly share b-xxxxx                         # list active share roles
+rly share b-xxxxx --role review           # activate a reviewer link
+rly share b-xxxxx --role collab           # activate a collaborator link
+rly share b-xxxxx --role review --revoke  # revoke one role
+rly share b-xxxxx --revoke --all          # revoke all active share links
+```
+
+Use `review` when the other device should add comments only. Reviewers cannot
+change answers, submit, edit comments, or delete comments; their autosaves merge
+new comments into the existing draft. Use `collab` only when the user explicitly
+wants that device to act as the owner: collaborators can edit answers, comment,
+open allowed local file links, and submit. Shared viewers refresh from the live
+draft when another viewer saves, deferred while someone is typing/commenting.
+
 ## Minimal spec
 
 ```json
@@ -347,8 +369,9 @@ the option (and stays annotatable); the label row selects. Use per-option
 blocks whenever a question's choices have visual/example context; skip them
 for plainly textual options.
 
-Chart.js, Mermaid, and Graphviz are **vendored and lazy-loaded** — the base board
-stays dependency-free. PlantUML uses the public plantuml.com server by default;
+Chart.js, Mermaid, and Graphviz are **vendored and lazy-loaded** — the package
+has no npm runtime dependencies, but these browser assets are bundled for rich
+blocks. PlantUML uses the public plantuml.com server by default;
 pass `"server"` for a self-hosted instance. Legacy `"html"` / `"htmlFile"` /
 `"htmlHeight"` on root or questions are still accepted and normalised automatically.
 

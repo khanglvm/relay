@@ -33,7 +33,7 @@ const VALUED_FLAGS = new Set([
   'file', 'html', 'html-file', 'title', 'intro', 'timeout', 'port',
   'submit-label', 'height', 'limit', 'target', 'id', 'replies',
   'on-result', 'notify-cmd', 'idle-grace', 'scope', 'range',
-  'host', 'token', 'allow-origin',
+  'host', 'token', 'allow-origin', 'role',
 ]);
 
 function camel(key) {
@@ -779,6 +779,45 @@ async function cmdResult(args) {
   return 5;
 }
 
+async function cmdShare(args) {
+  const record = mustLoad(args._[0]);
+  const running = loadRunning(record.id);
+  if (!running || !isAlive(running.pid)) {
+    throw new CliError(`board "${record.id}" is not running. Use \`rly reopen ${record.id} --detach\` first.`, 5);
+  }
+  const role = args.all ? 'all' : args.role;
+  if (role !== undefined && !['collab', 'review', 'all'].includes(role)) {
+    throw new CliError('--role must be collab or review.', 4);
+  }
+  const shareUrl = new URL('/api/share', running.url);
+  let res;
+  try {
+    if (args.revoke) {
+      res = await fetch(shareUrl, {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ role: role || 'all' }),
+      });
+    } else if (role && role !== 'all') {
+      res = await fetch(shareUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ role }),
+      });
+    } else {
+      res = await fetch(shareUrl, { method: 'GET' });
+    }
+  } catch (err) {
+    throw new CliError(`could not reach board "${record.id}" at ${running.url}: ${String((err && err.message) || err)}`, 5);
+  }
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new CliError((body && body.error) || `share request failed with HTTP ${res.status}`, res.status === 400 ? 4 : 5);
+  }
+  printJson({ status: args.revoke ? 'revoked' : role && role !== 'all' ? 'active' : 'shares', boardId: record.id, ...body });
+  return 0;
+}
+
 function cmdList(args) {
   const running = listRunning();
   if (args.json) {
@@ -1056,6 +1095,10 @@ the user should view — put it in relay instead of printing it.**
 - Point the user at a file with a clickable local path in a markdown block; embed a
   screen recording with a \`video\` block; when answer choices are visual, give each
   option its own visual (\`options[].blocks\`) so the user picks by looking.
+- Same-Wi-Fi sharing is locked by default. When the user wants another device to
+  review or co-fill a running board, manage explicit links with \`rly share <id>\`:
+  \`--role review\` creates a comments-only reviewer link, \`--role collab\` creates
+  an edit/comment/submit link, and \`--revoke\` disables active links.
 - **There's a purpose-built component for most content — use the MOST SPECIFIC one,
   never plain prose when a block fits.** Blocks: \`table\` (sortable/filterable/CSV,
   load from .csv/.json), \`chart\`, \`kpi\` (stat cards), \`mermaid\`/\`graphviz\`/\`plantuml\`,
@@ -1561,6 +1604,11 @@ USAGE
                                       NB: also writes the FULL result to "resultFile" (first field) —
                                         read that file if your shell truncates stdout; never pipe to head/tail
   rly result <id>                     result/status now (includes live autosaved draft + presence while open)
+  rly share <id>                      list active same-Wi-Fi share links for a running board
+  rly share <id> --role review        activate a reviewer link (comments only)
+  rly share <id> --role collab        activate a collaborator link (edit/comment/submit)
+  rly share <id> --role review --revoke
+                                      revoke one share role; use --revoke --all to disable all roles
   rly list [--json]                   running boards
   rly open [id]                       re-open the browser tab of a running board
   rly reopen <id> [--replies f.json]  serve a saved board again, prefilled with saved answers
@@ -1644,6 +1692,8 @@ export async function main(argv) {
         return await cmdWait(parseArgs(rest));
       case 'result':
         return await cmdResult(parseArgs(rest));
+      case 'share':
+        return await cmdShare(parseArgs(rest));
       case 'list':
         return cmdList(parseArgs(rest));
       case 'open':

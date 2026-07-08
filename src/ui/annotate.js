@@ -114,6 +114,7 @@
   // Frozen by the host (e.g. relay's connection-lost block): suppress every way
   // to START a comment, so the user can't type feedback that won't be saved.
   let disabled = false;
+  let permissions = { add: true, edit: true, delete: true, reply: true };
   let badgeTimer = 0;
   let railOpen = false;
 
@@ -513,6 +514,7 @@
   try { delConfirmSkip = localStorage.getItem(DEL_SKIP_KEY) === '1'; } catch { /* sandbox: no storage */ }
 
   function requestDelete(id, after) {
+    if (!permissions.delete) return;
     const done = () => { removeAnnotation(id); if (after) after(); };
     if (delConfirmSkip) { done(); return; }
     showDeleteConfirm(done);
@@ -655,6 +657,7 @@
 
   // ---------- mutations ----------
   function addAnnotation(info, text) {
+    if (!permissions.add) return;
     annotations.push({
       id: 'a' + (++idCounter),
       questionId: info.questionId !== undefined ? info.questionId : null,
@@ -687,6 +690,7 @@
   // Append a user reply to a top-level annotation's thread (cap 50, like the
   // server). Empty text is ignored by callers.
   function addReply(id, text) {
+    if (!permissions.reply) return;
     const a = annotations.find((x) => x.id === id);
     if (!a) return;
     if (!Array.isArray(a.replies)) a.replies = [];
@@ -701,6 +705,7 @@
 
   // Edit a top-level comment's text in place (author edits their own comment).
   function editAnnotation(id, text) {
+    if (!permissions.edit) return;
     const a = annotations.find((x) => x.id === id);
     if (!a) return;
     const t = String(text).slice(0, 5000).trim();
@@ -710,6 +715,7 @@
   }
 
   function removeAnnotation(id) {
+    if (!permissions.delete) return;
     const i = annotations.findIndex((a) => a.id === id);
     if (i < 0) return;
     const removed = annotations[i];
@@ -844,11 +850,9 @@
   }
 
   // ---------- public API ----------
-  function init(opts = {}) {
-    ensureDom();
-    // Normalize threads: missing author -> 'user', missing replies -> [].
-    annotations = Array.isArray(opts.initial)
-      ? opts.initial.map((a) => ({
+  function normalizeList(value) {
+    return Array.isArray(value)
+      ? value.map((a) => ({
           ...a,
           author: a.author === 'agent' ? 'agent' : 'user',
           replies: Array.isArray(a.replies)
@@ -862,12 +866,28 @@
             : [],
         }))
       : [];
-    onChange = typeof opts.onChange === 'function' ? opts.onChange : null;
+  }
+
+  function resetCounter() {
     idCounter = 0;
     for (const a of annotations) {
       const m = /^a(\d+)$/.exec(String(a.id || ''));
       if (m) idCounter = Math.max(idCounter, parseInt(m[1], 10));
     }
+  }
+
+  function init(opts = {}) {
+    ensureDom();
+    // Normalize threads: missing author -> 'user', missing replies -> [].
+    annotations = normalizeList(opts.initial);
+    onChange = typeof opts.onChange === 'function' ? opts.onChange : null;
+    permissions = {
+      add: !(opts.permissions && opts.permissions.add === false),
+      edit: !(opts.permissions && opts.permissions.edit === false),
+      delete: !(opts.permissions && opts.permissions.delete === false),
+      reply: !(opts.permissions && opts.permissions.reply === false),
+    };
+    resetCounter();
     scheduleBadgeRefresh();
     renderSummaries();
     refreshRailChrome();
@@ -938,6 +958,14 @@
     return annotations.slice();
   }
 
+  function setList(next) {
+    annotations = normalizeList(next);
+    resetCounter();
+    scheduleBadgeRefresh();
+    renderSummaries();
+    refreshRailChrome();
+  }
+
   // True while the user is mid-comment: the popover is open, which hosts both
   // the "Add a comment" box and every thread's reply input. That text lives
   // only in the DOM until Save, so the board must not reload it away.
@@ -968,5 +996,5 @@
     renderSummaryInto(target);
   }
 
-  window.RelayAnnotate = { init, register, enableTextSelection, openExternal, list, renderSummary, onBadgeRefresh, teardown, isComposing, flushOpen, setDisabled };
+  window.RelayAnnotate = { init, register, enableTextSelection, openExternal, list, setList, renderSummary, onBadgeRefresh, teardown, isComposing, flushOpen, setDisabled };
 })();
