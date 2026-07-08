@@ -76,6 +76,7 @@ unchanged; pick whichever surface fits.
 | ASCII architecture art | Mermaid, Graphviz, PlantUML — zoomable, full-screen, even user-editable |
 | Numbers buried in prose | Charts and sortable tables; screenshots and HTML prototypes in a sandbox |
 | "Here's the diff — paste it in your editor" | Side-by-side **diff** blocks, syntax-highlighted **code**, **video** walkthroughs, and **file paths you click to open** in the default app |
+| "Which commits should I pick? Resolve this conflict manually." | `rly git pick` / `rly git cherry-pick` boards and color-coded `git-conflict` resolvers with ours/theirs/custom hunk choices |
 | "Type *done* when finished reviewing" | A Submit button; answers, notes, and inline comments returned as JSON |
 | Feedback = another wall of text | Click any chart point, diagram node, table cell, or sentence to comment — the agent replies and the thread grows on the board |
 
@@ -88,6 +89,8 @@ Node ≥ 18; Chart.js / Mermaid / Graphviz are vendored and lazy-loaded offline.
 | | |
 |---|---|
 | `rly help` | every command at a glance |
+| `rly git pick` / `rly git cherry-pick` | choose commit actions and rank the order directly on a board |
+| `rly git conflict [files…]` | auto-detect unmerged conflict files, or open specific local paths, and return resolved content in `result.blockEdits` |
 | `rly view <file.md> …` | open a quick read-only board that renders local markdown file(s), data files, or PDFs — library-free; great for plans, READMEs, reports, quotes |
 | `rly install --target <agent>` | write relay's rules into an agent's instruction file — `claude` `codex` `cursor` `copilot` `kiro` `windsurf` `cline` `gemini` `opencode` `droid` `agents`; `--all`, `--scope`, `--print`, `--list` |
 | `rly upgrade` | update the CLI **and** refresh the skill in one step (safe around open boards; `--dry-run`, `--cli-only`, `--skill-only`) |

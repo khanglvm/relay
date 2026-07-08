@@ -532,6 +532,12 @@
     scheduleSave();
   }
 
+  document.addEventListener('relay:block-edit', (e) => {
+    const d = e.detail || {};
+    if (!d.blockId) return;
+    onBlockEdit(d.blockId, d.value);
+  });
+
   // ctx for RelayBlocks.render — theme()/htmlSrc per the shared contract, plus
   // the editable-mermaid plumbing (edits map + onBlockEdit callback).
   function blockCtx(questionId) {

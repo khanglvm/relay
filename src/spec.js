@@ -41,7 +41,7 @@ const HTML_HEIGHT = { min: 100, max: 2400, boardDefault: 400, questionDefault: 3
 
 // Block heights clamp to the same window; defaults vary per block type.
 const BLOCK_HEIGHT = { min: 100, max: 2400 };
-export const BLOCK_TYPES = ['markdown', 'mermaid', 'graphviz', 'plantuml', 'chart', 'table', 'code', 'diff', 'video', 'pdf', 'html', 'image', 'palette', 'kpi', 'typography', 'compare'];
+export const BLOCK_TYPES = ['markdown', 'mermaid', 'graphviz', 'plantuml', 'chart', 'table', 'code', 'diff', 'git-conflict', 'video', 'pdf', 'html', 'image', 'palette', 'kpi', 'typography', 'compare'];
 const CHART_KINDS = ['bar', 'line', 'pie', 'doughnut', 'radar', 'scatter'];
 
 // code/diff blocks may load their text from a local file (like htmlFile). Caps
@@ -125,6 +125,103 @@ function readTextSource(block, inlineKey, fileKey, cwd, where) {
     return buf.toString('utf8');
   }
   return '';
+}
+
+function readAnyTextSource(block, inlineKeys, fileKeys, cwd, where, label) {
+  for (const key of inlineKeys) {
+    if (typeof block[key] === 'string' && block[key] !== '') return { text: block[key], sourceKey: key };
+  }
+  for (const key of fileKeys) {
+    if (typeof block[key] === 'string' && block[key].trim()) {
+      const p = path.resolve(cwd, block[key]);
+      let buf;
+      try {
+        buf = fs.readFileSync(p);
+      } catch {
+        throw new CliError(`${where}: cannot read ${label} "${block[key]}" (resolved: ${p})`);
+      }
+      if (buf.length > TEXT_FILE_MAX_BYTES) {
+        throw new CliError(`${where}: ${label} "${block[key]}" is ${(buf.length / 1024).toFixed(0)}KB — max ${TEXT_FILE_MAX_BYTES / 1024}KB.`);
+      }
+      return { text: buf.toString('utf8'), sourceKey: key, file: p };
+    }
+  }
+  return { text: '', sourceKey: '' };
+}
+
+function joinConflictLines(lines) {
+  return lines.join('\n');
+}
+
+function parseGitConflictContent(content, where) {
+  const lines = String(content || '').replace(/\r\n?/g, '\n').split('\n');
+  const parts = [];
+  const conflicts = [];
+  let textBuf = [];
+  const flushText = () => {
+    if (!textBuf.length) return;
+    parts.push({ type: 'text', text: joinConflictLines(textBuf) });
+    textBuf = [];
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const start = lines[i].match(/^<<<<<<<(?:\s+(.*))?$/);
+    if (!start) {
+      textBuf.push(lines[i]);
+      continue;
+    }
+
+    flushText();
+    const oursLabel = start[1] || 'ours';
+    const ours = [];
+    const base = [];
+    const theirs = [];
+    let baseLabel = '';
+    let theirsLabel = 'theirs';
+    let section = 'ours';
+    let closed = false;
+
+    for (i = i + 1; i < lines.length; i++) {
+      const line = lines[i];
+      const baseStart = line.match(/^\|\|\|\|\|\|\|(?:\s+(.*))?$/);
+      if (baseStart && section === 'ours') {
+        baseLabel = baseStart[1] || 'base';
+        section = 'base';
+        continue;
+      }
+      if (/^=======$/.test(line) && (section === 'ours' || section === 'base')) {
+        section = 'theirs';
+        continue;
+      }
+      const end = line.match(/^>>>>>>>(?:\s+(.*))?$/);
+      if (end && section === 'theirs') {
+        theirsLabel = end[1] || theirsLabel;
+        closed = true;
+        break;
+      }
+      if (section === 'ours') ours.push(line);
+      else if (section === 'base') base.push(line);
+      else theirs.push(line);
+    }
+
+    if (!closed) {
+      throw new CliError(`${where}: conflict marker starting at line ${conflicts.length + 1} is missing a matching >>>>>>> marker.`);
+    }
+    const id = `c${conflicts.length + 1}`;
+    conflicts.push({
+      id,
+      oursLabel,
+      theirsLabel,
+      ...(baseLabel ? { baseLabel } : {}),
+      ours: joinConflictLines(ours),
+      theirs: joinConflictLines(theirs),
+      ...(baseLabel ? { base: joinConflictLines(base) } : {}),
+    });
+    parts.push({ type: 'conflict', conflictId: id });
+  }
+
+  flushText();
+  return { conflicts, parts };
 }
 
 // Resolve an image source (shared by the `image` and `compare` blocks): an
@@ -397,6 +494,31 @@ function normalizeBlock(rawBlock, id, cwd, where) {
     if (rawBlock.filename !== undefined) block.filename = asStr(rawBlock.filename);
     const view = asStr(rawBlock.view).trim().toLowerCase();
     if (view === 'split' || view === 'unified') block.view = view;
+    if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
+    return block;
+  }
+
+  if (type === 'git-conflict') {
+    const src = readAnyTextSource(rawBlock, ['content', 'text'], ['file', 'path', 'src'], cwd, where, 'git conflict file');
+    if (!src.text.trim()) {
+      throw new CliError(`${where}: git-conflict block needs inline "content"/"text" or a readable local "file"/"path".`);
+    }
+    const parsed = parseGitConflictContent(src.text, where);
+    if (!parsed.conflicts.length) {
+      throw new CliError(`${where}: no git conflict markers found (expected <<<<<<<, =======, >>>>>>>).`);
+    }
+    const filename = asStr(rawBlock.filename ?? rawBlock.name ?? (src.file ? path.basename(src.file) : '')).trim();
+    const block = {
+      id,
+      type: 'git-conflict',
+      filename,
+      conflicts: parsed.conflicts,
+      parts: parsed.parts,
+    };
+    const lang = asStr(rawBlock.lang).trim() || (filename ? path.extname(filename).slice(1).toLowerCase() : '');
+    if (lang) block.lang = lang;
+    if (rawBlock.title !== undefined) block.title = asStr(rawBlock.title);
+    if (src.file) block.file = src.file;
     if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
     return block;
   }
@@ -905,14 +1027,18 @@ const BLOCK_SCHEMA = {
       mdFile: { type: 'string', description: 'markdown: path to a local .md file to load + render instead of inline "md" (e.g. view a README/plan/report). Resolved against the CWD. Quick view of one or more files: `rly view a.md b.md`.' },
       code: { type: 'string', description: 'mermaid: diagram source (e.g. "graph TD; A-->B"); plantuml: the @startuml…@enduml source; code: the source to display (syntax-highlighted with line numbers).' },
       codeFile: { type: 'string', description: 'code: path to a local source file to load + display instead of inline "code". Resolved against the CWD; lang defaults from the file extension.' },
-      filename: { type: 'string', description: 'code/diff: optional file name/path shown as a header label above the block.' },
+      filename: { type: 'string', description: 'code/diff/git-conflict: optional file name/path shown as a header label above the block.' },
       editable: { type: 'boolean', description: 'mermaid: when true, render an "Edit diagram" toggle so the user can edit the diagram source live. The edited source is returned in result.blockEdits[<blockId>].' },
       dot: { type: 'string', description: 'graphviz: DOT source (e.g. "digraph { a -> b }"). Rendered offline via vendored Viz.js; nodes and edges are individually commentable.' },
       server: { type: 'string', description: 'plantuml: PlantUML server base URL (http(s)). Defaults to https://www.plantuml.com/plantuml. Diagrams render via this server (needs network).' },
-      lang: { type: 'string', description: 'code/diff block: language hint for syntax highlighting (js, ts, py, go, rust, java, c, cpp, csharp, ruby, php, swift, kotlin, sql, yaml, json, sh, css, html, …).' },
+      lang: { type: 'string', description: 'code/diff/git-conflict block: language hint for syntax highlighting (js, ts, py, go, rust, java, c, cpp, csharp, ruby, php, swift, kotlin, sql, yaml, json, sh, css, html, …).' },
       diff: { type: 'string', description: 'diff: a unified diff (git diff / diff -u output) — rendered as a colored, line-numbered comparison with +added / −removed / context rows and file/hunk headers. No git needed; just write/paste the diff text.' },
       diffFile: { type: 'string', description: 'diff: path to a local file containing a unified diff (alternative to "diff"). Resolved against the CWD.' },
       view: { type: 'string', enum: ['unified', 'split'], description: 'diff: initial layout — "unified" (default, one column) or "split" (side-by-side old vs new). The viewer also has a live toggle either way.' },
+      content: { type: 'string', description: 'git-conflict: inline file content containing conflict markers (<<<<<<< / ======= / >>>>>>>). The board auto-detects each hunk and returns resolutions in result.blockEdits[blockId].' },
+      text: { type: 'string', description: 'git-conflict: alias for inline "content".' },
+      file: { type: 'string', description: 'git-conflict: local conflicted file path to load, parse, and resolve. Resolved against the CWD.' },
+      path: { type: 'string', description: 'git-conflict: alias for local conflicted file path.' },
       config: { type: 'object', description: 'chart: a full Chart.js config object.' },
       kind: { type: 'string', enum: CHART_KINDS, description: 'chart shorthand: chart kind (alternative to "config").' },
       labels: { type: 'array', description: 'chart shorthand: x-axis / category labels.' },
@@ -1053,7 +1179,7 @@ export const SPEC_SCHEMA = {
       type: 'object',
       readOnly: true,
       description:
-        'Returned in the result (not part of the input spec). A map blockId→edited mermaid source for any editable mermaid block the user changed. null when the user made no edits. Read result.blockEdits[<blockId>] for the user\'s edited diagram source.',
+        'Returned in the result (not part of the input spec). A map blockId→edited block payload. Editable mermaid blocks return edited source strings. git-conflict blocks return {type:"git-conflict-resolution", resolutions, content, resolved, filename, file}. null when the user made no edits.',
     },
   },
   anyOf: [{ required: ['questions'] }, { required: ['blocks'] }, { required: ['html'] }, { required: ['htmlFile'] }],

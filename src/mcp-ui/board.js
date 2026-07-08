@@ -396,6 +396,12 @@
       },
     };
   }
+  document.addEventListener('relay:block-edit', (e) => {
+    const d = e.detail || {};
+    if (!d.blockId) return;
+    if (d.value === null || d.value === undefined) delete state.blockEdits[d.blockId];
+    else state.blockEdits[d.blockId] = d.value;
+  });
   function renderBlocks(container, blocks, questionId) {
     if (!Array.isArray(blocks) || !blocks.length) return;
     const target = el('div', { class: 'blocks' });

@@ -32,7 +32,7 @@ const PKG_NAME = PKG_JSON.name; // e.g. "@khanglvm/relay" — the global package
 const VALUED_FLAGS = new Set([
   'file', 'html', 'html-file', 'title', 'intro', 'timeout', 'port',
   'submit-label', 'height', 'limit', 'target', 'id', 'replies',
-  'on-result', 'notify-cmd', 'idle-grace', 'scope',
+  'on-result', 'notify-cmd', 'idle-grace', 'scope', 'range',
   'host', 'token', 'allow-origin',
 ]);
 
@@ -277,6 +277,112 @@ async function cmdDiff(rest) {
   }
   const title = args.title || ('git diff' + (gitArgs.length ? ' ' + gitArgs.join(' ') : ''));
   const spec = normalizeSpec({ title, blocks: [{ type: 'diff', diff, view: args.split ? 'split' : 'unified' }] });
+  await assertSpecReady(spec);
+  const record = createBoard(spec);
+  return runOrDetach(record, args);
+}
+
+function runGit(args, message) {
+  const res = spawnSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  if (res.error) throw new CliError(`could not run git: ${res.error.message}. Is git installed and is this a repo?`);
+  if (res.status !== 0) {
+    const detail = (res.stderr || res.stdout || '').trim();
+    throw new CliError(`${message}: ${detail || `git ${args.join(' ')} exited ${res.status}`}`, res.status || 1);
+  }
+  return res.stdout || '';
+}
+
+function gitConflictPaths(explicitPaths) {
+  if (explicitPaths.length) return explicitPaths;
+  const out = runGit(['diff', '--name-only', '--diff-filter=U'], 'git conflict detection failed');
+  return out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+}
+
+function gitCommitRows(range, limit) {
+  const n = Math.max(1, Math.min(200, Number.parseInt(limit, 10) || 20));
+  const args = ['log', `-n${n}`, '--date=short', '--pretty=format:%H%x09%h%x09%ad%x09%an%x09%s'];
+  if (range) args.push(range);
+  return runGit(args, 'git log failed')
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => {
+      const [sha, short, date, author, ...subjectParts] = line.split('\t');
+      const subject = subjectParts.join('\t');
+      return { sha, short, date, author, subject };
+    })
+    .filter((r) => r.sha && r.short);
+}
+
+async function cmdGit(rest) {
+  const args = parseArgs(rest);
+  const modes = new Set(['pick', 'cherry-pick', 'cherrypick', 'conflict', 'conflicts', 'resolve']);
+  let mode = 'pick';
+  if (args._[0] && modes.has(args._[0])) mode = args._.shift();
+  if (mode === 'cherrypick') mode = 'cherry-pick';
+  if (mode === 'conflicts' || mode === 'resolve') mode = 'conflict';
+
+  const blocks = [];
+  const questions = [];
+
+  if (mode === 'pick' || mode === 'cherry-pick') {
+    const range = args.range || args._[0] || '';
+    const commits = gitCommitRows(range, args.limit);
+    if (!commits.length) throw new CliError(`git log${range ? ` ${range}` : ''} produced no commits to show.`);
+    blocks.push({
+      type: 'table',
+      columns: ['short', 'date', 'author', 'subject'],
+      rows: commits.map((c) => ({ short: c.short, date: c.date, author: c.author, subject: c.subject })),
+      sortable: true,
+      filterable: true,
+      exportable: true,
+    });
+    const options = commits.map((c) => ({
+      value: c.sha,
+      label: `${c.short} ${c.subject}`,
+      description: `${c.date} · ${c.author}`,
+    }));
+    questions.push({
+      id: 'commit_actions',
+      type: 'checklist',
+      label: mode === 'cherry-pick' ? 'Choose cherry-pick actions' : 'Choose commit actions',
+      description: 'Set only the commits you want the agent to act on.',
+      options,
+      statuses: mode === 'cherry-pick'
+        ? [{ value: 'cherry-pick', label: 'Cherry-pick', tone: 'ok' }, { value: 'skip', label: 'Skip', tone: 'muted' }, { value: 'hold', label: 'Hold', tone: 'warn' }]
+        : [{ value: 'pick', label: 'Pick', tone: 'ok' }, { value: 'cherry-pick', label: 'Cherry-pick', tone: 'warn' }, { value: 'drop', label: 'Drop', tone: 'bad' }],
+    });
+    questions.push({
+      id: 'commit_order',
+      type: 'rank',
+      label: mode === 'cherry-pick' ? 'Cherry-pick order' : 'Preferred commit order',
+      description: 'Drag or move commits into the order the agent should apply them.',
+      options,
+    });
+  }
+
+  const paths = mode === 'conflict' ? gitConflictPaths(args._) : gitConflictPaths([]);
+  for (const p of paths) {
+    let text = '';
+    try { text = fs.readFileSync(path.resolve(p), 'utf8'); } catch { /* normalizeSpec will report unreadable explicit files below */ }
+    if (!text || /<<<<<<<[\s\S]*=======[\s\S]*>>>>>>>/.test(text)) {
+      blocks.push({ type: 'git-conflict', path: p, filename: p });
+    }
+  }
+
+  if (mode === 'conflict' && !blocks.some((b) => b.type === 'git-conflict')) {
+    throw new CliError(args._.length
+      ? 'no conflict markers found in the provided file(s).'
+      : 'no unmerged git files with conflict markers were detected.');
+  }
+
+  const conflictCount = blocks.filter((b) => b.type === 'git-conflict').length;
+  const title = args.title || (mode === 'conflict'
+    ? `Resolve ${conflictCount} git conflict${conflictCount === 1 ? '' : 's'}`
+    : mode === 'cherry-pick' ? 'Cherry-pick commits' : 'Pick commits');
+  const intro = args.intro || (conflictCount
+    ? 'Resolve each conflict on the board. The submitted result includes result.blockEdits with per-hunk choices and a full resolved file preview for every conflict block.'
+    : 'Pick commit actions and order on the board. Submit returns the selected actions and rank order as JSON.');
+  const spec = normalizeSpec({ title, intro, blocks, questions, submitLabel: 'Submit git choices' });
   await assertSpecReady(spec);
   const record = createBoard(spec);
   return runOrDetach(record, args);
@@ -907,13 +1013,17 @@ the user should view — put it in relay instead of printing it.**
   diagram/chart/table/code/image/html blocks — never ASCII diagrams or walls of prose.
 - **"Show me the diff / git diff / these changes"** → \`rly diff\` (runs git diff →
   a diff board), or render diff text in a \`diff\` block — never paste a raw diff.
+- **Git pick/cherry-pick/conflict decisions** → \`rly git pick\`, \`rly git cherry-pick\`,
+  or \`rly git conflict [files]\`. Conflict boards can also be authored with a
+  \`git-conflict\` block from inline \`content\` or a local \`file\`/\`path\`; user
+  hunk choices come back in \`result.blockEdits[blockId]\` with resolved content.
 - Point the user at a file with a clickable local path in a markdown block; embed a
   screen recording with a \`video\` block; when answer choices are visual, give each
   option its own visual (\`options[].blocks\`) so the user picks by looking.
 - **There's a purpose-built component for most content — use the MOST SPECIFIC one,
   never plain prose when a block fits.** Blocks: \`table\` (sortable/filterable/CSV,
   load from .csv/.json), \`chart\`, \`kpi\` (stat cards), \`mermaid\`/\`graphviz\`/\`plantuml\`,
-  \`code\`, \`diff\`, \`image\` (+\`pins\`), \`compare\` (before/after), \`video\`, \`pdf\`, \`palette\`,
+  \`code\`, \`diff\`, \`git-conflict\`, \`image\` (+\`pins\`), \`compare\` (before/after), \`video\`, \`pdf\`, \`palette\`,
   \`typography\`, \`html\`. Question types: \`single\`/\`multi\`/\`yesno\`/\`scale\`/\`color\`/
   \`text\`/\`textarea\` plus \`rank\` (prioritize), \`allocate\` (split a budget), \`checklist\`
   (per-item sign-off). For a business user, reach for \`kpi\`+\`chart\`+\`table\` and
@@ -1403,6 +1513,10 @@ USAGE
                                        .pdf streams in an inline PDF viewer)
   rly diff [git args…]                run git diff and show it in a diff board (--split, --detach,
                                       --title; other args pass to git: rly diff --staged | HEAD~1 | -- path)
+  rly git pick [range]                board for choosing pick/cherry-pick/drop actions plus commit order
+  rly git cherry-pick [range]         board for choosing commits and cherry-pick order
+  rly git conflict [files…]           board for resolving conflict-marker files; with no files, auto-detects
+                                      unmerged git files and returns resolved content in result.blockEdits
   rly wait <id> [--timeout 3600]      block until board finishes, print result JSON
                                       --while-active [--idle-grace 180]: keep waiting past the deadline
                                         while the user is still viewing/focused & recently active
@@ -1479,6 +1593,8 @@ export async function main(argv) {
         return await cmdView(parseArgs(rest));
       case 'diff':
         return await cmdDiff(rest);
+      case 'git':
+        return await cmdGit(rest);
       case 'reopen':
         return await cmdReopen(parseArgs(rest));
       case 'rescue':

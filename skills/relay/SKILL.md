@@ -1,6 +1,6 @@
 ---
 name: relay
-description: "Collect user decisions & answers — choice, multi, yes-no, text, scale, rank (prioritize), checklist (sign-off), allocate (split a budget), color — and present plans, data, code, or designs with blocks: diagrams (mermaid/graphviz/plantuml), charts, KPI cards, tables (sortable/filterable/CSV, load .csv/.json), code, multi-file diffs, before/after compare, typography, palettes, video, images (click-to-pin), HTML — plus inline element comments and links that open a visual in a modal. Opens a browser board (or inline in Claude/Codex), returns JSON answers/notes/comments/annotations on Submit. Use PROACTIVELY over native ask tools (2+ answers), ASCII/prose for structures/metrics/designs, or printing a file/image/chart/diff the terminal can't render. A dedicated component exists for most content — use the most specific, don't fall back to prose. Triggers: ask the user, decisions, prioritize, sign-off, allocate, plan review, chart, metrics, table, view a CSV, before/after, git diff, markdown file. Skip single yes/no."
+description: "Collect user decisions & answers — choice, multi, yes-no, text, scale, rank, checklist, allocate, color — and present plans, data, code, git diffs/conflicts, designs, charts, tables, diagrams, images, PDFs, videos, HTML, palettes, typography, and file views on a browser or inline MCP board. Returns JSON answers/notes/comments/annotations/blockEdits on Submit. Use PROACTIVELY for 2+ questions, visual review, plans, metrics, tables, diffs, git pick/cherry-pick/conflict decisions, markdown files, or anything the terminal cannot render well. Use the most specific component instead of prose. Skip single yes/no."
 ---
 
 # relay (`rly`)
@@ -46,6 +46,7 @@ at — show it in a relay board instead of printing it.**
 | Gather requirements / plan approval / feedback round | **rly** |
 | Architecture or flow that benefits from a diagram | **rly** (mermaid block) |
 | "Show me the diff" / git diff / code changes / before-after | **rly** (`diff` block — run `git diff`, render it; never dump it in the terminal) |
+| Pick/cherry-pick commits or resolve conflict files | **rly git** (`rly git pick`, `rly git cherry-pick`, `rly git conflict`) |
 | A demo, screen recording or walkthrough | **rly** (`video` block) |
 | Point the user at a file to open (log, capture, report) | **rly** (a clickable local file-link in markdown) |
 | Let the user read a markdown file (README, plan, report) | **rly view file.md** (or a `markdown` block with `mdFile`) — never dump the file into the terminal |
@@ -83,6 +84,7 @@ priority call in a `rank` question — not in paragraphs. Unsure which exists? R
 | `plantuml` | UML (sequence / class / component) |
 | `code` | source / config / command output — highlighted, line numbers, hover-a-line to comment |
 | `diff` | code changes — colored unified/split, multi-file (`rly diff` builds the whole board) |
+| `git-conflict` | conflict-marker files — side-by-side ours/theirs/base with hunk choices; returns resolved content in `result.blockEdits[blockId]` |
 | `image` | screenshots / mockups / renders — zoom+pan; `pins:true` → click-to-drop point comments |
 | `compare` | a before/after pair — draggable divider |
 | `video` | a demo / screen recording / walkthrough |
@@ -283,6 +285,10 @@ single/multi question.
 // ^ a unified / `git diff` text rendered as a colored, line-numbered comparison
 //   (no git needed — just paste the diff). "view":"split" = side-by-side; the
 //   viewer also has a live Unified⇄Split toggle. "diffFile" loads it from a file.
+{ "type": "git-conflict", "file": "src/app.js" }
+{ "type": "git-conflict", "filename": "app.js", "content": "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> feature\n" }
+// ^ conflict markers rendered as a resolver: choose ours/theirs/both/custom per
+//   hunk. User choices + full resolved content return in result.blockEdits[blockId].
 { "type": "video",    "src": "https://youtu.be/dQw4w9WgXcQ", "title": "Demo walkthrough" }
 { "type": "video",    "src": "recordings/demo.mp4", "title": "Local capture", "height": 360 }
 // ^ YouTube/Vimeo URL embeds a player; an http(s) media URL or a local video

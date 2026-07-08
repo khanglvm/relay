@@ -12,7 +12,7 @@ walls of monospace text, or can't show it at all (a terminal can't draw a PNG).
 relay renders it in a real browser board. So whenever your output would read better
 than monospace — or is a file/visual the user should look at — show it in relay
 instead of printing it. Fast paths: `rly view file.md` (or `data.csv`), `rly diff`,
-or an `image`/`chart`/`table` block on a board.
+`rly git pick` / `rly git conflict`, or an `image`/`chart`/`table` block on a board.
 
 **Use relay even in plan mode** — for any clarifying or decision question (Claude
 Code / Codex), route it through a relay board, **not** the native
@@ -159,6 +159,24 @@ Show a git diff in one step (sugar — runs git diff, opens a diff board):
 ```sh
 rly diff --detach                     # working-tree diff (git args pass through:
 rly diff --staged --split             #   --staged, HEAD~1, -- path, …); --split = side-by-side
+```
+
+Pick/cherry-pick commits or resolve conflicts on a board:
+
+```sh
+rly git pick --limit 20               # checklist: pick/cherry-pick/drop + rank order
+rly git cherry-pick main..feature     # checklist: cherry-pick/skip/hold + rank order
+rly git conflict                      # auto-detect unmerged files with conflict markers
+rly git conflict src/app.js           # resolve a specific conflicted file
+```
+
+For authored boards, use a `git-conflict` block. It accepts inline conflict
+marker content or a local file path, auto-detects each hunk, and returns user
+choices plus the full resolved file in `result.blockEdits[blockId]`:
+
+```jsonc
+{ "type": "git-conflict", "file": "src/app.js" }
+{ "type": "git-conflict", "filename": "app.js", "content": "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> feature\n" }
 ```
 
 ## Board spec (JSON)

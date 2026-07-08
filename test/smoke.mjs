@@ -1082,6 +1082,71 @@ console.log('24. code & diff blocks');
   ok(noDiff.code === 4 && /diff block needs/.test(noDiff.stderr), 'diff block with empty diff → exit 4');
 }
 
+// ---------- 24b. git-conflict block + git board command ----------
+console.log('24b. git conflict blocks & git command');
+{
+  const conflictText = [
+    'const value = 1;',
+    '<<<<<<< HEAD',
+    'const label = "ours";',
+    '||||||| base',
+    'const label = "base";',
+    '=======',
+    'const label = "theirs";',
+    '>>>>>>> feature',
+    'export { label };',
+    '',
+  ].join('\n');
+  const conflictFile = path.join(HOME, 'conflicted.js');
+  fs.writeFileSync(conflictFile, conflictText);
+  const SPEC = {
+    title: 'Git conflict',
+    blocks: [
+      { type: 'git-conflict', content: conflictText, filename: 'inline.js' },
+      { type: 'git-conflict', path: conflictFile },
+    ],
+    questions: [{ id: 'ok', type: 'yesno', label: 'OK?' }],
+  };
+  const p = path.join(HOME, 'gitconf-spec.json');
+  fs.writeFileSync(p, JSON.stringify(SPEC));
+  const { url, exited } = await spawnBlocking(['ask', '--file', p, '--no-open', '--timeout', '60']);
+  const bb = (await (await fetch(new URL('/api/board', url))).json()).spec.blocks;
+  ok(bb[0].type === 'git-conflict' && bb[0].conflicts.length === 1 && bb[0].conflicts[0].base.includes('"base"'), 'git-conflict inline content parses ours/base/theirs');
+  ok(bb[1].type === 'git-conflict' && bb[1].file === conflictFile && bb[1].filename === 'conflicted.js', 'git-conflict local path resolves and carries file metadata');
+  await post(url, '/api/submit', {
+    answers: { ok: 'yes' },
+    blockEdits: {
+      b1: {
+        type: 'git-conflict-resolution',
+        filename: 'inline.js',
+        resolved: true,
+        resolutions: { c1: { choice: 'theirs', value: 'const label = "theirs";' } },
+        content: 'const label = "theirs";\n',
+      },
+    },
+  });
+  const done = await exited;
+  const result = JSON.parse(done.stdout);
+  ok(result.blockEdits?.b1?.type === 'git-conflict-resolution' && result.blockEdits.b1.resolutions.c1.choice === 'theirs',
+    'structured git-conflict blockEdits survive server sanitization');
+
+  const bad = await run(['ask', '--file', '-'], { input: JSON.stringify({ title: 'x', blocks: [{ type: 'git-conflict', content: 'no markers here' }] }) });
+  ok(bad.code === 4 && /no git conflict markers/.test(bad.stderr), 'git-conflict without markers → exit 4');
+
+  const c = await spawnBlocking(['git', 'conflict', conflictFile, '--no-open', '--timeout', '60']);
+  const cb = (await (await fetch(new URL('/api/board', c.url))).json()).spec.blocks;
+  ok(cb[0].type === 'git-conflict' && cb[0].conflicts[0].theirsLabel === 'feature', 'rly git conflict <file> builds a resolver board');
+  await post(c.url, '/api/submit', { blockEdits: {} });
+  await c.exited;
+
+  const g = await spawnBlocking(['git', 'pick', '--limit', '2', '--no-open', '--timeout', '60']);
+  const gs = (await (await fetch(new URL('/api/board', g.url))).json()).spec;
+  ok(gs.questions.some((q) => q.id === 'commit_actions' && q.type === 'checklist'), 'rly git pick creates commit action checklist');
+  ok(gs.questions.some((q) => q.id === 'commit_order' && q.type === 'rank'), 'rly git pick creates commit order rank control');
+  await post(g.url, '/api/submit', { answers: {} });
+  await g.exited;
+}
+
 // ---------- 25. video blocks: youtube embed, local stream (Range), URL passthrough ----------
 console.log('25. video blocks');
 {

@@ -260,6 +260,101 @@
 }
 .diff-file-chip:hover { color: var(--accent); border-color: var(--accent); }
 
+/* ---------- git conflict resolver ---------- */
+.gitconf {
+  border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  background: var(--card);
+}
+.gitconf-head {
+  display: flex; justify-content: space-between; gap: 12px; align-items: flex-start;
+  padding: 11px 12px; border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--card), var(--bg-sunken));
+}
+.gitconf-title {
+  font-weight: 750; color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.gitconf-file {
+  margin-top: 3px; color: var(--muted); font-size: 0.76rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+.gitconf-status {
+  flex: none; border: 1px solid rgba(188, 68, 52, 0.35);
+  background: rgba(188, 68, 52, 0.12); color: var(--danger);
+  border-radius: 999px; padding: 3px 9px; font-size: 0.74rem; font-weight: 700;
+}
+.gitconf-status.is-complete {
+  border-color: rgba(77, 138, 102, 0.42);
+  background: rgba(77, 138, 102, 0.14); color: var(--ok);
+}
+.gitconf-card { padding: 12px; border-bottom: 1px solid var(--border); }
+.gitconf-cardhead {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 9px;
+}
+.gitconf-badge {
+  font-size: 0.74rem; font-weight: 760; letter-spacing: 0;
+  color: var(--fg); background: var(--bg-sunken); border: 1px solid var(--border);
+  border-radius: 999px; padding: 3px 8px;
+}
+.gitconf-hint { color: var(--muted); font-size: 0.76rem; }
+.gitconf-choicebar { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 10px; }
+.gitconf-choice {
+  cursor: pointer; font: inherit; font-size: 0.76rem; font-weight: 700;
+  color: var(--fg-2); background: var(--bg-sunken);
+  border: 1px solid var(--border); border-radius: 7px; padding: 5px 9px;
+}
+.gitconf-choice:hover { border-color: var(--accent); color: var(--accent); }
+.gitconf-choice.sel {
+  border-color: var(--accent); color: var(--accent);
+  background: var(--accent-soft);
+}
+.gitconf-sides {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px; align-items: stretch;
+}
+.gitconf-side {
+  min-width: 0; border: 1px solid var(--border); border-radius: 8px;
+  overflow: hidden; background: var(--bg-sunken);
+}
+.gitconf-ours { border-color: rgba(188, 68, 52, 0.28); background: rgba(188, 68, 52, 0.06); }
+.gitconf-base { border-color: rgba(185, 145, 63, 0.32); background: rgba(185, 145, 63, 0.08); }
+.gitconf-theirs { border-color: rgba(77, 138, 102, 0.3); background: rgba(77, 138, 102, 0.07); }
+.gitconf-label {
+  padding: 5px 8px; border-bottom: 1px solid var(--border);
+  color: var(--fg-2); font-size: 0.72rem; font-weight: 760;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+.gitconf-pre, .gitconf-resolved {
+  margin: 0; padding: 9px 10px; overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem; line-height: 1.45; color: var(--fg);
+  white-space: pre;
+}
+.gitconf-pre code, .gitconf-resolved code { font: inherit; background: none; color: inherit; }
+.gitconf-custom {
+  display: none; width: 100%; box-sizing: border-box; margin-top: 10px;
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  background: var(--bg); color: var(--fg); padding: 9px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem; line-height: 1.45; resize: vertical;
+}
+.gitconf-body.is-custom .gitconf-custom { display: block; }
+.gitconf-preview { padding: 10px 12px; background: var(--bg-sunken); }
+.gitconf-preview summary {
+  cursor: pointer; color: var(--fg-2); font-weight: 720; font-size: 0.82rem;
+}
+.gitconf-resolved {
+  margin-top: 8px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card); max-height: 340px;
+}
+@media (max-width: 640px) {
+  .gitconf-head, .gitconf-cardhead { flex-direction: column; align-items: flex-start; }
+  .gitconf-sides { grid-template-columns: 1fr; }
+}
+
 /* clickable line-number gutter: hover a number to comment on that line */
 .blk-gutter-c { padding: 14px 0; }
 .blk-gutter-c .blk-gutterline {

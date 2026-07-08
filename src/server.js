@@ -184,9 +184,44 @@ function sanitizeAnnotations(value) {
   return out;
 }
 
+function limitString(v, max) {
+  return typeof v === 'string' ? v.slice(0, max) : '';
+}
+
+function sanitizeConflictResolution(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (value.type !== 'git-conflict-resolution') return null;
+  const out = {
+    type: 'git-conflict-resolution',
+    filename: limitString(value.filename, 500),
+    file: limitString(value.file, 1200),
+    resolved: value.resolved === true,
+    resolutions: {},
+    content: limitString(value.content, 512 * 1024),
+  };
+  const raw = value.resolutions && typeof value.resolutions === 'object' && !Array.isArray(value.resolutions)
+    ? value.resolutions
+    : {};
+  let n = 0;
+  for (const id of Object.keys(raw)) {
+    if (n >= 200) break;
+    const r = raw[id];
+    if (!r || typeof r !== 'object' || Array.isArray(r)) continue;
+    const choice = limitString(r.choice, 30);
+    if (!['ours', 'theirs', 'both', 'custom'].includes(choice)) continue;
+    out.resolutions[limitString(id, 80)] = {
+      choice,
+      value: limitString(r.value, 128 * 1024),
+    };
+    n++;
+  }
+  return Object.keys(out.resolutions).length ? out : null;
+}
+
 // Validates + sanitizes an incoming blockEdits map (from draft/submit).
-// Keeps only string-keyed entries with string values <= 20000 chars; caps at
-// 50 entries; drops invalid entries. Returns {} when nothing valid is present.
+// String values are editable Mermaid source. Structured git-conflict-resolution
+// values carry per-hunk choices plus resolved file content. Caps prevent a draft
+// from bloating board storage; invalid entries are dropped.
 function sanitizeBlockEdits(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
   const out = {};
@@ -195,8 +230,14 @@ function sanitizeBlockEdits(value) {
     if (n >= 50) break;
     if (typeof key !== 'string') continue;
     const v = value[key];
-    if (typeof v !== 'string' || v.length > 20000) continue;
-    out[key] = v;
+    if (typeof v === 'string') {
+      if (v.length > 20000) continue;
+      out[key] = v;
+    } else {
+      const edit = sanitizeConflictResolution(v);
+      if (!edit) continue;
+      out[key] = edit;
+    }
     n++;
   }
   return out;
