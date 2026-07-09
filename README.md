@@ -80,10 +80,11 @@ unchanged; pick whichever surface fits.
 | "Type *done* when finished reviewing" | A Submit button; answers, notes, and inline comments returned as JSON |
 | Feedback = another wall of text | Click any chart point, diagram node, table cell, or sentence to comment — the agent replies and the thread grows on the board |
 
-Everything autosaves in real time (drafts survive timeouts), multiple boards
-run at once, and the package has **zero npm runtime dependencies** — plain
-Node ≥ 18. Browser-side Chart.js, Mermaid, and Viz.js assets are vendored in
-the package and lazy-loaded offline when a board actually needs them.
+Everything autosaves in real time, detached board links keep serving after
+agent timeouts, multiple boards run at once, and the package has **zero npm
+runtime dependencies** — plain Node ≥ 18. Browser-side Chart.js, Mermaid, and
+Viz.js assets are vendored in the package and lazy-loaded offline when a board
+actually needs them.
 
 ## Learn more
 
@@ -171,9 +172,12 @@ npm test     # smoke tests with no external services (spawns real servers, fake-
   embedded in the payload.
 - **`pdf` block** — render local `.pdf` files or PDF URLs inline. Local PDFs
   stream from the board server and are never embedded in the page payload.
-- **Durable drafts / rescue** — every autosave mirrors to `localStorage`; a
-  board whose connection drops blocks further input instead of losing it, and
-  `rly rescue <id>` re-serves on the same port so an open tab reconnects.
+- **Durable boards / rescue** — detached boards keep serving after timeout
+  until Submit or `rly stop`; every autosave mirrors to `localStorage`; a board
+  whose connection drops blocks further input instead of losing it, and
+  `rly rescue <id>` re-serves on the same port so an open tab reconnects. Active
+  same-Wi-Fi share links stay tied to the board and survive a same-port re-serve
+  until revoked.
 - Still **zero npm runtime dependencies**, offline, and cross-platform. Vendored
   browser libraries are loaded only for boards that need them.
 
@@ -201,8 +205,8 @@ npm test     # smoke tests with no external services (spawns real servers, fake-
 - **Markdown blocks render GFM tables**; element comments moved to an
   Outline-style right sidebar with inline highlights on commented text.
 - **Seamless timeouts** — a detached board that runs past its deadline keeps
-  serving so you can still submit (it lands as `submitted`); the page shows a
-  calm note instead of disconnecting.
+  serving until Submit or explicit stop, so you can still submit (it lands as
+  `submitted`); the page shows a calm note instead of disconnecting.
 - **`rly upgrade`** — install the latest CLI and refresh the skill in one step.
 - Per-question notes are multi-line textboxes.
 

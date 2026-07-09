@@ -1084,6 +1084,9 @@ the user should view — put it in relay instead of printing it.**
   if it is still open and the user may continue, run \`rly wait\` again. Do not
   use \`--on-result\` as the primary Codex return path; normal Codex CLI sessions
   do not expose a portable inbound API that wakes the current agent turn.
+  Detached boards are durable: a board timeout hands the agent a \`timeout\`
+  result but keeps the same URL/port serving until Submit or \`rly stop\`. Do
+  not create a new board just because a wait timed out.
 - **A plan, structure, architecture, data, or prototype** → a relay board with
   diagram/chart/table/code/image/html blocks — never ASCII diagrams or walls of prose.
 - **"Show me the diff / git diff / these changes"** → \`rly diff\` (runs git diff →
@@ -1098,7 +1101,9 @@ the user should view — put it in relay instead of printing it.**
 - Same-Wi-Fi sharing is locked by default. When the user wants another device to
   review or co-fill a running board, manage explicit links with \`rly share <id>\`:
   \`--role review\` creates a comments-only reviewer link, \`--role collab\` creates
-  an edit/comment/submit link, and \`--revoke\` disables active links.
+  an edit/comment/submit link, and \`--revoke\` disables active links. Active
+  share links are durable across same-port \`rly reopen\`/\`rly rescue\` until
+  revoked.
 - **There's a purpose-built component for most content — use the MOST SPECIFIC one,
   never plain prose when a block fits.** Blocks: \`table\` (sortable/filterable/CSV,
   load from .csv/.json), \`chart\`, \`kpi\` (stat cards), \`mermaid\`/\`graphviz\`/\`plantuml\`,
@@ -1568,8 +1573,8 @@ async function cmdServeInternal(args) {
     open: args.open !== false,
     timeoutSec: args.timeout !== undefined ? Math.max(0, Number.parseInt(args.timeout, 10) || 0) : 1800,
     quiet: true,
-    // Detached board: timeout hands back to the agent but keeps serving so the
-    // user can keep commenting and still submit (seamless past the deadline).
+    // Detached board: timeout hands back to the agent but keeps the same
+    // URL/port serving until Submit or explicit stop.
     keepAliveOnTimeout: true,
   });
   await done;
@@ -1609,6 +1614,7 @@ USAGE
   rly share <id> --role collab        activate a collaborator link (edit/comment/submit)
   rly share <id> --role review --revoke
                                       revoke one share role; use --revoke --all to disable all roles
+                                      active links survive same-port reopen/rescue until revoked
   rly list [--json]                   running boards
   rly open [id]                       re-open the browser tab of a running board
   rly reopen <id> [--replies f.json]  serve a saved board again, prefilled with saved answers
@@ -1643,7 +1649,8 @@ COMMON FLAGS
 
 EXIT CODES   0 submitted/acknowledged · 2 timeout · 3 cancelled · 4 usage · 5 not found
 
-NOTES        answers & annotations autosave in real time (drafts survive timeout/cancel);
+NOTES        detached boards keep serving after timeout until Submit or stop;
+             answers & annotations autosave in real time (drafts survive timeout/cancel);
              submitting auto-closes the tab and unblocks the CLI.
 
 AI AGENTS    run \`rly agent\` for the complete machine-oriented guide.

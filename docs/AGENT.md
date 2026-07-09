@@ -75,8 +75,7 @@ results), so partial input is never lost.
 
 Browser boards are local-owner only by default. A same-Wi-Fi phone/tablet/other
 laptop gets a locked page until sharing is explicitly activated. The owner can
-click **Share** at the bottom of the board, or you can manage the same links for
-the user:
+click the topbar **Share** icon, or you can manage the same links for the user:
 
 ```sh
 rly share b-xxxxx                         # list active share roles
@@ -91,7 +90,8 @@ owner. Reviewers cannot change answers, submit, edit comments, or delete
 comments; their autosaves merge new comments into the existing draft.
 Collaborators can edit answers, comment, open allowed local file links, and
 submit. Shared viewers refresh from the live draft when another viewer saves,
-deferred while someone is typing/commenting.
+deferred while someone is typing/commenting. Active share links keep the same
+token across a same-port `rly reopen`/`rly rescue` until revoked.
 
 ## Inline mode — relay as an MCP App (Claude & Codex apps)
 
@@ -672,12 +672,13 @@ raising `--timeout`.
 For a **detached** board, the `timeout` deadline is *soft*: it hands you a
 `timeout` result (with the autosaved draft) so you regain control, but the
 server stays up and the board stays fully usable — the user can keep
-commenting and still hit Submit. The page tells them you stopped waiting and
-to prompt you afterward. So if you got a `timeout` and the user might still be
-working: re-check later with `rly result <id>` (its status flips to
-`submitted` once they finish), or pass `--on-result` so a late submit
-push-wakes you. A blocking `rly ask` (no `--detach`) still ends hard on
-timeout, since there's no separate waiter to hand back to.
+commenting and still hit Submit. It stays on the same port until Submit or an
+explicit `rly stop`, so don't reopen just because your wait timed out. The page
+tells them you stopped waiting and to prompt you afterward. So if you got a
+`timeout` and the user might still be working: re-check later with `rly result
+<id>` (its status flips to `submitted` once they finish), or pass `--on-result`
+so a late submit push-wakes you. A blocking `rly ask` (no `--detach`) still ends
+hard on timeout, since there's no separate waiter to hand back to.
 
 ## Push-wake — get notified instead of polling
 
@@ -745,7 +746,9 @@ rly rm <id> | --all      # delete saved board(s)
 ```
 
 Multiple boards can run at once (each gets its own port on 127.0.0.1).
-Storage lives in `~/.relay` (override with `RLY_HOME`).
+Detached boards are durable: they keep serving past timeout, `reopen`/`rescue`
+prefer the last port, and active same-Wi-Fi share links keep the same token until
+revoked. Storage lives in `~/.relay` (override with `RLY_HOME`).
 
 ## Live board mutation — `rly update`
 

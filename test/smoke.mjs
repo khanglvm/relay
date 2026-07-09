@@ -1150,6 +1150,36 @@ console.log('23b. share activation permissions');
   void id;
 }
 
+// ---------- 23c. durable boards keep their port + share links ----------
+console.log('23c. durable board lifecycle');
+{
+  const r = await run(['ask', '-q', 'Durable?::yesno', '--detach', '--no-open', '--timeout', '1']);
+  const info = JSON.parse(r.stdout);
+  ok(r.code === 0 && info.status === 'open', 'durable test board starts detached');
+  const reviewShare = await run(['share', info.boardId, '--role', 'review']);
+  const reviewBody = JSON.parse(reviewShare.stdout);
+  const reviewUrl = new URL(reviewBody.url);
+  const reviewToken = reviewUrl.searchParams.get('token');
+
+  await sleep(1400);
+  const statusAfterTimeout = await (await fetch(new URL('/api/status', info.url))).json();
+  ok(statusAfterTimeout.softTimedOut === true, 'detached timeout is soft');
+  const oldShareAfterTimeout = await requestViaHost(info.url, reviewUrl.pathname + reviewUrl.search, { token: reviewToken });
+  ok(oldShareAfterTimeout.status === 200 && oldShareAfterTimeout.body.includes('"role":"review"'), 'reviewer share link keeps working after soft timeout');
+
+  const stop = await run(['stop', info.boardId]);
+  ok(stop.code === 0 && JSON.parse(stop.stdout).stopped[0].status === 'cancelled', 'durable test board stops cleanly');
+  const reopened = await run(['reopen', info.boardId, '--detach', '--no-open', '--timeout', '60']);
+  const reopenedInfo = JSON.parse(reopened.stdout);
+  ok(reopened.code === 0 && reopenedInfo.port === info.port, 'reopen reuses the original port');
+  const oldShareAfterReopen = await requestViaHost(reopenedInfo.url, reviewUrl.pathname + reviewUrl.search, { token: reviewToken });
+  ok(oldShareAfterReopen.status === 200 && oldShareAfterReopen.body.includes('"role":"review"') && oldShareAfterReopen.body.includes('"canSubmit":false'), 'old reviewer URL/token survives re-serving the board');
+
+  const serverSrc = fs.readFileSync(path.join(ROOT, 'src', 'server.js'), 'utf8');
+  ok(!serverSrc.includes('startIdleWatchdog') && !serverSrc.includes('IDLE_CLOSE_MS'), 'detached boards have no post-timeout idle close watchdog');
+  await post(reopenedInfo.url, '/api/submit', { answers: { q1: 'yes' } });
+}
+
 // ---------- 24. code (codeFile + lang default) & diff blocks normalize ----------
 console.log('24. code & diff blocks');
 {

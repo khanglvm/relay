@@ -698,11 +698,15 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
   // Mutation token: only `rly update` (which reads the running-file record)
   // can authenticate to POST /api/update. Never embedded in the page/boot.
   const token = crypto.randomBytes(16).toString('hex');
+  const savedShares = record.share && typeof record.share === 'object' ? record.share : {};
   const shareTokens = {
-    collab: crypto.randomBytes(16).toString('hex'),
-    review: crypto.randomBytes(16).toString('hex'),
+    collab: typeof savedShares.collab?.token === 'string' ? savedShares.collab.token : crypto.randomBytes(16).toString('hex'),
+    review: typeof savedShares.review?.token === 'string' ? savedShares.review.token : crypto.randomBytes(16).toString('hex'),
   };
-  const activeShares = { collab: false, review: false };
+  const activeShares = {
+    collab: savedShares.collab?.active === true,
+    review: savedShares.review?.active === true,
+  };
   let rev = 1;
   let draftRev = Number.isFinite(record.draftRev) ? record.draftRev : 0;
   let status = 'open';
@@ -766,6 +770,14 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
     };
   };
   const shareUrlFor = (role) => advertisedHost ? `http://${advertisedHost}:${actualPort}/?share=${role}&token=${shareTokens[role]}` : null;
+  const persistShareState = () => {
+    record.share = {
+      collab: { active: activeShares.collab === true, token: shareTokens.collab },
+      review: { active: activeShares.review === true, token: shareTokens.review },
+      updatedAt: new Date().toISOString(),
+    };
+    saveBoard(record);
+  };
   let resolveDone;
   const done = new Promise((r) => {
     resolveDone = r;
@@ -970,6 +982,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         const role = body.role === 'review' ? 'review' : body.role === 'collab' ? 'collab' : null;
         if (!role) return sendJson(res, 400, { error: 'role must be "collab" or "review"' });
         activeShares[role] = true;
+        persistShareState();
         sendJson(res, 200, { ok: true, role, url: shareUrlFor(role) });
       } else if (req.method === 'DELETE' && pathname === '/api/share') {
         if (accessFor(req, reqUrl).role !== 'owner') return sendJson(res, 403, { error: 'only the board owner can manage sharing' });
@@ -982,6 +995,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         } else {
           activeShares[role] = false;
         }
+        persistShareState();
         sendJson(res, 200, { ok: true, role, active: false });
       } else {
         sendJson(res, 404, { error: 'not found' });
@@ -1040,15 +1054,13 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
   });
 
   let timer = null;
-  let idleTimer = null;
   // The detached server's timeout is SOFT (keepAliveOnTimeout): at the deadline
   // we hand a `timeout` result back to the waiting agent (so `rly wait` returns
   // with the autosaved draft) but keep the server listening, so the user can
   // keep working and still submit. A late submit overwrites the result with
   // `submitted` and re-fires the push-wake; the board only truly closes on
-  // submit, an explicit stop, or once the user has clearly left (idle
-  // watchdog). A BLOCKING `rly ask` has no separate waiter to hand back to, so
-  // its timeout stays hard (close + resolve, exit 2).
+  // submit or an explicit stop. A BLOCKING `rly ask` has no separate waiter to
+  // hand back to, so its timeout stays hard (close + resolve, exit 2).
   if (timeoutSec > 0) {
     timer = setTimeout(keepAliveOnTimeout ? softTimeout : () => finish({ status: 'timeout' }), timeoutSec * 1000);
   }
@@ -1097,7 +1109,6 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
   function closeServer(result) {
     removeRunning(record.id);
     if (timer) clearTimeout(timer);
-    if (idleTimer) clearInterval(idleTimer);
     process.removeListener('SIGINT', onSignal);
     process.removeListener('SIGTERM', onSignal);
     setTimeout(() => {
@@ -1131,30 +1142,6 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
     softTimedOut = true;
     const result = persistResult({ status: 'timeout' });
     runOnResult(record.onResult, result, { quiet });
-    startIdleWatchdog();
-  }
-
-  // After a soft timeout, close the board for real once the user has clearly
-  // left (no presence ping for IDLE_CLOSE_MS) or a hard absolute cap is hit, so
-  // an abandoned board doesn't keep a server alive forever. Re-persists the
-  // latest draft as the final `timeout` result; no double push-wake.
-  function startIdleWatchdog() {
-    const IDLE_CLOSE_MS = 15 * 60 * 1000;
-    const HARD_CAP_MS = 6 * 60 * 60 * 1000;
-    const softAt = Date.now();
-    idleTimer = setInterval(() => {
-      if (finished) {
-        clearInterval(idleTimer);
-        return;
-      }
-      const lastSeen = presence ? presence.atMs : softAt;
-      if (Date.now() - lastSeen > IDLE_CLOSE_MS || Date.now() - softAt > HARD_CAP_MS) {
-        finished = true;
-        clearInterval(idleTimer);
-        closeServer(persistResult({ status: 'timeout' }));
-      }
-    }, 60 * 1000);
-    idleTimer.unref?.();
   }
 
   if (open) openUrl(url);

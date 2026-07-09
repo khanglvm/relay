@@ -135,6 +135,10 @@ rly wait b-xxxxx --timeout 550       # blocks until submit, prints result JSON
 rly result b-xxxxx                   # non-blocking peek (includes live draft)
 ```
 
+Detached boards are durable: their own timeout hands the agent a `timeout`
+result but keeps the same URL/port serving until Submit or `rly stop`. Do not
+create a new board just because a wait timed out.
+
 For long waits prefer presence-aware waiting over a huge --timeout:
 
 ```sh
@@ -178,8 +182,8 @@ answers and any annotations written so far.
 
 Browser boards are local-owner only by default. A phone/tablet/other laptop on
 the same Wi-Fi gets a locked page until sharing is explicitly activated. The
-owner can click **Share** at the bottom of the board, or an agent can manage the
-same links with `rly share`:
+owner can click the topbar **Share** icon, or an agent can manage the same links
+with `rly share`:
 
 ```sh
 rly share b-xxxxx                         # list active share roles
@@ -195,6 +199,8 @@ new comments into the existing draft. Use `collab` only when the user explicitly
 wants that device to act as the owner: collaborators can edit answers, comment,
 open allowed local file links, and submit. Shared viewers refresh from the live
 draft when another viewer saves, deferred while someone is typing/commenting.
+Active share links are durable too: they keep the same token across a same-port
+`rly reopen`/`rly rescue` until `rly share --revoke` disables them.
 
 ## Minimal spec
 
@@ -534,7 +540,8 @@ one yesno "Does this match your mental model?" + a textarea for notes.
 answers prefilled) · `rly reopen <id> --replies file.json` (add agent replies) ·
 `rly rescue <id>` (re-serve a dropped board on its ORIGINAL port) ·
 `rly list` / `rly open` / `rly stop <id>` · `rly rm <id>`.
-Multiple boards can run concurrently.
+Multiple boards can run concurrently. Detached boards keep serving past timeout;
+use `rly stop` when you actually want to close one.
 
 ### Continue a board — reconnect, NEVER recreate it
 
