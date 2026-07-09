@@ -1083,6 +1083,10 @@ console.log('23. file-link open endpoint');
 console.log('23b. share activation permissions');
 {
   const { id, url, exited } = await spawnBlocking(['ask', '-q', 'Ship?::yesno', '--no-open', '--timeout', '60']);
+  const ownerPage = await (await fetch(url)).text();
+  ok(ownerPage.includes('share-btn icon-btn') && ownerPage.includes('Share board'), 'owner page bundles the topbar icon share control');
+  ok(ownerPage.includes('banner-stack') && ownerPage.includes('banner-item'), 'board page bundles stacked topbar notices');
+  ok(!ownerPage.includes('window.confirm'), 'share activation works without a browser confirmation dialog');
   const remoteLocked = await requestViaHost(url, '/api/board');
   ok(remoteLocked.status === 403, 'remote board API without an activated share token → 403');
   const lockedPage = await requestViaHost(url, '/');

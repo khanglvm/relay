@@ -96,14 +96,21 @@ h1 {
 .intro.blk-markdown .md { color: var(--fg-2); }
 .intro.blk-markdown .md > :first-child { margin-top: 0; }
 .intro.blk-markdown .md > :last-child { margin-bottom: 0; }
-.theme-btn {
+.theme-btn,
+.icon-btn {
   background: transparent; color: var(--fg-2);
   border: 1px solid var(--border-strong); border-radius: 999px;
-  padding: 6px 14px; cursor: pointer; font-size: 0.8rem; flex: none;
+  cursor: pointer; font-size: 0.8rem; flex: none;
   font-family: var(--sans);
   transition: border-color 150ms var(--ease), color 150ms var(--ease);
 }
-.theme-btn:hover { border-color: var(--accent); color: var(--accent); }
+.theme-btn { padding: 6px 14px; }
+.icon-btn {
+  width: 32px; height: 32px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.theme-btn:hover,
+.icon-btn:hover { border-color: var(--accent); color: var(--accent); }
 /* header controls: font-size knob + theme toggle, grouped at the right */
 .qb-controls { display: flex; align-items: center; gap: 8px; flex: none; }
 .fs-ctrl { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 999px; overflow: hidden; }
@@ -317,10 +324,22 @@ textarea { min-height: 90px; resize: vertical; }
   z-index: 10; display: none;
   border-bottom: 1px solid transparent;
 }
+.banner-stack {
+  position: sticky; top: 0;
+  display: flex; flex-direction: column; gap: 0;
+  z-index: 10;
+}
+.banner-item {
+  text-align: center; padding: 9px 16px; font-size: 0.9rem;
+  line-height: 1.45;
+  border-bottom: 1px solid transparent;
+}
 /* Calm status notes (timeout hand-back / lost connection). Never the red error
    state — the board stays usable, so these only inform. */
-.banner.info { background: var(--accent-soft); color: var(--accent); }
-.banner.warn { background: var(--bg-sunken); color: var(--fg-2); border-bottom-color: var(--border-strong); }
+.banner.info,
+.banner-item.info { background: var(--accent-soft); color: var(--accent); }
+.banner.warn,
+.banner-item.warn { background: var(--bg-sunken); color: var(--fg-2); border-bottom-color: var(--border-strong); }
 
 /* Live-update toast: flagged after a `rly update` reload (see app.js).
    Fixed top-center, accent-soft bg, accent text; JS auto-removes it. */
@@ -349,14 +368,9 @@ textarea { min-height: 90px; resize: vertical; }
 .share-btn, .share-copy, .share-choice, .share-close {
   font: inherit;
 }
-.share-btn {
-  border: 1px solid var(--border-strong); border-radius: 999px;
-  background: var(--card); color: var(--fg-2);
-  padding: 5px 12px; cursor: pointer;
-}
-.share-btn:hover { border-color: var(--accent); color: var(--accent); }
+.share-btn { background: transparent; }
 .share-panel {
-  position: absolute; left: 50%; bottom: calc(100% + 10px); transform: translateX(-50%);
+  position: absolute; right: 0; top: calc(100% + 10px);
   width: min(360px, calc(100vw - 28px));
   background: var(--card); color: var(--fg);
   border: 1px solid var(--border-strong); border-radius: 12px;
@@ -386,20 +400,19 @@ textarea { min-height: 90px; resize: vertical; }
   border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-fg);
   padding: 7px 12px; cursor: pointer; font-weight: 650;
 }
-.share-mode { color: var(--fg-2); }
-.access-note {
-  color: var(--fg-2); background: var(--accent-soft);
-  border-radius: 10px; padding: 10px 14px; font-size: 0.86rem;
-}
 .relay-review .ann-del,
 .relay-review .ann-edit { display: none !important; }
 
 @media (max-width: 480px) {
   .wrap { padding: 18px 12px 18px; }
+  .qb-header { align-items: flex-start; }
+  .qb-controls { gap: 6px; }
   .card { padding: 16px; border-radius: 10px; }
   h1 { font-size: 1.35rem; }
   .seg button { padding: 10px 18px; }
   .scale button { width: 40px; height: 40px; }
+  .theme-btn { padding: 6px 10px; }
+  .share-panel { right: -46px; }
 }
 
 /* Persistence-lost notice: when the board can no longer save the user's input

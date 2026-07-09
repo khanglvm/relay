@@ -53,15 +53,19 @@
   // live connection dropped — used to tailor the post-submit message. The board
   // stays fully usable either way; we never disable Submit.
   let handedBack = false;
-  // Calm, persistent status note (reuses the #banner bar). tone 'info' is the
+  // Calm, persistent status notes (the #banner stack). tone 'info' is the
   // default neutral style; 'warn' is a softer amber, NOT the old red error.
-  // Shown at most once per message so the heartbeat can call it every tick.
+  // Each message is shown at most once so the heartbeat can call it every tick.
   const notesShown = new Set();
   function showNotice(message, tone) {
     if (notesShown.has(message)) return;
     notesShown.add(message);
-    banner.textContent = message;
-    banner.className = 'banner ' + (tone === 'warn' ? 'warn' : 'info');
+    if (banner.dataset.ready !== '1') {
+      banner.replaceChildren();
+      banner.dataset.ready = '1';
+    }
+    banner.className = 'banner-stack';
+    banner.append(el('div', { class: 'banner-item ' + (tone === 'warn' ? 'warn' : 'info') }, message));
     banner.style.display = 'block';
   }
 
@@ -1036,6 +1040,24 @@
   fsUp.addEventListener('click', () => setFontScale(fontScale + FS_STEP));
   const fsCtrl = el('div', { class: 'fs-ctrl' }, fsDown, fsUp);
 
+  function buildShareControl() {
+    if (!access.canShare) return null;
+    const wrap = el('span', { class: 'share-wrap' });
+    const shareBtn = el('button', { class: 'share-btn icon-btn', type: 'button', title: 'Share board', 'aria-label': 'Share board' });
+    shareBtn.innerHTML =
+      '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M6.5 9.5 9.5 11.2M9.5 4.8 6.5 6.5"/>' +
+      '<circle cx="4.5" cy="8" r="2"/><circle cx="11.5" cy="4" r="2"/><circle cx="11.5" cy="12" r="2"/>' +
+      '</svg>';
+    shareBtn.addEventListener('click', () => {
+      const existing = wrap.querySelector('.share-panel');
+      if (existing) existing.remove();
+      else openSharePanel(wrap);
+    });
+    wrap.append(shareBtn);
+    return wrap;
+  }
+
   // Just reloaded after a live `rly update`? Flag set before reload below.
   try {
     if (sessionStorage.getItem('relay-updated') === '1') {
@@ -1051,7 +1073,7 @@
   }
 
   const titleEl = el('h1', {}, spec.title);
-  app.append(el('header', { class: 'qb-header' }, titleEl, el('div', { class: 'qb-controls' }, fsCtrl, themeBtn)));
+  app.append(el('header', { class: 'qb-header' }, titleEl, el('div', { class: 'qb-controls' }, fsCtrl, buildShareControl(), themeBtn)));
   // The board title is commentable too: hovering it shows the pin, like the
   // intro and every other content element. (themeBtn stays out of it.)
   if (spec.title) {
@@ -1153,7 +1175,7 @@
   function openSharePanel(host) {
     const panel = el('div', { class: 'share-panel' },
       el('div', { class: 'share-title' }, 'Share this board'),
-      el('div', { class: 'share-desc' }, 'Choose a permission. The link starts working only after you confirm.'),
+      el('div', { class: 'share-desc' }, 'Choose a permission. The link starts working immediately.'),
       el('button', { class: 'share-choice', type: 'button', 'data-role': 'collab' },
         el('span', { class: 'share-choice-title' }, 'Collaborator'),
         el('span', { class: 'share-choice-sub' }, 'Can edit answers, comment, and submit as owner.')
@@ -1172,8 +1194,6 @@
     for (const btn of panel.querySelectorAll('.share-choice')) {
       btn.addEventListener('click', async () => {
         const role = btn.getAttribute('data-role');
-        const label = role === 'collab' ? 'collaborator' : 'reviewer';
-        if (!window.confirm(`Activate a ${label} link for same-Wi-Fi devices?`)) return;
         btn.disabled = true;
         result.textContent = 'Activating...';
         try {
@@ -1203,27 +1223,14 @@
 
   function buildFooter() {
     const footer = el('footer', { class: 'qb-footer' }, el('span', {}, `relay · ${boot.boardId}`));
-    if (access.canShare) {
-      const wrap = el('span', { class: 'share-wrap' });
-      const shareBtn = el('button', { class: 'share-btn', type: 'button' }, 'Share');
-      shareBtn.addEventListener('click', () => {
-        const existing = wrap.querySelector('.share-panel');
-        if (existing) existing.remove();
-        else openSharePanel(wrap);
-      });
-      wrap.append(shareBtn);
-      footer.append(wrap);
-    } else if (access.role === 'review') {
-      footer.append(el('span', { class: 'share-mode' }, 'reviewer · comments only'));
-    } else if (access.role === 'collab') {
-      footer.append(el('span', { class: 'share-mode' }, 'collaborator'));
-    }
     return footer;
   }
 
   if (!access.canSubmit) {
     submitbar.style.display = 'none';
-    app.append(el('div', { class: 'access-note' }, 'Reviewer mode: comments are saved live. Answers and submission are disabled.'));
+    showNotice('Reviewer mode: comments are saved live. Answers and submission are disabled.', 'info');
+  } else if (access.role === 'collab') {
+    showNotice('Editor mode: answers, comments, and submit are enabled for this shared board.', 'info');
   }
   if (!access.canEditAnswers) {
     document.documentElement.classList.add('relay-review');
