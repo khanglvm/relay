@@ -1,6 +1,6 @@
 {
   "name": "@khanglvm/relay",
-  "version": "0.14.2",
+  "version": "0.15.0",
   "description": "Question boards with rich blocks (markdown, charts, mermaid, tables, code, diffs, video, sandboxed HTML), clickable local file-links, and element-level annotations for AI coding agents (Claude Code, Codex, …): ask users structured questions, present interactive visuals, collect inline comments, read answers as JSON — in a local browser board OR rendered INLINE inside the Claude & Codex apps as an MCP App (SEP-1865).",
   "keywords": [
     "ai-agents",

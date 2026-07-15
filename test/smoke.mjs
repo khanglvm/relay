@@ -1,6 +1,6 @@
 // Zero-dependency smoke tests: spawn the real CLI, hit the real server,
 // fake-submit like the browser would, and assert on stdout JSON + exit codes.
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -51,9 +51,9 @@ function run(args, { input } = {}) {
 }
 
 // Spawn a blocking command, resolve once stderr announces the board URL.
-function spawnBlocking(args) {
+function spawnBlocking(args, { cwd = ROOT } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [BIN, ...args], { env: ENV });
+    const child = spawn(process.execPath, [BIN, ...args], { env: ENV, cwd });
     let stdout = '';
     let stderr = '';
     let announced = false;
@@ -85,7 +85,7 @@ async function post(url, pathname, body) {
   return res;
 }
 
-function requestViaHost(localUrl, pathname, { method = 'GET', host = TEST_SHARE_HOST, token = '', body = null, origin = '' } = {}) {
+function requestViaHost(localUrl, pathname, { method = 'GET', host = TEST_SHARE_HOST, token = '', reviewSession = '', cookie = '', body = null, origin = '' } = {}) {
   return new Promise((resolve, reject) => {
     const u = new URL(localUrl);
     const payload = body === null ? null : JSON.stringify(body);
@@ -93,6 +93,8 @@ function requestViaHost(localUrl, pathname, { method = 'GET', host = TEST_SHARE_
     if (payload !== null) headers['content-type'] = 'application/json';
     if (payload !== null) headers['content-length'] = Buffer.byteLength(payload);
     if (token) headers['x-relay-share-token'] = token;
+    if (reviewSession) headers['x-relay-review-session'] = reviewSession;
+    if (cookie) headers.cookie = cookie;
     if (origin) headers.origin = origin;
     const req = http.request({
       hostname: '127.0.0.1',
@@ -107,7 +109,7 @@ function requestViaHost(localUrl, pathname, { method = 'GET', host = TEST_SHARE_
       res.on('end', () => {
         let json = null;
         try { json = JSON.parse(raw); } catch {}
-        resolve({ status: res.statusCode, body: raw, json });
+        resolve({ status: res.statusCode, body: raw, json, headers: res.headers });
       });
     });
     req.on('error', reject);
@@ -1082,7 +1084,13 @@ console.log('23. file-link open endpoint');
 // ---------- 23b. same-Wi-Fi share activation + permissions ----------
 console.log('23b. share activation permissions');
 {
-  const { id, url, exited } = await spawnBlocking(['ask', '-q', 'Ship?::yesno', '--no-open', '--timeout', '60']);
+  const shareSpec = path.join(HOME, 'share-permissions.json');
+  fs.writeFileSync(shareSpec, JSON.stringify({
+    title: 'Share permissions',
+    blocks: [{ type: 'html', html: '<button id="shared-html-control">Shared HTML</button>' }],
+    questions: [{ id: 'q1', type: 'yesno', label: 'Ship?' }],
+  }));
+  const { id, url, exited } = await spawnBlocking(['ask', '--file', shareSpec, '--no-open', '--timeout', '60']);
   const ownerPage = await (await fetch(url)).text();
   ok(ownerPage.includes('share-btn icon-btn') && ownerPage.includes('Share board'), 'owner page bundles the topbar icon share control');
   ok(ownerPage.includes('banner-stack') && ownerPage.includes('banner-item'), 'board page bundles stacked topbar notices');
@@ -1093,7 +1101,13 @@ console.log('23b. share activation permissions');
   ok(lockedPage.status === 200 && /Share link not active/.test(lockedPage.body), 'remote page without an activated share token shows the locked page');
   const emptyShares = await run(['share', id]);
   const emptyBody = JSON.parse(emptyShares.stdout);
-  ok(emptyShares.code === 0 && emptyBody.roles.review.active === false && emptyBody.roles.collab.active === false, 'rly share <id> lists inactive share roles');
+  ok(emptyShares.code === 0 && emptyBody.roles.review.active === false && emptyBody.roles.collab.active === false && emptyBody.roles.read.active === false, 'rly share <id> lists inactive collab/review/read roles');
+
+  // Seed an owner draft. Reviewer input must never overwrite it.
+  await post(url, '/api/draft', {
+    answers: { q1: 'no' },
+    annotations: [{ id: 'a1', blockId: null, questionId: null, target: { kind: 'html-element', label: 'Title' }, text: 'owner note' }],
+  });
 
   const reviewShare = await run(['share', id, '--role', 'review']);
   const reviewBody = JSON.parse(reviewShare.stdout);
@@ -1101,31 +1115,75 @@ console.log('23b. share activation permissions');
   const reviewUrl = new URL(reviewBody.url);
   const reviewToken = reviewUrl.searchParams.get('token');
   const reviewPage = await requestViaHost(url, reviewUrl.pathname + reviewUrl.search, { token: reviewToken });
-  ok(reviewPage.status === 200 && reviewPage.body.includes('"role":"review"') && reviewPage.body.includes('"canSubmit":false'), 'review link boots in comment-only mode');
-  const reviewSubmit = await requestViaHost(url, '/api/submit', {
-    method: 'POST',
-    token: reviewToken,
-    body: { answers: { q1: 'yes' } },
-    origin: `http://${TEST_SHARE_HOST}:${new URL(url).port}`,
-  });
-  ok(reviewSubmit.status === 403, 'reviewer share cannot submit');
-
-  await post(url, '/api/draft', {
-    answers: { q1: 'no' },
-    annotations: [{ id: 'a1', blockId: null, questionId: null, target: { kind: 'html-element', label: 'Title' }, text: 'keep me' }],
-  });
+  const reviewCookie = String(reviewPage.headers['set-cookie']?.[0] || '').split(';')[0];
+  ok(reviewPage.status === 200 && reviewPage.body.includes('"role":"review"') && reviewPage.body.includes('"canSubmit":true') && reviewPage.body.includes('"canEditBlocks":false') && reviewPage.body.includes('"canFinalize":false'), 'review link boots with answer/comment/side-submit permission but cannot edit blocks or finalize');
+  ok(reviewCookie.startsWith('relay_review_session='), 'review link receives an isolated per-browser review session');
+  const reviewHtml = await requestViaHost(url, '/html/b/b1?token=' + encodeURIComponent(reviewToken));
+  ok(reviewHtml.status === 200 && reviewHtml.body.includes('relayKit.annotate.auto()'), 'reviewer custom-HTML iframe keeps comment affordances');
   const reviewDraft = await requestViaHost(url, '/api/draft', {
     method: 'POST',
     token: reviewToken,
+    cookie: reviewCookie,
     body: {
       answers: { q1: 'yes' },
       annotations: [{ id: 'a2', blockId: null, questionId: null, target: { kind: 'html-element', label: 'Title' }, text: 'review note' }],
+      blockEdits: { b1: '<button>reviewer rewrite</button>' },
     },
   });
-  ok(reviewDraft.status === 200 && reviewDraft.json?.draftRev >= 2, 'reviewer draft autosave is accepted for comments');
+  ok(reviewDraft.status === 200 && reviewDraft.json?.draftRev === 1, 'reviewer answers/comments autosave into an isolated side-review draft');
   const draft = await (await fetch(new URL('/api/draft', url))).json();
-  ok(draft.draft.answers.q1 === 'no', 'reviewer draft cannot change selected answers');
-  ok(draft.draft.annotations.length === 2 && draft.draft.annotations.some((a) => a.text === 'keep me') && draft.draft.annotations.some((a) => a.text === 'review note'), 'reviewer draft adds comments without deleting existing comments');
+  ok(draft.draft.answers.q1 === 'no' && draft.draft.annotations[0].text === 'owner note', 'reviewer draft does not overwrite the owner answer/comments');
+  const reviewerDraftRead = await requestViaHost(url, '/api/draft', { token: reviewToken, cookie: reviewCookie });
+  ok(reviewerDraftRead.json?.draft?.answers?.q1 === 'yes' && reviewerDraftRead.json?.draft?.annotations?.[0]?.text === 'review note', 'reviewer reload reads only its own side-review draft');
+  ok(Object.keys(reviewerDraftRead.json?.draft?.blockEdits || {}).length === 0, 'reviewer side drafts discard block edits outside the answer/comment role');
+  const reviewBoardRead = await requestViaHost(url, '/api/board', { token: reviewToken, cookie: reviewCookie });
+  ok(reviewBoardRead.json?.draft?.answers?.q1 === 'yes', 'reviewer board API never exposes the owner draft as its editable state');
+  await requestViaHost(url, '/api/ping', {
+    method: 'POST', token: reviewToken, cookie: reviewCookie,
+    body: { visible: true, focused: true, idleMs: 0 },
+  });
+  const reviewerPresence = await (await fetch(new URL('/api/presence', url))).json();
+  ok(reviewerPresence.seen === false, 'reviewer activity does not count as final-answer presence');
+
+  const reviewSubmit = await requestViaHost(url, '/api/submit', {
+    method: 'POST',
+    token: reviewToken,
+    cookie: reviewCookie,
+    body: { answers: { q1: 'yes' }, comment: 'side answer', annotations: reviewerDraftRead.json.draft.annotations, blockEdits: { b1: 'ignored' } },
+  });
+  ok(reviewSubmit.status === 200 && reviewSubmit.json?.sideReview === true && reviewSubmit.json?.final === false, 'reviewer submit is accepted explicitly as non-final side review');
+  const stillOpen = await (await fetch(new URL('/api/status', url))).json();
+  ok(stillOpen.status === 'open', 'side-review submit leaves the owner board open');
+  const sideWait = await run(['wait', id, '--timeout', '1']);
+  ok(sideWait.code === 2 && JSON.parse(sideWait.stdout).status === 'wait-timeout', 'side-review submit does not complete rly wait or proactively notify the agent');
+  const peek = await run(['result', id]);
+  const peekBody = JSON.parse(peek.stdout);
+  ok(peekBody.status === 'open' && peekBody.sideReviews.referenceOnly === true && peekBody.sideReviews.submissions[0].answers.q1 === 'yes', 'rly result exposes reference-only side reviews on demand while still open');
+  ok(Object.keys(peekBody.sideReviews.submissions[0].blockEdits || {}).length === 0, 'submitted side reviews discard block edits outside the answer/comment role');
+  ok(peekBody.draft.answers.q1 === 'no', 'rly result keeps owner draft separate from side reviews');
+
+  // A new browser/session gets its own review draft instead of clobbering the
+  // first reviewer's submitted response.
+  const secondSession = 'rv-test-second-session';
+  const secondDraft = await requestViaHost(url, '/api/draft', {
+    method: 'POST', token: reviewToken, reviewSession: secondSession,
+    body: { answers: { q1: 'no' }, comment: 'second reviewer' },
+  });
+  ok(secondDraft.status === 200 && secondDraft.json?.draftRev === 1, 'multiple reviewer sessions keep independent side-review drafts');
+
+  const readShare = await run(['share', id, '--role', 'read']);
+  const readBody = JSON.parse(readShare.stdout);
+  const readUrl = new URL(readBody.url);
+  const readToken = readUrl.searchParams.get('token');
+  const readPage = await requestViaHost(url, readUrl.pathname + readUrl.search, { token: readToken });
+  ok(readPage.status === 200 && readPage.body.includes('"role":"read"') && readPage.body.includes('"canComment":false') && readPage.body.includes('"canEditBlocks":false'), 'read-only link boots with all feedback/edit permissions disabled');
+  const readHtml = await requestViaHost(url, '/html/b/b1?token=' + encodeURIComponent(readToken));
+  ok(readHtml.status === 200 && !readHtml.body.includes('relayKit.annotate.auto()'), 'read-only custom-HTML iframe has no comment affordances');
+  const readDraft = await requestViaHost(url, '/api/draft', { method: 'POST', token: readToken, body: { answers: { q1: 'yes' } } });
+  const readSubmit = await requestViaHost(url, '/api/submit', { method: 'POST', token: readToken, body: { answers: { q1: 'yes' } } });
+  const readOpen = await requestViaHost(url, '/api/open', { method: 'POST', token: readToken, body: { path: '/tmp/nope' }, origin: `http://${TEST_SHARE_HOST}:${new URL(url).port}` });
+  ok(readDraft.status === 403 && readSubmit.status === 403 && readOpen.status === 403, 'read-only share cannot autosave, submit, or open local files');
+
   const revokedReview = await run(['share', id, '--role', 'review', '--revoke']);
   ok(revokedReview.code === 0 && JSON.parse(revokedReview.stdout).status === 'revoked', 'agent can revoke a reviewer share link');
   const oldReview = await requestViaHost(url, '/api/draft', { method: 'POST', token: reviewToken, body: { annotations: [] } });
@@ -1136,17 +1194,13 @@ console.log('23b. share activation permissions');
   const collabUrl = new URL(collabBody.url);
   const collabToken = collabUrl.searchParams.get('token');
   const collabPage = await requestViaHost(url, collabUrl.pathname + collabUrl.search, { token: collabToken });
-  ok(collabPage.status === 200 && collabPage.body.includes('"role":"collab"') && collabPage.body.includes('"canSubmit":true'), 'collaborator link boots with edit/submit permission');
-  const collabSubmit = await requestViaHost(url, '/api/submit', {
-    method: 'POST',
-    token: collabToken,
-    body: { answers: { q1: 'yes' }, comment: '' },
-    origin: `http://${TEST_SHARE_HOST}:${new URL(url).port}`,
-  });
-  ok(collabSubmit.status === 200, 'collaborator share can submit as owner');
+  ok(collabPage.status === 200 && collabPage.body.includes('"role":"collab"') && collabPage.body.includes('"canSubmit":true') && collabPage.body.includes('"canFinalize":true'), 'collaborator link retains owner-authorized final submit permission');
+
+  await post(url, '/api/submit', { answers: { q1: 'no' }, comment: 'owner final' });
   const done = await exited;
   const result = JSON.parse(done.stdout);
-  ok(result.status === 'submitted' && result.answers.q1 === 'yes', 'collaborator submit returns through the normal result path');
+  ok(result.status === 'submitted' && result.answers.q1 === 'no', 'owner final submit returns through the normal result path');
+  ok(result.sideReviews.referenceOnly === true && result.sideReviews.submissions[0].answers.q1 === 'yes', 'owner final result includes side reviews clearly marked as reference-only');
   void id;
 }
 
@@ -1160,12 +1214,22 @@ console.log('23c. durable board lifecycle');
   const reviewBody = JSON.parse(reviewShare.stdout);
   const reviewUrl = new URL(reviewBody.url);
   const reviewToken = reviewUrl.searchParams.get('token');
+  const readShare = await run(['share', info.boardId, '--role', 'read']);
+  const readBody = JSON.parse(readShare.stdout);
+  const readUrl = new URL(readBody.url);
+  const readToken = readUrl.searchParams.get('token');
 
   await sleep(1400);
   const statusAfterTimeout = await (await fetch(new URL('/api/status', info.url))).json();
   ok(statusAfterTimeout.softTimedOut === true, 'detached timeout is soft');
   const oldShareAfterTimeout = await requestViaHost(info.url, reviewUrl.pathname + reviewUrl.search, { token: reviewToken });
   ok(oldShareAfterTimeout.status === 200 && oldShareAfterTimeout.body.includes('"role":"review"'), 'reviewer share link keeps working after soft timeout');
+  await requestViaHost(info.url, '/api/submit', {
+    method: 'POST', token: reviewToken, reviewSession: 'rv-durable-submission', body: { answers: { q1: 'yes' }, comment: 'prior run' },
+  });
+  await requestViaHost(info.url, '/api/draft', {
+    method: 'POST', token: reviewToken, reviewSession: 'rv-durable-draft', body: { answers: { q1: 'no' } },
+  });
 
   const stop = await run(['stop', info.boardId]);
   ok(stop.code === 0 && JSON.parse(stop.stdout).stopped[0].status === 'cancelled', 'durable test board stops cleanly');
@@ -1173,7 +1237,11 @@ console.log('23c. durable board lifecycle');
   const reopenedInfo = JSON.parse(reopened.stdout);
   ok(reopened.code === 0 && reopenedInfo.port === info.port, 'reopen reuses the original port');
   const oldShareAfterReopen = await requestViaHost(reopenedInfo.url, reviewUrl.pathname + reviewUrl.search, { token: reviewToken });
-  ok(oldShareAfterReopen.status === 200 && oldShareAfterReopen.body.includes('"role":"review"') && oldShareAfterReopen.body.includes('"canSubmit":false'), 'old reviewer URL/token survives re-serving the board');
+  ok(oldShareAfterReopen.status === 200 && oldShareAfterReopen.body.includes('"role":"review"') && oldShareAfterReopen.body.includes('"canSubmit":true'), 'old reviewer URL/token survives re-serving the board');
+  const oldReadAfterReopen = await requestViaHost(reopenedInfo.url, readUrl.pathname + readUrl.search, { token: readToken });
+  ok(oldReadAfterReopen.status === 200 && oldReadAfterReopen.body.includes('"role":"read"') && oldReadAfterReopen.body.includes('"canSubmit":false'), 'read-only URL/token also survives same-port re-serving');
+  const freshReviewRound = JSON.parse((await run(['result', info.boardId])).stdout).sideReviews;
+  ok(freshReviewRound.submissions.length === 0 && Object.keys(freshReviewRound.drafts).length === 0, 'reopen archives prior side reviews and starts a fresh review round');
 
   const serverSrc = fs.readFileSync(path.join(ROOT, 'src', 'server.js'), 'utf8');
   ok(!serverSrc.includes('startIdleWatchdog') && !serverSrc.includes('IDLE_CLOSE_MS'), 'detached boards have no post-timeout idle close watchdog');
@@ -1310,14 +1378,32 @@ console.log('24b. git conflict blocks & git command');
   ok(reviewResult.blockEdits?.b1?.type === 'diff-review' && reviewResult.blockEdits.b1.hunks.h1.choice === 'apply',
     'structured diff-review blockEdits survive server sanitization');
 
-  const g = await spawnBlocking(['git', 'pick', '--limit', '2', '--no-open', '--timeout', '60']);
+  // Exercise git boards in a deterministic repository. GitHub Actions checks
+  // out a single commit by default, so relying on Relay's own history made the
+  // multi-commit rank assertion fail only in CI.
+  const gitRepo = path.join(HOME, 'git-board-repo');
+  fs.mkdirSync(gitRepo);
+  const git = (...args) => {
+    const result = spawnSync('git', args, { cwd: gitRepo, encoding: 'utf8' });
+    if (result.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${result.stderr}`);
+  };
+  git('init', '--quiet');
+  git('config', 'user.name', 'Relay Test');
+  git('config', 'user.email', 'relay-test@example.invalid');
+  for (let i = 1; i <= 3; i++) {
+    fs.writeFileSync(path.join(gitRepo, 'demo.txt'), `revision ${i}\n`);
+    git('add', 'demo.txt');
+    git('commit', '--quiet', '-m', `Fixture commit ${i}`);
+  }
+
+  const g = await spawnBlocking(['git', 'pick', '--limit', '2', '--no-open', '--timeout', '60'], { cwd: gitRepo });
   const gs = (await (await fetch(new URL('/api/board', g.url))).json()).spec;
   ok(gs.questions.some((q) => q.id === 'commit_actions' && q.type === 'checklist'), 'rly git pick creates commit action checklist');
   ok(gs.questions.some((q) => q.id === 'commit_order' && q.type === 'rank'), 'rly git pick creates commit order rank control');
   await post(g.url, '/api/submit', { answers: {} });
   await g.exited;
 
-  const cp = await spawnBlocking(['git', 'cherry-pick', '--code', '--limit', '1', '--no-open', '--timeout', '60']);
+  const cp = await spawnBlocking(['git', 'cherry-pick', '--code', '--limit', '1', '--no-open', '--timeout', '60'], { cwd: gitRepo });
   const cps = (await (await fetch(new URL('/api/board', cp.url))).json()).spec;
   ok(cps.blocks.some((b) => b.type === 'diff' && b.review === true && b.reviewKind === 'cherry-pick' && /diff --git/.test(b.diff || '')),
     'rly git cherry-pick --code creates split diff review blocks');
@@ -1443,6 +1529,9 @@ function mcpRoundtrip(messages) {
   const board = byId[5].result.contents[0];
   ok(board.mimeType === 'text/html;profile=mcp-app' && board.text.length > 1000, 'resources/read returns the board HTML with the profile mime');
   ok(board.text.includes('ui/message') && board.text.includes('RelayBlocks'), 'board HTML inlines the MCP client + the shared block renderer');
+  ok(board.text.includes('WHEEL_ZOOM_SENSITIVITY') && board.text.includes('requestAnimationFrame(tick)'), 'shared viewer bundles delta-based, animation-frame wheel zoom smoothing');
+  ok(board.text.includes('fluidFit: true') && board.text.includes("opts.fluidFit ? '100%'"), 'responsive charts retain live fit width instead of freezing their initial viewport size');
+  ok(!board.text.includes('e.deltaY < 0 ? 1.15 : 1 / 1.15'), 'shared viewer no longer compounds a fixed 15% jump per wheel event');
   ok(board.text.includes('ui/update-model-context'), 'board still syncs structured submission context when the host supports it');
   ok(board.text.indexOf('ui/message') < board.text.indexOf('ui/update-model-context'), 'inline submit sends a user message before the silent context update');
   ok(board.text.includes('ui/notifications/initialized'), 'board sends ui/notifications/initialized (the host withholds the spec until it does)');

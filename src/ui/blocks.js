@@ -734,7 +734,7 @@
 
   function renderDiff(block, ctx, blockId) {
     const files = splitDiffFiles(block.diff);
-    if (block.review === true) return renderDiffReview(block, ctx, blockId, files);
+    if (block.review === true && ctx.canEditBlocks !== false) return renderDiffReview(block, ctx, blockId, files);
     const named = files.filter((f) => f.name);
     const multi = named.length > 1;
     let view = block.view === 'split' ? 'split' : 'unified';
@@ -844,6 +844,7 @@
   }
 
   function renderGitConflict(block, ctx, blockId) {
+    const editable = ctx.canEditBlocks !== false;
     const conflicts = Array.isArray(block.conflicts) ? block.conflicts : [];
     const prior = ctx && ctx.edits && ctx.edits[blockId] && typeof ctx.edits[blockId] === 'object'
       ? ctx.edits[blockId]
@@ -891,6 +892,7 @@
         spellcheck: 'false',
         rows: '5',
         placeholder: 'Write the resolved content for this hunk',
+        disabled: editable ? null : '',
       });
       const buttons = [];
       const setChoice = (choice) => {
@@ -902,7 +904,7 @@
         emit();
       };
       const makeButton = (choice, label) => {
-        const b = el('button', { type: 'button', class: 'gitconf-choice' }, label);
+        const b = el('button', { type: 'button', class: 'gitconf-choice', disabled: editable ? null : '' }, label);
         b.addEventListener('mousedown', (e) => e.stopPropagation());
         b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); setChoice(choice); });
         buttons.push({ choice, el: b });
@@ -1312,11 +1314,14 @@
     const height = clampHeight(block.height, 320);
     const wrap = el('div', { class: 'blk-chart' });
     wrap.style.height = height + 'px';
+    const stage = el('div', { class: 'blk-chart-stage' });
     const canvas = el('canvas');
-    wrap.append(canvas);
+    stage.append(canvas);
+    wrap.append(stage);
 
     let chartInst = null;
     let chartBadges = [];
+    let naturalSize = null;
 
     const openFor = (target) => (anchor) =>
       ctx.annotate.openExternal({ blockId, questionId: ctx.questionId, target }, anchor);
@@ -1358,7 +1363,7 @@
           const badge = makeBadge(count, 'blk-chart-badge-pt', openFor(target));
           badge.style.left = (canvas.offsetLeft + pos.x) + 'px';
           badge.style.top = (canvas.offsetTop + pos.y) + 'px';
-          wrap.append(badge);
+          stage.append(badge);
           chartBadges.push(badge);
         }
       }
@@ -1370,9 +1375,6 @@
     }
 
     if (ctx.annotate && ctx.annotate.onBadgeRefresh) ctx.annotate.onBadgeRefresh(syncChartBadges);
-    // full-screen + whole-chart comment only; charts redraw responsively (no pixel zoom)
-    attachViewer(wrap, { zoomEl: null, label: 'chart', comment: wholeBlockComment(ctx, blockId, 'chart') });
-
     loadChart().then((Chart) => {
       let config = block.config
         ? JSON.parse(JSON.stringify(block.config))
@@ -1384,17 +1386,33 @@
       try {
         chartInst = new Chart(canvas.getContext('2d'), config);
         chartRegistry.push({ chart: chartInst });
+        // Chart.js stays responsive inside a stage whose dimensions the shared
+        // viewer controls. This gives charts the same bounded, eased wheel zoom
+        // as diagrams/images while retaining sharp redraws at every scale.
+        naturalSize = {
+          w: Math.max(1, Math.round(stage.getBoundingClientRect().width || wrap.clientWidth || 640)),
+          h: height,
+        };
+        attachViewer(wrap, {
+          zoomEl: stage,
+          natural: () => naturalSize,
+          fluidFit: true,
+          scaleHeight: true,
+          label: 'chart',
+          comment: wholeBlockComment(ctx, blockId, 'chart'),
+        });
       } catch (err) {
         wrap.replaceChildren(el('div', { class: 'blk-error' }, 'Chart error: ' + (err && err.message ? err.message : String(err))));
         return;
       }
       // hover -> pointer cursor on a hit
       canvas.addEventListener('mousemove', (e) => {
+        if (ctx.canComment === false) { canvas.style.cursor = 'default'; return; }
         const hits = chartInst.getElementsAtEventForMode(e, 'nearest', { intersect: true }, true);
         canvas.style.cursor = hits.length ? 'pointer' : 'default';
       });
       canvas.addEventListener('click', (e) => {
-        if (!ctx.annotate) return;
+        if (!ctx.annotate || ctx.canComment === false) return;
         const hits = chartInst.getElementsAtEventForMode(e, 'nearest', { intersect: true }, true);
         if (!hits.length) return;
         const { datasetIndex, index } = hits[0];
@@ -1449,7 +1467,7 @@
     entry.code = effectiveMermaidCode(entry);
     mermaidRegistry.push(entry);
 
-    if (!block.editable) {
+    if (!block.editable || ctx.canEditBlocks === false) {
       drawMermaid(entry);
       return container;
     }
@@ -1922,10 +1940,11 @@
   function enableImagePins(container, img, ctx, blockId, label) {
     const layer = el('div', { class: 'blk-imgpins' });
     container.append(layer);
-    img.classList.add('blk-img-pinnable');
+    if (ctx.canComment !== false) img.classList.add('blk-img-pinnable');
     let down = null; // {x,y} at pointerdown — used to reject drags (pan) as clicks
     img.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; });
     img.addEventListener('click', (e) => {
+      if (ctx.canComment === false) return;
       if (down && (Math.abs(e.clientX - down.x) > 4 || Math.abs(e.clientY - down.y) > 4)) { down = null; return; }
       const r = img.getBoundingClientRect();
       if (!r.width || !r.height) return;
@@ -2132,6 +2151,15 @@
   // full-screen content insets — must mirror the .blk-full padding in blocks.css
   // so the fit-to-screen scale clears the fixed toolbar + leaves a small margin.
   const FULL_PAD_X = 24, FULL_PAD_TOP = 44, FULL_PAD_BOTTOM = 24;
+  // Wheel/pinch zoom is delta-proportional and animated. The old fixed 15% jump
+  // ran once for every wheel event, so a high-frequency trackpad gesture could
+  // compound to several hundred percent almost instantly. Cap the contribution
+  // of one event (mouse wheels often report ±100px) and ease toward the gesture's
+  // accumulated target at most once per animation frame.
+  const WHEEL_ZOOM_SENSITIVITY = 0.003;
+  const WHEEL_ZOOM_MAX_DELTA = 20;
+  const WHEEL_ZOOM_EASE = 0.24;
+  const WHEEL_ZOOM_EPSILON = 0.001;
 
   // Toolbar icons: full-screen (4-corner expand) and a speech-bubble for the
   // "comment on the whole block" button. Zoom is both cmd/ctrl+wheel AND
@@ -2146,6 +2174,7 @@
   function exitFull() {
     if (!fullOpen) return;
     const c = fullOpen;
+    if (c._rlyStopWheelZoom) c._rlyStopWheelZoom();
     c.classList.remove('blk-full');
     document.body.classList.remove('blk-full-open');
     const btn = c.querySelector('.blk-tools .tool-full');
@@ -2164,6 +2193,7 @@
   function enterFull(container) {
     if (fullOpen === container) return;
     exitFull();
+    if (container._rlyStopWheelZoom) container._rlyStopWheelZoom();
     container.classList.add('blk-full');
     document.body.classList.add('blk-full-open');
     fullOpen = container;
@@ -2306,7 +2336,7 @@
   // with a block-scoped target ("Whole chart/diagram/…") so a user can comment
   // on the visual as a whole. null when annotation is off (omits the button).
   function wholeBlockComment(ctx, blockId, label) {
-    if (!ctx || !ctx.annotate) return null;
+    if (!ctx || !ctx.annotate || ctx.canComment === false) return null;
     const a = ctx.annotate;
     return {
       open: (anchorEl) =>
@@ -2352,6 +2382,10 @@
     // zoom level persists across re-renders; the wheel handler (bound once)
     // delegates through container._rlyZoom so it never holds a stale zoomEl
     if (container._rlyZ === undefined) container._rlyZ = null; // null = fit-to-width
+    // Fluid visuals (currently Chart.js) fit the live container width. Capture
+    // that rendered size only when leaving fit mode so zoom remains proportional
+    // without freezing later fit-mode viewport growth to an old width.
+    let fluidZoomNatural = null;
     const pct = el('span', { class: 'tool-pct' }, 'fit');
     function apply() {
       if (!zoomable) return;
@@ -2377,17 +2411,18 @@
         const scale = Math.min(availW / nat.w, availH / nat.h);
         target.style.maxWidth = 'none';
         target.style.width = Math.max(1, Math.round(nat.w * scale)) + 'px';
-        target.style.height = 'auto';
+        target.style.height = opts.scaleHeight ? Math.max(1, Math.round(nat.h * scale)) + 'px' : 'auto';
         pct.textContent = 'fit';
       } else if (z === null || !nat || !nat.w) {
         target.style.width = '100%';
-        target.style.maxWidth = nat && nat.w ? Math.ceil(nat.w) + 'px' : '100%';
-        target.style.height = 'auto';
+        target.style.maxWidth = opts.fluidFit ? '100%' : (nat && nat.w ? Math.ceil(nat.w) + 'px' : '100%');
+        target.style.height = opts.scaleHeight ? '100%' : 'auto';
         pct.textContent = 'fit';
       } else {
+        const zoomNat = fluidZoomNatural || nat;
         target.style.maxWidth = 'none';
-        target.style.width = Math.round(nat.w * z) + 'px';
-        target.style.height = 'auto';
+        target.style.width = Math.round(zoomNat.w * z) + 'px';
+        target.style.height = opts.scaleHeight && zoomNat && zoomNat.h ? Math.round(zoomNat.h * z) + 'px' : 'auto';
         pct.textContent = Math.round(z * 100) + '%';
       }
       window.dispatchEvent(new Event('resize')); // annotation badges reposition
@@ -2396,16 +2431,37 @@
     }
     function currentZ() {
       if (container._rlyZ !== null) return container._rlyZ;
+      if (opts.fluidFit) return 1;
       const nat = opts.natural();
       if (!nat || !nat.w) return 1;
       const shown = opts.zoomEl.getBoundingClientRect().width;
       return shown > 0 ? shown / nat.w : 1;
     }
     function setZoom(next) {
+      if (next === null) {
+        fluidZoomNatural = null;
+      } else if (opts.fluidFit && container._rlyZ === null) {
+        const shown = opts.zoomEl.getBoundingClientRect();
+        fluidZoomNatural = {
+          w: Math.max(1, shown.width),
+          h: Math.max(1, shown.height),
+        };
+      }
       container._rlyZ = next === null ? null : Math.min(8, Math.max(0.2, next));
       apply();
     }
     container._rlyZoom = { setZoom, currentZ, reapply: apply };
+
+    // Stop any in-flight wheel easing before an explicit toolbar/full-screen
+    // action. This prevents an older gesture target from overriding that action
+    // on the next animation frame.
+    if (!container._rlyStopWheelZoom) {
+      container._rlyStopWheelZoom = () => {
+        if (container._rlyWheelFrame) cancelAnimationFrame(container._rlyWheelFrame);
+        container._rlyWheelFrame = null;
+        container._rlyWheelTarget = null;
+      };
+    }
 
     const tools = el('div', { class: 'blk-tools' });
 
@@ -2435,18 +2491,53 @@
         const onWheel = (e) => {
           if (!(e.ctrlKey || e.metaKey) || !container._rlyZoom) return;
           e.preventDefault();
-          container._rlyZoom.setZoom(container._rlyZoom.currentZ() * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
+          // Normalize line/page-mode devices to pixel-like units, then cap a
+          // single event. Exponential scaling makes equal motion reversible and
+          // lets tiny trackpad deltas stay tiny instead of becoming fixed jumps.
+          const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1;
+          const delta = Math.max(-WHEEL_ZOOM_MAX_DELTA, Math.min(WHEEL_ZOOM_MAX_DELTA, e.deltaY * unit));
+          const base = Number.isFinite(container._rlyWheelTarget)
+            ? container._rlyWheelTarget
+            : container._rlyZoom.currentZ();
+          container._rlyWheelTarget = Math.min(8, Math.max(0.2, base * Math.exp(-delta * WHEEL_ZOOM_SENSITIVITY)));
+
+          // Respect reduced-motion while retaining the gentler delta-based step.
+          if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            container._rlyZoom.setZoom(container._rlyWheelTarget);
+            container._rlyWheelTarget = null;
+            return;
+          }
+          if (container._rlyWheelFrame) return; // coalesce bursty input to one rAF loop
+          const tick = () => {
+            const zoom = container._rlyZoom;
+            const target = container._rlyWheelTarget;
+            if (!zoom || !Number.isFinite(target)) {
+              container._rlyWheelFrame = null;
+              return;
+            }
+            const current = zoom.currentZ();
+            const gap = target - current;
+            if (Math.abs(gap) <= WHEEL_ZOOM_EPSILON) {
+              zoom.setZoom(target);
+              container._rlyWheelFrame = null;
+              container._rlyWheelTarget = null;
+              return;
+            }
+            zoom.setZoom(current + gap * WHEEL_ZOOM_EASE);
+            container._rlyWheelFrame = requestAnimationFrame(tick);
+          };
+          container._rlyWheelFrame = requestAnimationFrame(tick);
         };
         container.addEventListener('wheel', onWheel, { passive: false });
         container._rlyWheel = onWheel;
       }
       const zoomOut = el('button', { class: 'tool-zoom', type: 'button', title: 'Zoom out' }, '−');
       const zoomIn = el('button', { class: 'tool-zoom', type: 'button', title: 'Zoom in' }, '+');
-      zoomOut.addEventListener('click', (e) => { e.stopPropagation(); setZoom(currentZ() / 1.2); });
-      zoomIn.addEventListener('click', (e) => { e.stopPropagation(); setZoom(currentZ() * 1.2); });
+      zoomOut.addEventListener('click', (e) => { e.stopPropagation(); container._rlyStopWheelZoom(); setZoom(currentZ() / 1.2); });
+      zoomIn.addEventListener('click', (e) => { e.stopPropagation(); container._rlyStopWheelZoom(); setZoom(currentZ() * 1.2); });
       pct.classList.add('is-btn');
       pct.title = 'Reset to fit';
-      pct.addEventListener('click', (e) => { e.stopPropagation(); setZoom(null); });
+      pct.addEventListener('click', (e) => { e.stopPropagation(); container._rlyStopWheelZoom(); setZoom(null); });
       tools.append(zoomOut, pct, zoomIn);
     }
 
@@ -2586,6 +2677,8 @@
       // editable-mermaid plumbing: edits maps blockId -> edited code; onBlockEdit
       // reports an accepted change (or null to clear back to the original).
       edits: ctx && ctx.edits ? ctx.edits : {},
+      canComment: !ctx || ctx.canComment !== false,
+      canEditBlocks: !ctx || ctx.canEditBlocks !== false,
       onBlockEdit:
         ctx && typeof ctx.onBlockEdit === 'function' ? ctx.onBlockEdit : () => {},
     };

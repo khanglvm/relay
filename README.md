@@ -93,7 +93,7 @@ actually needs them.
 | `rly help` | every command at a glance |
 | `rly git pick` / `rly git cherry-pick` | choose commit actions and rank the order directly on a board; add `--code` to cherry-pick with split code review and per-hunk Apply/Skip/Hold |
 | `rly git conflict [files…]` | auto-detect unmerged conflict files, or open specific local paths, and return resolved content in `result.blockEdits` |
-| `rly share <board-id>` | activate/list/revoke same-Wi-Fi reviewer or collaborator links for a running browser board |
+| `rly share <board-id>` | activate/list/revoke same-Wi-Fi collaborator, reference-only reviewer, or read-only links for a running browser board |
 | `rly view <file.md> …` | open a quick read-only board that renders local markdown file(s), data files, or PDFs — library-free; great for plans, READMEs, reports, quotes |
 | `rly install --target <agent>` | write relay's rules into an agent's instruction file — `claude` `codex` `cursor` `copilot` `kiro` `windsurf` `cline` `gemini` `opencode` `droid` `agents`; `--all`, `--scope`, `--print`, `--list` |
 | `rly upgrade` | update the CLI **and** refresh the skill in one step (safe around open boards; `--dry-run`, `--cli-only`, `--skill-only`) |
@@ -177,7 +177,8 @@ npm test     # smoke tests with no external services (spawns real servers, fake-
   whose connection drops blocks further input instead of losing it, and
   `rly rescue <id>` re-serves on the same port so an open tab reconnects. Active
   same-Wi-Fi share links stay tied to the board and survive a same-port re-serve
-  until revoked.
+  until revoked. Reviewer submissions are isolated, reference-only side reviews
+  that never finish the owner's board; read-only links cannot mutate feedback.
 - Still **zero npm runtime dependencies**, offline, and cross-platform. Vendored
   browser libraries are loaded only for boards that need them.
 

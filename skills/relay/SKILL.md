@@ -189,16 +189,22 @@ with `rly share`:
 rly share b-xxxxx                         # list active share roles
 rly share b-xxxxx --role review           # activate a reviewer link
 rly share b-xxxxx --role collab           # activate a collaborator link
+rly share b-xxxxx --role read             # activate a read-only link
 rly share b-xxxxx --role review --revoke  # revoke one role
 rly share b-xxxxx --revoke --all          # revoke all active share links
 ```
 
-Use `review` when the other device should add comments only. Reviewers cannot
-change answers, submit, edit comments, or delete comments; their autosaves merge
-new comments into the existing draft. Use `collab` only when the user explicitly
+Use `review` for independent feedback. Each reviewer browser gets an isolated
+draft and can answer, comment, and submit a **reference-only side review**. That
+submission never finishes the board or wakes/completes the waiting agent; the
+owner (or owner-authorized collaborator) must still provide the final answer.
+When the owner asks for current reviewer input, run `rly result <id>` and inspect
+`sideReviews.submissions` plus `sideReviews.drafts`; both are explicitly marked
+reference-only. Use `read` for a view-only link with no answers, comments, block
+edits, local-file opening, or submit. Use `collab` only when the user explicitly
 wants that device to act as the owner: collaborators can edit answers, comment,
-open allowed local file links, and submit. Shared viewers refresh from the live
-draft when another viewer saves, deferred while someone is typing/commenting.
+open allowed local file links, and final-submit. Shared viewers refresh from the
+relevant live draft when another viewer in the same role/session saves.
 Active share links are durable too: they keep the same token across a same-port
 `rly reopen`/`rly rescue` until `rly share --revoke` disables them.
 

@@ -761,21 +761,27 @@ async function cmdWaitLoop(id, deadline, opts) {
 
 async function cmdResult(args) {
   const record = mustLoad(args._[0]);
+  const sideReviews = {
+    referenceOnly: true,
+    note: 'Side reviews are reference only. Wait for the board owner (or owner-authorized collaborator) to submit the final answer.',
+    submissions: Array.isArray(record.sideReviews) ? record.sideReviews : [],
+    drafts: record.reviewDrafts && typeof record.reviewDrafts === 'object' ? record.reviewDrafts : {},
+  };
   if (record.result && record.result.finishedAt) {
-    printResult(record.result);
+    printResult({ ...record.result, sideReviews });
     return exitCodeFor(record.result.status);
   }
   const running = loadRunning(record.id);
   if (running && isAlive(running.pid)) {
     // While open, expose the real-time autosaved draft so agents can peek, plus
     // best-effort presence (whether the user is still viewing/focused/active).
-    const out = { status: 'open', boardId: record.id, url: running.url, draft: record.draft ?? null };
+    const out = { status: 'open', boardId: record.id, url: running.url, draft: record.draft ?? null, sideReviews };
     const presence = await fetchPresence(running.url);
     if (presence) out.presence = presence;
     printResult(out); // draft can hold many annotations — sidecar it too
     return 0;
   }
-  printResult({ status: 'lost', boardId: record.id, draft: record.draft ?? null });
+  printResult({ status: 'lost', boardId: record.id, draft: record.draft ?? null, sideReviews });
   return 5;
 }
 
@@ -785,9 +791,10 @@ async function cmdShare(args) {
   if (!running || !isAlive(running.pid)) {
     throw new CliError(`board "${record.id}" is not running. Use \`rly reopen ${record.id} --detach\` first.`, 5);
   }
-  const role = args.all ? 'all' : args.role;
-  if (role !== undefined && !['collab', 'review', 'all'].includes(role)) {
-    throw new CliError('--role must be collab or review.', 4);
+  let role = args.all ? 'all' : args.role;
+  if (role === 'readonly' || role === 'read-only') role = 'read';
+  if (role !== undefined && !['collab', 'review', 'read', 'all'].includes(role)) {
+    throw new CliError('--role must be collab, review, or read.', 4);
   }
   const shareUrl = new URL('/api/share', running.url);
   let res;
@@ -1100,8 +1107,10 @@ the user should view — put it in relay instead of printing it.**
   option its own visual (\`options[].blocks\`) so the user picks by looking.
 - Same-Wi-Fi sharing is locked by default. When the user wants another device to
   review or co-fill a running board, manage explicit links with \`rly share <id>\`:
-  \`--role review\` creates a comments-only reviewer link, \`--role collab\` creates
-  an edit/comment/submit link, and \`--revoke\` disables active links. Active
+  \`--role review\` creates an answer/comment link whose submissions are reference-only
+  side reviews (\`rly result\` exposes them but they never complete \`rly wait\`),
+  \`--role collab\` creates an owner-authorized edit/comment/final-submit link,
+  \`--role read\` creates a view-only link, and \`--revoke\` disables active links. Active
   share links are durable across same-port \`rly reopen\`/\`rly rescue\` until
   revoked.
 - **There's a purpose-built component for most content — use the MOST SPECIFIC one,
@@ -1610,8 +1619,9 @@ USAGE
                                         read that file if your shell truncates stdout; never pipe to head/tail
   rly result <id>                     result/status now (includes live autosaved draft + presence while open)
   rly share <id>                      list active same-Wi-Fi share links for a running board
-  rly share <id> --role review        activate a reviewer link (comments only)
-  rly share <id> --role collab        activate a collaborator link (edit/comment/submit)
+  rly share <id> --role review        reviewer: answer/comment/submit a reference-only side review
+  rly share <id> --role collab        collaborator: edit/comment/final-submit as owner-authorized
+  rly share <id> --role read          activate a read-only viewer link
   rly share <id> --role review --revoke
                                       revoke one share role; use --revoke --all to disable all roles
                                       active links survive same-port reopen/rescue until revoked

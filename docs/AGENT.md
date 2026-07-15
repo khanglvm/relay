@@ -79,19 +79,24 @@ click the topbar **Share** icon, or you can manage the same links for the user:
 
 ```sh
 rly share b-xxxxx                         # list active share roles
-rly share b-xxxxx --role review           # reviewer: add comments only
-rly share b-xxxxx --role collab           # collaborator: edit/comment/submit
+rly share b-xxxxx --role review           # reviewer: answer/comment + submit a side review
+rly share b-xxxxx --role collab           # collaborator: edit/comment/final-submit as owner-authorized
+rly share b-xxxxx --role read             # read-only viewer: no answers/comments/submit
 rly share b-xxxxx --role review --revoke  # revoke one role
 rly share b-xxxxx --revoke --all          # revoke all active links
 ```
 
-Use `review` unless the user explicitly wants the other device to submit as the
-owner. Reviewers cannot change answers, submit, edit comments, or delete
-comments; their autosaves merge new comments into the existing draft.
-Collaborators can edit answers, comment, open allowed local file links, and
-submit. Shared viewers refresh from the live draft when another viewer saves,
-deferred while someone is typing/commenting. Active share links keep the same
-token across a same-port `rly reopen`/`rly rescue` until revoked.
+Use `review` for independent feedback: each browser gets an isolated review
+draft and may answer, comment, and submit, but the submission is stored as a
+**reference-only side review**. It does not finish the board, wake the agent, or
+complete `rly wait`; the owner (or an owner-authorized collaborator) must still
+submit the final answer. `rly result <id>` exposes current side-review drafts and
+submissions on demand under `sideReviews`, clearly marked `referenceOnly:true`.
+Use `read` when the other device should only view the board and existing
+feedback. Read-only viewers cannot answer, comment, edit blocks, open local file
+links, or submit. Collaborators retain owner-authorized edit/comment/final-submit
+permission. Active links keep the same token across a same-port
+`rly reopen`/`rly rescue` until revoked.
 
 ## Inline mode — relay as an MCP App (Claude & Codex apps)
 

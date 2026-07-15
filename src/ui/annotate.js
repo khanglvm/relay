@@ -393,7 +393,7 @@
 
   // ---------- hover pin ----------
   function showPin(entry) {
-    if (disabled) return;
+    if (disabled || !permissions.add) return;
     clearTimeout(pinTimer);
     pinEntry = entry;
     const rect = entry.el.getBoundingClientRect();
@@ -547,6 +547,11 @@
   function openPopover(info, anchorEl) {
     if (disabled) return;
     ensureDom();
+    const hasExisting = matching(info).length > 0;
+    // Read-only viewers can open existing threads from their badges, but a
+    // target with no feedback has nothing to show and must not expose an empty
+    // add-comment dialog.
+    if (!permissions.add && !hasExisting) return;
     closePopover();
     hidePin();
     const pop = dom.pop;
@@ -586,7 +591,10 @@
           ta.focus();
         });
         // agent replies aren't editable here — only the top-level user comment
-        const actions = el('div', { class: 'ann-thread-actions' }, a.author === 'user' ? edit : null, del);
+        const actions = el('div', { class: 'ann-thread-actions' },
+          permissions.edit && a.author === 'user' ? edit : null,
+          permissions.delete ? del : null
+        );
         const thread = el('div', { class: 'ann-thread' },
           el('div', { class: 'ann-thread-head' }, chip(a.author), timeEl(a.createdAt), actions),
           textEl
@@ -616,7 +624,7 @@
             submitReply();
           }
         });
-        thread.append(el('div', { class: 'ann-reply-form' }, input, btn));
+        if (permissions.reply) thread.append(el('div', { class: 'ann-reply-form' }, input, btn));
         existingWrap.append(thread);
       }
     };
@@ -633,7 +641,7 @@
     };
     save.addEventListener('click', () => popSave && popSave());
     cancel.addEventListener('click', closePopover);
-    pop.append(ta, el('div', { class: 'ann-pop-actions' }, save, cancel));
+    if (permissions.add) pop.append(ta, el('div', { class: 'ann-pop-actions' }, save, cancel));
 
     // Position: prefer below the anchor, flip above when out of room,
     // clamp to the viewport with an 8px margin. Fixed positioning, so we
@@ -652,7 +660,8 @@
     pop.style.visibility = '';
     popOpen = true;
     popScrollY = window.scrollY;
-    ta.focus();
+    if (permissions.add) ta.focus();
+    else popClose.focus();
   }
 
   // ---------- mutations ----------
@@ -742,7 +751,7 @@
   }
 
   function maybeShowSelBtn(rootEl, baseInfo) {
-    if (disabled) return hideSelBtn();
+    if (disabled || !permissions.add) return hideSelBtn();
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !sel.rangeCount) return hideSelBtn();
     if (!rootEl.contains(sel.anchorNode) || !rootEl.contains(sel.focusNode)) return hideSelBtn();
@@ -821,7 +830,7 @@
           el('div', { class: 'ann-sum-text' }, a.text),
           meta.length ? el('div', { class: 'ann-sum-meta' }, meta) : null
         ),
-        del
+        permissions.delete ? del : null
       );
       // Clicking a row jumps to (and flashes) the matching element: a
       // registered block element, or the inline highlight for a text comment.

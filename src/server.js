@@ -162,17 +162,24 @@ function buildPage(record, rev, { access = null, draftRev = 0 } = {}) {
   };
   // Prefill from the LIVE draft at request time (drafts autosave in real time),
   // so a mid-fill page reload restores everything the user already entered.
-  const prefill = record.draft
+  // Reviewer answers are an independent, reference-only draft. They must never
+  // prefill from or overwrite the owner's final-answer draft. Read-only viewers
+  // see the owner's current state but cannot mutate it.
+  const reviewDrafts = record.reviewDrafts && typeof record.reviewDrafts === 'object' ? record.reviewDrafts : {};
+  const sourceDraft = access && access.role === 'review'
+    ? (reviewDrafts[access.reviewSessionId] || null)
+    : record.draft;
+  const prefill = sourceDraft
     ? {
-        answers: record.draft.answers || {},
-        comment: record.draft.comment || '',
-        notes: record.draft.notes || {},
-        annotations: record.draft.annotations || [],
-        blockEdits: record.draft.blockEdits || {},
+        answers: sourceDraft.answers || {},
+        comment: sourceDraft.comment || '',
+        notes: sourceDraft.notes || {},
+        annotations: sourceDraft.annotations || [],
+        blockEdits: sourceDraft.blockEdits || {},
         // The server draft's save time, so the client can pick the NEWER of this
         // vs. its localStorage mirror (a tab that kept typing while the server
         // was unreachable holds fresher input than the last server save).
-        updatedAt: record.draft.updatedAt || null,
+        updatedAt: sourceDraft.updatedAt || null,
       }
     : null;
   const boot = { boardId: record.id, spec: clientSpec, prefill, pref: loadPref(), vendor, rev, draftRev, access };
@@ -194,6 +201,45 @@ function buildLockedPage(title = 'Relay board') {
     '<title>' + escapeHtml(title) + '</title>' +
     '<style>body{margin:0;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#fcfbf9;color:#1c1b19;display:grid;min-height:100vh;place-items:center}.box{max-width:420px;padding:28px;text-align:center}.title{font-size:22px;font-weight:650;margin-bottom:8px}.sub{color:#57534e}</style>' +
     '</head><body><div class="box"><div class="title">Share link not active</div><div class="sub">Ask the board owner to use Share and choose a permission before opening this board from another device.</div></div></body></html>';
+}
+
+const SHARE_STATE_VERSION = 2;
+const REVIEW_SESSION_COOKIE = 'relay_review_session';
+
+function reviewSessionId(req) {
+  if (req._relayReviewSessionId) return req._relayReviewSessionId;
+  const explicit = String(req.headers['x-relay-review-session'] || '');
+  const cookies = String(req.headers.cookie || '').split(';').map((s) => s.trim());
+  const cookie = cookies.find((s) => s.startsWith(REVIEW_SESSION_COOKIE + '='));
+  let value = explicit || (cookie ? decodeURIComponent(cookie.slice(REVIEW_SESSION_COOKIE.length + 1)) : '');
+  if (!/^[A-Za-z0-9_-]{8,80}$/.test(value)) value = 'rv-' + crypto.randomBytes(12).toString('hex');
+  req._relayReviewSessionId = value;
+  return value;
+}
+
+function reviewSessionCookie(sessionId) {
+  return `${REVIEW_SESSION_COOKIE}=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`;
+}
+
+function sideReviewState(record) {
+  const drafts = record.reviewDrafts && typeof record.reviewDrafts === 'object' ? record.reviewDrafts : {};
+  const submissions = Array.isArray(record.sideReviews) ? record.sideReviews : [];
+  return {
+    referenceOnly: true,
+    note: 'Side reviews are reference only. Wait for the board owner (or owner-authorized collaborator) to submit the final answer.',
+    submissions,
+    drafts,
+  };
+}
+
+function pruneReviewDrafts(record, max = 50) {
+  const drafts = record.reviewDrafts && typeof record.reviewDrafts === 'object' ? record.reviewDrafts : {};
+  const entries = Object.entries(drafts).sort((a, b) => {
+    const at = Date.parse(a[1] && a[1].updatedAt || '') || 0;
+    const bt = Date.parse(b[1] && b[1].updatedAt || '') || 0;
+    return bt - at;
+  });
+  record.reviewDrafts = Object.fromEntries(entries.slice(0, max));
 }
 
 // Validates + sanitizes one annotation's threaded replies. Keeps only
@@ -229,50 +275,6 @@ function sanitizeAnnotations(value) {
     out.push(clean);
   }
   return out;
-}
-
-function nextAnnotationId(existing, used) {
-  let max = 0;
-  for (const a of existing) {
-    const m = /^a(\d+)$/.exec(String(a && a.id || ''));
-    if (m) max = Math.max(max, Number.parseInt(m[1], 10) || 0);
-  }
-  let id;
-  do {
-    id = 'a' + (++max);
-  } while (used.has(id));
-  used.add(id);
-  return id;
-}
-
-function sameReply(a, b) {
-  return a && b && a.author === b.author && a.text === b.text && a.createdAt === b.createdAt;
-}
-
-function mergeReviewAnnotations(existingValue, incomingValue) {
-  const existing = sanitizeAnnotations(existingValue);
-  const incoming = sanitizeAnnotations(incomingValue);
-  const out = existing.map((a) => ({ ...a, replies: Array.isArray(a.replies) ? [...a.replies] : [] }));
-  const byId = new Map(out.map((a) => [String(a.id || ''), a]));
-  const used = new Set(out.map((a) => String(a.id || '')).filter(Boolean));
-  for (const ann of incoming) {
-    const id = String(ann.id || '');
-    const current = byId.get(id);
-    if (!current) {
-      const next = { ...ann, id: id && !used.has(id) ? id : nextAnnotationId(out, used) };
-      next.replies = Array.isArray(next.replies) ? next.replies : [];
-      out.push(next);
-      byId.set(next.id, next);
-      used.add(next.id);
-      continue;
-    }
-    const replies = Array.isArray(current.replies) ? current.replies : (current.replies = []);
-    for (const r of Array.isArray(ann.replies) ? ann.replies : []) {
-      if (replies.length >= 50) break;
-      if (!replies.some((x) => sameReply(x, r))) replies.push(r);
-    }
-  }
-  return out.slice(0, 500);
 }
 
 function limitString(v, max) {
@@ -499,8 +501,8 @@ function sendJson(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
-function sendHtml(res, body) {
-  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+function sendHtml(res, body, headers = {}) {
+  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...headers });
   res.end(body);
 }
 
@@ -597,14 +599,15 @@ function injectBeforeBodyEnd(html, snippet) {
 // Custom-HTML fragments (no <html> tag) get wrapped in a minimal document that
 // matches the user's theme, so e.g. "<b>hi</b>" doesn't paint a stark white
 // block in dark mode. Full documents are served verbatim — their authors can
-// read the ?theme=light|dark query param themselves. Either way the annotate
-// bootstrap is injected so every element is hover-commentable.
-function wrapFragment(content, theme) {
-  if (/<html[\s>]/i.test(content)) return injectBeforeBodyEnd(content, ANNOTATE_BOOTSTRAP);
+// read the ?theme=light|dark query param themselves. The annotate bootstrap is
+// omitted for read-only shares so their iframe content has no false comment
+// affordances; existing feedback remains visible in the parent comments rail.
+function wrapFragment(content, theme, annotate = true) {
+  if (/<html[\s>]/i.test(content)) return annotate ? injectBeforeBodyEnd(content, ANNOTATE_BOOTSTRAP) : content;
   const dark = theme === 'dark';
   const bg = dark ? '#282624' : '#ffffff';
   const fg = dark ? '#edeae4' : '#1c1b19';
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>:root{color-scheme:${dark ? 'dark' : 'light'}}body{margin:12px;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:${bg};color:${fg}}</style></head><body>${content}${ANNOTATE_BOOTSTRAP}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>:root{color-scheme:${dark ? 'dark' : 'light'}}body{margin:12px;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:${bg};color:${fg}}</style></head><body>${content}${annotate ? ANNOTATE_BOOTSTRAP : ''}</body></html>`;
 }
 
 function readBody(req, limit = 5 * 1024 * 1024) {
@@ -689,8 +692,17 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         updatedAt: new Date().toISOString(),
       };
     }
-    record.pastResults = [...(record.pastResults || []), record.result].slice(-10);
+    // A soft-timeout result may predate side reviews submitted while the board
+    // stayed live. Refresh that reference-only snapshot before archiving so a
+    // later reopen does not discard late reviews/drafts from the historical run.
+    const archivedResult = { ...record.result, sideReviews: sideReviewState(record) };
+    record.pastResults = [...(record.pastResults || []), archivedResult].slice(-10);
     record.result = null;
+    // Side reviews belong to the archived run. A reopened board starts a fresh
+    // review round; carrying them forward would present stale reference input
+    // as current and duplicate it into the next final result.
+    record.sideReviews = [];
+    record.reviewDrafts = {};
     saveBoard(record);
   }
 
@@ -699,13 +711,20 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
   // can authenticate to POST /api/update. Never embedded in the page/boot.
   const token = crypto.randomBytes(16).toString('hex');
   const savedShares = record.share && typeof record.share === 'object' ? record.share : {};
+  const savedShareVersion = Number(savedShares.version) || 1;
   const shareTokens = {
     collab: typeof savedShares.collab?.token === 'string' ? savedShares.collab.token : crypto.randomBytes(16).toString('hex'),
-    review: typeof savedShares.review?.token === 'string' ? savedShares.review.token : crypto.randomBytes(16).toString('hex'),
+    // v1 reviewer links were comments-only. Rotate + deactivate them instead of
+    // silently granting answer/side-submit permission after this upgrade.
+    review: savedShareVersion >= SHARE_STATE_VERSION && typeof savedShares.review?.token === 'string'
+      ? savedShares.review.token
+      : crypto.randomBytes(16).toString('hex'),
+    read: typeof savedShares.read?.token === 'string' ? savedShares.read.token : crypto.randomBytes(16).toString('hex'),
   };
   const activeShares = {
     collab: savedShares.collab?.active === true,
-    review: savedShares.review?.active === true,
+    review: savedShareVersion >= SHARE_STATE_VERSION && savedShares.review?.active === true,
+    read: savedShares.read?.active === true,
   };
   let rev = 1;
   let draftRev = Number.isFinite(record.draftRev) ? record.draftRev : 0;
@@ -716,8 +735,9 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
   // working and still submit. Surfaced via /api/status so the page can show a
   // calm "agent stopped waiting" note instead of disconnecting.
   let softTimedOut = false;
-  // Latest client presence ping (null until the first ping arrives).
-  let presence = null;
+  // Presence that can lead to the terminal answer. Reviewer/read-only activity
+  // must not keep an agent waiting for a submission those roles cannot finalize.
+  const presenceByRole = { owner: null, collab: null, review: null, read: null };
   let actualPort = 0;
   let url = '';
   const advertisedHost = shareHost();
@@ -732,6 +752,8 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         canComment: true,
         canEditComments: true,
         canDeleteComments: true,
+        canEditBlocks: true,
+        canFinalize: true,
       };
     }
     const tokenValue = String(req.headers['x-relay-share-token'] || (reqUrl && reqUrl.searchParams.get('token')) || '');
@@ -745,18 +767,37 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         canComment: true,
         canEditComments: true,
         canDeleteComments: true,
+        canEditBlocks: true,
+        canFinalize: true,
       };
     }
     if (activeShares.review && tokenValue === shareTokens.review) {
       return {
         role: 'review',
         token: shareTokens.review,
+        reviewSessionId: reviewSessionId(req),
         canShare: false,
-        canSubmit: false,
-        canEditAnswers: false,
+        canSubmit: true,
+        canEditAnswers: true,
         canComment: true,
         canEditComments: false,
         canDeleteComments: false,
+        canEditBlocks: false,
+        canFinalize: false,
+      };
+    }
+    if (activeShares.read && tokenValue === shareTokens.read) {
+      return {
+        role: 'read',
+        token: shareTokens.read,
+        canShare: false,
+        canSubmit: false,
+        canEditAnswers: false,
+        canComment: false,
+        canEditComments: false,
+        canDeleteComments: false,
+        canEditBlocks: false,
+        canFinalize: false,
       };
     }
     return {
@@ -767,13 +808,17 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
       canComment: false,
       canEditComments: false,
       canDeleteComments: false,
+      canEditBlocks: false,
+      canFinalize: false,
     };
   };
   const shareUrlFor = (role) => advertisedHost ? `http://${advertisedHost}:${actualPort}/?share=${role}&token=${shareTokens[role]}` : null;
   const persistShareState = () => {
     record.share = {
+      version: SHARE_STATE_VERSION,
       collab: { active: activeShares.collab === true, token: shareTokens.collab },
       review: { active: activeShares.review === true, token: shareTokens.review },
+      read: { active: activeShares.read === true, token: shareTokens.read },
       updatedAt: new Date().toISOString(),
     };
     saveBoard(record);
@@ -782,6 +827,10 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
   const done = new Promise((r) => {
     resolveDone = r;
   });
+  const finalizerPresence = () => {
+    const candidates = [presenceByRole.owner, presenceByRole.collab].filter(Boolean);
+    return candidates.sort((a, b) => b.atMs - a.atMs)[0] || null;
+  };
 
   const server = http.createServer(async (req, res) => {
     const reqUrl = new URL(req.url, 'http://localhost');
@@ -793,17 +842,41 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         if (access.role === 'locked') {
           sendHtml(res, buildLockedPage(record.spec.title));
         } else {
-          sendHtml(res, buildPage(record, rev, { access, draftRev }));
+          const accessDraftRev = access.role === 'review'
+            ? Number(record.reviewDrafts?.[access.reviewSessionId]?.draftRev) || 0
+            : draftRev;
+          const headers = access.role === 'review'
+            ? { 'set-cookie': reviewSessionCookie(access.reviewSessionId) }
+            : {};
+          sendHtml(res, buildPage(record, rev, { access, draftRev: accessDraftRev }), headers);
         }
       } else if (req.method === 'GET' && pathname === '/api/board') {
-        if (accessFor(req, reqUrl).role === 'locked') return sendJson(res, 403, { error: 'share link is not active' });
-        sendJson(res, 200, { id: record.id, spec: record.spec, draft: record.draft, result: record.result });
+        const access = accessFor(req, reqUrl);
+        if (access.role === 'locked') return sendJson(res, 403, { error: 'share link is not active' });
+        const sourceDraft = access.role === 'review'
+          ? (record.reviewDrafts?.[access.reviewSessionId] || null)
+          : record.draft;
+        sendJson(res, 200, { id: record.id, spec: record.spec, draft: sourceDraft, result: record.result });
       } else if (req.method === 'GET' && pathname === '/api/status') {
-        sendJson(res, 200, { status, rev, draftRev, softTimedOut });
+        const access = accessFor(req, reqUrl);
+        if (access.role === 'locked') return sendJson(res, 403, { error: 'share link is not active' });
+        const accessDraftRev = access.role === 'review'
+          ? Number(record.reviewDrafts?.[access.reviewSessionId]?.draftRev) || 0
+          : draftRev;
+        sendJson(res, 200, { status, rev, draftRev: accessDraftRev, softTimedOut });
       } else if (req.method === 'GET' && pathname === '/api/draft') {
-        if (accessFor(req, reqUrl).role === 'locked') return sendJson(res, 403, { error: 'share link is not active' });
-        sendJson(res, 200, { draft: record.draft || null, draftRev });
+        const access = accessFor(req, reqUrl);
+        if (access.role === 'locked') return sendJson(res, 403, { error: 'share link is not active' });
+        const sourceDraft = access.role === 'review'
+          ? (record.reviewDrafts?.[access.reviewSessionId] || null)
+          : record.draft;
+        const accessDraftRev = access.role === 'review'
+          ? Number(sourceDraft?.draftRev) || 0
+          : draftRev;
+        sendJson(res, 200, { draft: sourceDraft || null, draftRev: accessDraftRev });
       } else if (req.method === 'POST' && pathname === '/api/ping') {
+        const access = accessFor(req, reqUrl);
+        if (access.role === 'locked') return sendJson(res, 403, { error: 'share link is not active' });
         const body = JSON.parse((await readBody(req)) || '{}');
         // Validate body shape: visible/focused booleans, idleMs finite >= 0.
         if (
@@ -812,10 +885,11 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
           Number.isFinite(body.idleMs) &&
           body.idleMs >= 0
         ) {
-          presence = { atMs: Date.now(), visible: body.visible, focused: body.focused, idleMs: body.idleMs };
+          presenceByRole[access.role] = { atMs: Date.now(), visible: body.visible, focused: body.focused, idleMs: body.idleMs };
         }
         sendJson(res, 200, { ok: true });
       } else if (req.method === 'GET' && pathname === '/api/presence') {
+        const presence = finalizerPresence();
         if (!presence) {
           sendJson(res, 200, { open: true, seen: false });
         } else {
@@ -858,7 +932,8 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         const blockId = decodeURIComponent(pathname.slice('/html/b/'.length));
         const block = findHtmlBlock(record.spec, blockId);
         if (!block) return sendJson(res, 404, { error: `no html block "${blockId}"` });
-        sendHtml(res, wrapFragment(block.html || '', theme));
+        const access = accessFor(req, reqUrl);
+        sendHtml(res, wrapFragment(block.html || '', theme, access.canComment === true));
       } else if (req.method === 'GET' && pathname.startsWith('/img/b/')) {
         // Embedded image bytes (image blocks authored from local files).
         const blockId = decodeURIComponent(pathname.slice('/img/b/'.length));
@@ -882,13 +957,15 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
       } else if (req.method === 'GET' && pathname === '/html/board') {
         // Legacy alias → the board's first html block.
         const block = firstBoardHtml(record.spec);
-        sendHtml(res, wrapFragment((block && block.html) || '', theme));
+        const access = accessFor(req, reqUrl);
+        sendHtml(res, wrapFragment((block && block.html) || '', theme, access.canComment === true));
       } else if (req.method === 'GET' && pathname.startsWith('/html/q/')) {
         const qid = decodeURIComponent(pathname.slice('/html/q/'.length));
         const q = record.spec.questions.find((q) => q.id === qid);
         if (!q) return sendJson(res, 404, { error: `no question "${qid}"` });
         const block = firstQuestionHtml(q);
-        sendHtml(res, wrapFragment((block && block.html) || '', theme));
+        const access = accessFor(req, reqUrl);
+        sendHtml(res, wrapFragment((block && block.html) || '', theme, access.canComment === true));
       } else if (req.method === 'POST' && pathname === '/api/pref') {
         const body = JSON.parse((await readBody(req)) || '{}');
         if (['auto', 'light', 'dark'].includes(body.theme)) savePref({ theme: body.theme });
@@ -923,17 +1000,23 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
       } else if (req.method === 'POST' && pathname === '/api/draft') {
         const access = accessFor(req, reqUrl);
         if (access.role === 'locked') return sendJson(res, 403, { error: 'share link is not active' });
+        if (!access.canEditAnswers && !access.canComment && !access.canEditBlocks) {
+          return sendJson(res, 403, { error: 'this share is read only' });
+        }
         const body = JSON.parse((await readBody(req)) || '{}');
         if (access.role === 'review') {
-          const current = record.draft && typeof record.draft === 'object' ? record.draft : {};
-          record.draft = {
-            answers: current.answers && typeof current.answers === 'object' ? current.answers : {},
-            comment: typeof current.comment === 'string' ? current.comment : '',
-            notes: current.notes && typeof current.notes === 'object' ? current.notes : {},
-            annotations: mergeReviewAnnotations(current.annotations, body.annotations),
-            blockEdits: current.blockEdits && typeof current.blockEdits === 'object' ? current.blockEdits : {},
+          record.reviewDrafts = record.reviewDrafts && typeof record.reviewDrafts === 'object' ? record.reviewDrafts : {};
+          const priorRev = Number(record.reviewDrafts[access.reviewSessionId]?.draftRev) || 0;
+          record.reviewDrafts[access.reviewSessionId] = {
+            answers: body.answers && typeof body.answers === 'object' ? body.answers : {},
+            comment: typeof body.comment === 'string' ? body.comment : '',
+            notes: body.notes && typeof body.notes === 'object' ? body.notes : {},
+            annotations: sanitizeAnnotations(body.annotations),
+            blockEdits: {},
+            draftRev: priorRev + 1,
             updatedAt: new Date().toISOString(),
           };
+          pruneReviewDrafts(record);
         } else {
           record.draft = {
             answers: body.answers && typeof body.answers === 'object' ? body.answers : {},
@@ -944,17 +1027,48 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
             updatedAt: new Date().toISOString(),
           };
         }
-        record.draftRev = ++draftRev;
+        if (access.role !== 'review') record.draftRev = ++draftRev;
         saveBoard(record);
-        sendJson(res, 200, { ok: true, draftRev });
+        const accessDraftRev = access.role === 'review'
+          ? Number(record.reviewDrafts?.[access.reviewSessionId]?.draftRev) || 0
+          : draftRev;
+        sendJson(res, 200, { ok: true, draftRev: accessDraftRev });
       } else if (req.method === 'POST' && pathname === '/api/submit') {
         const access = accessFor(req, reqUrl);
         if (access.role === 'locked') return sendJson(res, 403, { error: 'share link is not active' });
-        if (!access.canSubmit) return sendJson(res, 403, { error: 'this share can comment only' });
+        if (!access.canSubmit) return sendJson(res, 403, { error: 'this share is read only' });
         if (status !== 'open') return sendJson(res, 409, { error: 'board already finished' });
         const body = JSON.parse((await readBody(req)) || '{}');
         const answers = body.answers && typeof body.answers === 'object' ? body.answers : {};
         const skipped = record.spec.questions.filter((q) => !(q.id in answers)).map((q) => q.id);
+        if (access.role === 'review') {
+          const review = {
+            id: 'sr-' + Date.now().toString(36) + '-' + crypto.randomBytes(3).toString('hex'),
+            status: 'side-review',
+            final: false,
+            referenceOnly: true,
+            reviewSessionId: access.reviewSessionId,
+            answers,
+            skipped,
+            comment: typeof body.comment === 'string' ? body.comment : '',
+            notes: body.notes && typeof body.notes === 'object' ? body.notes : {},
+            annotations: sanitizeAnnotations(body.annotations),
+            blockEdits: {},
+            submittedAt: new Date().toISOString(),
+          };
+          record.sideReviews = [...(Array.isArray(record.sideReviews) ? record.sideReviews : []), review].slice(-50);
+          if (record.reviewDrafts && typeof record.reviewDrafts === 'object') delete record.reviewDrafts[access.reviewSessionId];
+          saveBoard(record);
+          // Deliberately no finish(), record.result write, on-result hook, or
+          // server close: a side review never wakes/completes the waiting agent.
+          return sendJson(res, 200, {
+            ok: true,
+            sideReview: true,
+            final: false,
+            reviewId: review.id,
+            message: 'Saved as a reference-only side review. The board still awaits the owner final answer.',
+          });
+        }
         sendJson(res, 200, { ok: true });
         finish({
           status: record.spec.questions.length ? 'submitted' : 'acknowledged',
@@ -968,7 +1082,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
       } else if (req.method === 'GET' && pathname === '/api/share') {
         if (accessFor(req, reqUrl).role !== 'owner') return sendJson(res, 403, { error: 'only the board owner can manage sharing' });
         const roles = {};
-        for (const role of ['collab', 'review']) {
+        for (const role of ['collab', 'review', 'read']) {
           roles[role] = {
             active: activeShares[role] === true,
             url: activeShares[role] === true ? shareUrlFor(role) : null,
@@ -979,19 +1093,20 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         if (accessFor(req, reqUrl).role !== 'owner') return sendJson(res, 403, { error: 'only the board owner can activate sharing' });
         if (!advertisedHost) return sendJson(res, 400, { error: 'no LAN IPv4 address found for sharing' });
         const body = JSON.parse((await readBody(req)) || '{}');
-        const role = body.role === 'review' ? 'review' : body.role === 'collab' ? 'collab' : null;
-        if (!role) return sendJson(res, 400, { error: 'role must be "collab" or "review"' });
+        const role = body.role === 'review' ? 'review' : body.role === 'collab' ? 'collab' : body.role === 'read' ? 'read' : null;
+        if (!role) return sendJson(res, 400, { error: 'role must be "collab", "review", or "read"' });
         activeShares[role] = true;
         persistShareState();
         sendJson(res, 200, { ok: true, role, url: shareUrlFor(role) });
       } else if (req.method === 'DELETE' && pathname === '/api/share') {
         if (accessFor(req, reqUrl).role !== 'owner') return sendJson(res, 403, { error: 'only the board owner can manage sharing' });
         const body = JSON.parse((await readBody(req)) || '{}');
-        const role = body.role === 'review' ? 'review' : body.role === 'collab' ? 'collab' : body.role === 'all' ? 'all' : null;
-        if (!role) return sendJson(res, 400, { error: 'role must be "collab", "review", or "all"' });
+        const role = body.role === 'review' ? 'review' : body.role === 'collab' ? 'collab' : body.role === 'read' ? 'read' : body.role === 'all' ? 'all' : null;
+        if (!role) return sendJson(res, 400, { error: 'role must be "collab", "review", "read", or "all"' });
         if (role === 'all') {
           activeShares.collab = false;
           activeShares.review = false;
+          activeShares.read = false;
         } else {
           activeShares[role] = false;
         }
@@ -1090,6 +1205,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
       notes: partial.notes ?? (record.draft?.notes || {}),
       annotations: partial.annotations ?? (record.draft?.annotations || []),
       blockEdits,
+      sideReviews: sideReviewState(record),
       createdAt: record.createdAt,
       finishedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAt,

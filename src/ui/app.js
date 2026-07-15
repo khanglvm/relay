@@ -11,6 +11,8 @@
     canComment: true,
     canEditComments: true,
     canDeleteComments: true,
+    canEditBlocks: true,
+    canFinalize: true,
   };
   if (access.role) document.documentElement.dataset.accessRole = access.role;
   const QS = spec.questions || [];
@@ -23,8 +25,11 @@
   let seenDraftRev = typeof boot.draftRev === 'number' ? boot.draftRev : 0;
 
   function authHeaders(extra = {}) {
-    return access.token ? { ...extra, 'x-relay-share-token': access.token } : extra;
+    const headers = access.token ? { ...extra, 'x-relay-share-token': access.token } : { ...extra };
+    if (access.reviewSessionId) headers['x-relay-review-session'] = access.reviewSessionId;
+    return headers;
   }
+  const canPersistFeedback = Boolean(access.canEditAnswers || access.canComment || access.canEditBlocks);
 
   // ---------- helpers ----------
   function el(tag, attrs = {}, ...children) {
@@ -133,14 +138,17 @@
   applyFontScale();
 
   // ---------- localStorage draft mirror ----------
-  // Every autosave is ALSO written to localStorage, keyed by board id. This is
+  // Every autosave is ALSO written to localStorage, keyed by board id + access
+  // role/session. This keeps a reviewer side draft from leaking into a
+  // collaborator/read-only tab on the same LAN origin.
   // the durability layer the server file alone can't provide: if the connection
   // drops and the user keeps typing, the in-memory state is mirrored locally, so
   // even a tab reload / browser restart / a freshly opened tab on the same board
   // prefills the LATEST input instead of a blank board or a stale server save.
   // Guards (per design): newest-of-(local,server) wins; the mirror is discarded
   // if the board's spec rev changed (agent edited it); cleared on submit.
-  const LOCAL_DRAFT_KEY = 'relay-draft-' + (boot.boardId || 'unknown');
+  const LOCAL_DRAFT_KEY = 'relay-draft-' + (boot.boardId || 'unknown') + '-' +
+    (access.role || 'owner') + (access.reviewSessionId ? '-' + access.reviewSessionId : '');
   function writeLocalDraft(p, updatedAt) {
     try {
       localStorage.setItem(LOCAL_DRAFT_KEY, JSON.stringify({
@@ -352,7 +360,7 @@
   // to detect recovery from the Retry button / heartbeat.
   async function probeServer() {
     try {
-      const r = await fetch('/api/status', { cache: 'no-store' });
+      const r = await fetch('/api/status', { cache: 'no-store', headers: authHeaders() });
       return r.ok;
     } catch {
       return false;
@@ -407,6 +415,7 @@
     for (const node of app.querySelectorAll('input, textarea, button, select')) {
       node.disabled = false;
     }
+    applyAccessRestrictions();
     if (lostNote) lostNote.remove();
     // Re-arm the heartbeat (it stops itself when it confirms loss) and persist
     // everything typed during the outage. saveDraft() updates the save label.
@@ -454,7 +463,7 @@
   // probe → block. Any success resets it.
   let saveFailures = 0;
   function scheduleSave() {
-    if (submitted) return;
+    if (submitted || !canPersistFeedback) return;
     // Mirror to localStorage SYNCHRONOUSLY on every edit, before (and regardless
     // of) the network save. This is what survives a tab reload / crash / a new
     // tab during a connection outage — it must happen even while blocked.
@@ -465,6 +474,7 @@
     saveTimer = setTimeout(saveDraft, 450);
   }
   async function saveDraft() {
+    if (!canPersistFeedback) return;
     const seq = ++saveSeq;
     // Keep the local mirror current on every flush too (covers programmatic
     // saveDraft() calls that don't go through scheduleSave, e.g. recovery flush).
@@ -516,7 +526,7 @@
     if (submitted) return;
     fetch('/api/ping', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: authHeaders({ 'content-type': 'application/json' }),
       body: JSON.stringify({
         visible: !document.hidden,
         focused: document.hasFocus(),
@@ -570,11 +580,17 @@
   function blockCtx(questionId) {
     return {
       theme: effectiveTheme,
-      htmlSrc: (blockId) => '/html/b/' + encodeURIComponent(blockId) + '?theme=' + effectiveTheme(),
+      htmlSrc: (blockId) => {
+        const params = new URLSearchParams({ theme: effectiveTheme() });
+        if (access.token) params.set('token', access.token);
+        return '/html/b/' + encodeURIComponent(blockId) + '?' + params.toString();
+      },
       questionId: questionId == null ? null : questionId,
       annotate: Annotate,
+      canComment: access.canComment !== false,
       edits: state.blockEdits,
       onBlockEdit,
+      canEditBlocks: access.canEditBlocks !== false,
     };
   }
 
@@ -807,6 +823,7 @@
     const byVal = new Map(q.options.map((o) => [o.value, o]));
     let dragFrom = null;
     function move(from, to) {
+      if (!access.canEditAnswers) return;
       const arr = state.answers[q.id];
       if (!Array.isArray(arr) || to < 0 || to >= arr.length || from === to) return;
       const [x] = arr.splice(from, 1);
@@ -827,7 +844,7 @@
         down.disabled = i === order.length - 1;
         up.addEventListener('click', () => move(i, i - 1));
         down.addEventListener('click', () => move(i, i + 1));
-        const item = el('div', { class: 'rank-item', draggable: 'true' },
+        const item = el('div', { class: 'rank-item', draggable: access.canEditAnswers ? 'true' : 'false' },
           el('span', { class: 'rank-badge', 'aria-hidden': 'true' }, String(i + 1)),
           el('div', { class: 'rank-body' },
             el('div', { class: 'ol' }, o.label),
@@ -835,6 +852,7 @@
           el('div', { class: 'rank-ctrls' }, up, down)
         );
         item.addEventListener('dragstart', (e) => {
+          if (!access.canEditAnswers) { e.preventDefault(); return; }
           dragFrom = i; item.classList.add('dragging');
           try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(i)); } catch (_) {}
         });
@@ -1182,7 +1200,11 @@
       ),
       el('button', { class: 'share-choice', type: 'button', 'data-role': 'review' },
         el('span', { class: 'share-choice-title' }, 'Reviewer'),
-        el('span', { class: 'share-choice-sub' }, 'Can add comments only. No submit, answer edits, edit, or delete.')
+        el('span', { class: 'share-choice-sub' }, 'Can answer, comment, and submit a reference-only side review. Does not finalize the board.')
+      ),
+      el('button', { class: 'share-choice', type: 'button', 'data-role': 'read' },
+        el('span', { class: 'share-choice-title' }, 'Read only'),
+        el('span', { class: 'share-choice-sub' }, 'Can view the board and existing feedback. Cannot answer, comment, edit, or submit.')
       ),
       el('div', { class: 'share-result' })
     );
@@ -1207,7 +1229,7 @@
           const copy = el('button', { class: 'share-copy', type: 'button' }, 'Copy link');
           copy.addEventListener('click', () => copyText(body.url, copy));
           result.replaceChildren(
-            el('div', { class: 'share-ready' }, role === 'collab' ? 'Collaborator link active' : 'Reviewer link active'),
+            el('div', { class: 'share-ready' }, role === 'collab' ? 'Collaborator link active' : role === 'review' ? 'Reviewer link active' : 'Read-only link active'),
             el('a', { class: 'share-url', href: body.url, target: '_blank', rel: 'noreferrer' }, body.url),
             copy
           );
@@ -1226,18 +1248,33 @@
     return footer;
   }
 
-  if (!access.canSubmit) {
-    submitbar.style.display = 'none';
-    showNotice('Reviewer mode: comments are saved live. Answers and submission are disabled.', 'info');
-  } else if (access.role === 'collab') {
-    showNotice('Editor mode: answers, comments, and submit are enabled for this shared board.', 'info');
-  }
-  if (!access.canEditAnswers) {
-    document.documentElement.classList.add('relay-review');
-    for (const node of app.querySelectorAll('.card input, .card textarea, .card button, .card select')) {
-      node.disabled = true;
+  function applyAccessRestrictions() {
+    if (!access.canSubmit) submitbar.style.display = 'none';
+    if (!access.canEditAnswers) {
+      for (const node of app.querySelectorAll('.card input, .card textarea, .card button, .card select')) {
+        // Viewer controls inside question/option blocks remain useful in a
+        // read-only board (zoom, fit, full-screen, filtering, diff view). Block
+        // mutation controls are independently gated by canEditBlocks.
+        if (node.closest('.blocks')) continue;
+        node.disabled = true;
+      }
+      for (const item of app.querySelectorAll('.rank-item')) {
+        item.draggable = false;
+        item.setAttribute('aria-disabled', 'true');
+      }
     }
+    document.documentElement.classList.toggle('relay-review', access.canEditComments === false || access.canDeleteComments === false);
   }
+  if (access.role === 'review') {
+    submitBtn.textContent = 'Submit side review';
+    hint.textContent = 'Reference only — the owner still submits the final answer.';
+    showNotice('Reviewer mode: your answers and comments are saved separately as a reference-only side review. Submitting here does not finalize the board or notify the waiting agent.', 'info');
+  } else if (access.role === 'read') {
+    showNotice('Read-only mode: you can view the board and existing feedback, but answers, comments, edits, and submission are disabled.', 'info');
+  } else if (access.role === 'collab') {
+    showNotice('Editor mode: answers, comments, and final submission are enabled for this shared board.', 'info');
+  }
+  applyAccessRestrictions();
   app.append(buildFooter());
 
   // ---------- validation & submit ----------
@@ -1253,7 +1290,7 @@
     return !firstBad;
   }
 
-  function showDone(closing) {
+  function showDone(closing, sideReview = false) {
     stopHeartbeat();
     // Annotation pins/badges/popover float on <body> with elevated z-index —
     // remove them so they don't leak over the submitted screen.
@@ -1267,7 +1304,9 @@
     // If the agent already stopped waiting (soft timeout / dropped connection),
     // the submission won't be picked up automatically — tell the user to nudge
     // the agent. Otherwise the normal hand-back copy applies.
-    const note = handedBack
+    const note = sideReview
+      ? 'Saved for reference. This did not finalize the board or notify the waiting agent; the owner still needs to submit the final answer.'
+      : handedBack
       ? 'Saved. Your agent had stopped waiting — send it a message so it picks up your answers.'
       : closing
         ? 'Handing back to your agent — this tab will close itself…'
@@ -1275,7 +1314,7 @@
     app.replaceChildren(
       el('div', { class: 'done' },
         el('div', { class: 'mark' }, '✓'),
-        el('h2', {}, QS.length ? 'Submitted' : 'Acknowledged'),
+        el('h2', {}, sideReview ? 'Side review saved' : QS.length ? 'Submitted' : 'Acknowledged'),
         el('p', { id: 'done-note' }, note)
       )
     );
@@ -1302,14 +1341,16 @@
         throw netErr;
       }
       if (!res.ok) throw new Error('submit rejected');
+      const submitResult = await res.json().catch(() => null);
+      const sideReview = Boolean(submitResult && submitResult.sideReview === true && submitResult.final === false);
       submitted = true;
       // Submitted successfully → the local mirror is no longer needed and would
       // otherwise resurrect stale answers on a future reopen. Clear it.
       clearLocalDraft();
       // Don't auto-close when the agent had stopped waiting — the user needs to
       // read the "send your agent a message" note and act on it.
-      const autoClose = spec.autoClose && !handedBack;
-      showDone(autoClose);
+      const autoClose = !sideReview && spec.autoClose && !handedBack;
+      showDone(autoClose, sideReview);
       if (autoClose) {
         setTimeout(() => {
           window.close();
@@ -1324,7 +1365,7 @@
     } catch {
       // Restore the button so the user can retry.
       submitBtn.disabled = false;
-      submitBtn.textContent = spec.submitLabel;
+      submitBtn.textContent = access.role === 'review' ? 'Submit side review' : spec.submitLabel;
       if (!reached) {
         // The connection is gone — the submit (and any further input) can't be
         // persisted. Block hard so the user stops adding feedback that would be
@@ -1362,7 +1403,7 @@
   // the server had nothing — e.g. a freshly reopened board the user had typed
   // into in another tab during an outage), the server doesn't yet have this
   // input. Flush it once so a brand-new tab's view is also the server's truth.
-  if (initialPrefill && initialPrefill.__from === 'local' && !submitted) {
+  if (initialPrefill && initialPrefill.__from === 'local' && !submitted && canPersistFeedback) {
     saveDraft();
   }
 
@@ -1456,7 +1497,7 @@
     // Piggyback presence on the heartbeat (best-effort; no-ops after submit).
     pingPresence();
     try {
-      const r = await fetch('/api/status', { cache: 'no-store' });
+      const r = await fetch('/api/status', { cache: 'no-store', headers: authHeaders() });
       if (!r.ok) throw new Error('bad status');
       misses = 0;
       // The heartbeat reaching the server is itself proof persistence is back —
@@ -1476,10 +1517,14 @@
       // user knows to prompt the agent after submitting.
       if (body && body.softTimedOut && !submitted) {
         handedBack = true;
-        showNotice(
-          'You’ve had this open a while, so the agent stopped waiting. Your changes save automatically — submit when you’re ready, then prompt the agent to pick them up.',
-          'info'
-        );
+        if (access.role === 'review') {
+          showNotice('This remains a reference-only side review. Submit when ready; the owner still needs to provide the final answer.', 'info');
+        } else if (access.role !== 'read') {
+          showNotice(
+            'You’ve had this open a while, so the agent stopped waiting. Your changes save automatically — submit when you’re ready, then prompt the agent to pick them up.',
+            'info'
+          );
+        }
       }
       if (body && typeof body.rev === 'number' && bootRev !== null && body.rev !== bootRev && !submitted && !reloading) {
         // Don't yank the board out from under someone mid-comment: an open
