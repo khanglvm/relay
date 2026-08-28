@@ -5,13 +5,28 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { loadBoard, saveBoard, saveRunning, removeRunning, loadPref, savePref } from './store.js';
+import {
+  loadBoard,
+  saveBoard,
+  saveRunning,
+  removeRunning,
+  loadPref,
+  savePref,
+  saveBoardArtifact,
+  artifactDirPath,
+} from './store.js';
 import { openUrl } from './open.js';
 import { assertSpecReady } from './spec.js';
 
 const UI_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'ui');
 const PKG_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const VENDOR_DIR = path.join(PKG_ROOT, 'vendor');
+const ARTIFACT_MAX_BYTES = 4 * 1024 * 1024;
+const ARTIFACT_MIMES = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+};
 
 const escapeHtml = (s) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -262,7 +277,51 @@ function sanitizeReplies(value) {
 // Drops anything that isn't a well-formed annotation object; caps at 500.
 // Each annotation may carry an optional author ('user'|'agent', default
 // 'user') and a threaded replies array (validated + capped at 50).
-function sanitizeAnnotations(value) {
+function sanitizeAnnotationCrop(value, boardId) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !boardId) return null;
+  const rawPath = typeof value.path === 'string' ? value.path : '';
+  if (!rawPath) return null;
+  const base = path.resolve(artifactDirPath(boardId)) + path.sep;
+  const resolved = path.resolve(rawPath);
+  if (!resolved.startsWith(base)) return null;
+  let stat;
+  try { stat = fs.statSync(resolved); } catch { return null; }
+  if (!stat.isFile() || stat.size < 1 || stat.size > ARTIFACT_MAX_BYTES) return null;
+  const mime = ARTIFACT_MIMES[value.mime] ? value.mime : 'image/png';
+  return {
+    path: resolved,
+    name: path.basename(resolved),
+    mime,
+    bytes: stat.size,
+    width: Math.max(1, Math.min(10000, Number.parseInt(value.width, 10) || 1)),
+    height: Math.max(1, Math.min(10000, Number.parseInt(value.height, 10) || 1)),
+  };
+}
+
+function sanitizeAnnotationTarget(value, boardId) {
+  const clean = { ...value };
+  delete clean.cropDataUrl;
+  if (clean.kind !== 'image-region') {
+    delete clean.crop;
+    return clean;
+  }
+  const unit = (v) => Math.max(0, Math.min(1, Number(v) || 0));
+  clean.x = unit(clean.x);
+  clean.y = unit(clean.y);
+  clean.w = unit(clean.w);
+  clean.h = unit(clean.h);
+  if (clean.x + clean.w > 1) clean.w = 1 - clean.x;
+  if (clean.y + clean.h > 1) clean.h = 1 - clean.y;
+  clean.label = limitString(clean.label, 200);
+  if (clean.side === 'before' || clean.side === 'after') clean.side = clean.side;
+  else delete clean.side;
+  const crop = sanitizeAnnotationCrop(clean.crop, boardId);
+  if (crop) clean.crop = crop;
+  else delete clean.crop;
+  return clean;
+}
+
+function sanitizeAnnotations(value, boardId) {
   if (!Array.isArray(value)) return [];
   const out = [];
   for (const a of value) {
@@ -270,7 +329,11 @@ function sanitizeAnnotations(value) {
     if (a === null || typeof a !== 'object' || Array.isArray(a)) continue;
     if (typeof a.text !== 'string' || a.text.length > 5000) continue;
     if (a.target === null || typeof a.target !== 'object' || Array.isArray(a.target)) continue;
-    const clean = { ...a, author: a.author === 'agent' ? 'agent' : 'user' };
+    const clean = {
+      ...a,
+      target: sanitizeAnnotationTarget(a.target, boardId),
+      author: a.author === 'agent' ? 'agent' : 'user',
+    };
     if (a.replies !== undefined) clean.replies = sanitizeReplies(a.replies);
     out.push(clean);
   }
@@ -628,6 +691,14 @@ function readBody(req, limit = 5 * 1024 * 1024) {
   });
 }
 
+function artifactBytesMatch(mime, bytes) {
+  if (!Buffer.isBuffer(bytes) || bytes.length < 4) return false;
+  if (mime === 'image/png') return bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  if (mime === 'image/jpeg') return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[bytes.length - 2] === 0xff && bytes[bytes.length - 1] === 0xd9;
+  if (mime === 'image/webp') return bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP';
+  return false;
+}
+
 // Push-wake: run the agent's own local shell command after a board finishes.
 // The full result JSON is written to the command's stdin; RLY_BOARD_ID /
 // RLY_STATUS / RLY_URL are exported. Failures are swallowed (best effort) —
@@ -673,7 +744,7 @@ function runOnResult(cmd, result, { quiet = false } = {}) {
 // (submitted / acknowledged / timeout / cancelled). The result is also
 // persisted into the board record so `rly wait` / `rly result` can read it
 // from another process.
-export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, quiet = false, keepAliveOnTimeout = false }) {
+export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, quiet = false, keepAliveOnTimeout = false }) {
   const record = loadBoard(id);
   if (!record) throw new Error(`board ${id} not found`);
   const spec = record.spec;
@@ -933,7 +1004,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         const block = findHtmlBlock(record.spec, blockId);
         if (!block) return sendJson(res, 404, { error: `no html block "${blockId}"` });
         const access = accessFor(req, reqUrl);
-        sendHtml(res, wrapFragment(block.html || '', theme, access.canComment === true));
+        sendHtml(res, wrapFragment(block.html || '', theme, access.canComment === true && record.spec.responseRequired !== false));
       } else if (req.method === 'GET' && pathname.startsWith('/img/b/')) {
         // Embedded image bytes (image blocks authored from local files).
         const blockId = decodeURIComponent(pathname.slice('/img/b/'.length));
@@ -942,6 +1013,32 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         if (!m) return sendJson(res, 404, { error: `no embedded image block "${blockId}"` });
         res.writeHead(200, { 'content-type': m[1], 'cache-control': 'no-store' });
         res.end(Buffer.from(m[2], 'base64'));
+      } else if (req.method === 'POST' && pathname === '/api/artifact') {
+        if (record.spec.responseRequired === false) return sendJson(res, 409, { error: 'display-only boards do not collect feedback' });
+        if (!sameOrigin(req, actualPort, [advertisedHost])) return sendJson(res, 403, { error: 'cross-origin artifact upload rejected' });
+        const access = accessFor(req, reqUrl);
+        if (!access.canComment) return sendJson(res, 403, { error: 'this share cannot add comments' });
+        const body = JSON.parse((await readBody(req, 6 * 1024 * 1024)) || '{}');
+        const blockId = typeof body.blockId === 'string' ? body.blockId : '';
+        const block = findBlock(record.spec, blockId, 'image') || findBlock(record.spec, blockId, 'compare');
+        if (!block) return sendJson(res, 404, { error: `no image or comparison block "${blockId}"` });
+        const match = typeof body.dataUrl === 'string'
+          ? body.dataUrl.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/)
+          : null;
+        if (!match || !ARTIFACT_MIMES[match[1]]) return sendJson(res, 400, { error: 'artifact must be a PNG, JPEG, or WebP data URL' });
+        const bytes = Buffer.from(match[2], 'base64');
+        if (bytes.length < 1 || bytes.length > ARTIFACT_MAX_BYTES) return sendJson(res, 400, { error: 'artifact image is empty or larger than 4 MB' });
+        if (!artifactBytesMatch(match[1], bytes)) return sendJson(res, 400, { error: 'artifact bytes do not match the declared image type' });
+        const target = saveBoardArtifact(record.id, bytes, ARTIFACT_MIMES[match[1]]);
+        sendJson(res, 200, {
+          ok: true,
+          path: target,
+          name: path.basename(target),
+          mime: match[1],
+          bytes: bytes.length,
+          width: Math.max(1, Math.min(10000, Number.parseInt(body.width, 10) || 1)),
+          height: Math.max(1, Math.min(10000, Number.parseInt(body.height, 10) || 1)),
+        });
       } else if ((req.method === 'GET' || req.method === 'HEAD') && pathname.startsWith('/video/b/')) {
         // Local video bytes, Range-streamed so the <video> element can seek.
         const blockId = decodeURIComponent(pathname.slice('/video/b/'.length));
@@ -958,14 +1055,14 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         // Legacy alias → the board's first html block.
         const block = firstBoardHtml(record.spec);
         const access = accessFor(req, reqUrl);
-        sendHtml(res, wrapFragment((block && block.html) || '', theme, access.canComment === true));
+        sendHtml(res, wrapFragment((block && block.html) || '', theme, access.canComment === true && record.spec.responseRequired !== false));
       } else if (req.method === 'GET' && pathname.startsWith('/html/q/')) {
         const qid = decodeURIComponent(pathname.slice('/html/q/'.length));
         const q = record.spec.questions.find((q) => q.id === qid);
         if (!q) return sendJson(res, 404, { error: `no question "${qid}"` });
         const block = firstQuestionHtml(q);
         const access = accessFor(req, reqUrl);
-        sendHtml(res, wrapFragment((block && block.html) || '', theme, access.canComment === true));
+        sendHtml(res, wrapFragment((block && block.html) || '', theme, access.canComment === true && record.spec.responseRequired !== false));
       } else if (req.method === 'POST' && pathname === '/api/pref') {
         const body = JSON.parse((await readBody(req)) || '{}');
         if (['auto', 'light', 'dark'].includes(body.theme)) savePref({ theme: body.theme });
@@ -998,6 +1095,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
         if (!openUrl(target)) return sendJson(res, 500, { error: 'could not open the file' });
         sendJson(res, 200, { ok: true, path: target, name: path.basename(target) });
       } else if (req.method === 'POST' && pathname === '/api/draft') {
+        if (record.spec.responseRequired === false) return sendJson(res, 409, { error: 'display-only boards do not collect feedback' });
         const access = accessFor(req, reqUrl);
         if (access.role === 'locked') return sendJson(res, 403, { error: 'share link is not active' });
         if (!access.canEditAnswers && !access.canComment && !access.canEditBlocks) {
@@ -1011,7 +1109,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
             answers: body.answers && typeof body.answers === 'object' ? body.answers : {},
             comment: typeof body.comment === 'string' ? body.comment : '',
             notes: body.notes && typeof body.notes === 'object' ? body.notes : {},
-            annotations: sanitizeAnnotations(body.annotations),
+            annotations: sanitizeAnnotations(body.annotations, record.id),
             blockEdits: {},
             draftRev: priorRev + 1,
             updatedAt: new Date().toISOString(),
@@ -1022,7 +1120,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
             answers: body.answers && typeof body.answers === 'object' ? body.answers : {},
             comment: typeof body.comment === 'string' ? body.comment : '',
             notes: body.notes && typeof body.notes === 'object' ? body.notes : {},
-            annotations: sanitizeAnnotations(body.annotations),
+            annotations: sanitizeAnnotations(body.annotations, record.id),
             blockEdits: sanitizeBlockEdits(body.blockEdits),
             updatedAt: new Date().toISOString(),
           };
@@ -1034,6 +1132,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
           : draftRev;
         sendJson(res, 200, { ok: true, draftRev: accessDraftRev });
       } else if (req.method === 'POST' && pathname === '/api/submit') {
+        if (record.spec.responseRequired === false) return sendJson(res, 409, { error: 'display-only boards do not accept submissions' });
         const access = accessFor(req, reqUrl);
         if (access.role === 'locked') return sendJson(res, 403, { error: 'share link is not active' });
         if (!access.canSubmit) return sendJson(res, 403, { error: 'this share is read only' });
@@ -1052,7 +1151,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
             skipped,
             comment: typeof body.comment === 'string' ? body.comment : '',
             notes: body.notes && typeof body.notes === 'object' ? body.notes : {},
-            annotations: sanitizeAnnotations(body.annotations),
+            annotations: sanitizeAnnotations(body.annotations, record.id),
             blockEdits: {},
             submittedAt: new Date().toISOString(),
           };
@@ -1076,7 +1175,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 1800, q
           skipped,
           comment: typeof body.comment === 'string' ? body.comment : '',
           notes: body.notes && typeof body.notes === 'object' ? body.notes : {},
-          annotations: sanitizeAnnotations(body.annotations),
+          annotations: sanitizeAnnotations(body.annotations, record.id),
           blockEdits: sanitizeBlockEdits(body.blockEdits),
         });
       } else if (req.method === 'GET' && pathname === '/api/share') {

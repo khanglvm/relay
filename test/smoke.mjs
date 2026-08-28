@@ -1855,5 +1855,93 @@ console.log('35. port-reuse retries a briefly-busy port');
   await run(['stop', info.boardId]);
 }
 
+// ---------- 36. native viewer chrome + durable image-region feedback ----------
+console.log('36. native viewer chrome + image-region feedback');
+{
+  const blocksCss = fs.readFileSync(path.join(ROOT, 'src', 'ui', 'blocks.css'), 'utf8');
+  const blocksJs = fs.readFileSync(path.join(ROOT, 'src', 'ui', 'blocks.js'), 'utf8');
+  const annotateJs = fs.readFileSync(path.join(ROOT, 'src', 'ui', 'annotate.js'), 'utf8');
+  ok(/\.blk-tools\s*\{[^}]*position:\s*sticky/s.test(blocksCss), 'viewer toolbar uses browser-native sticky positioning');
+  ok(!blocksJs.includes('_rlyToolsSync'), 'viewer toolbar no longer counter-translates itself in a JavaScript scroll handler');
+  ok(!annotateJs.includes("Math.abs(window.scrollY - popScrollY) > 80) closePopover()"), 'page scrolling no longer closes and discards an open comment composer');
+  ok(annotateJs.includes('commentDrafts') && annotateJs.includes('positionPopover'), 'comment drafts persist per target while the popover re-anchors on scroll');
+  ok(blocksJs.includes("kind: 'image-region'") && blocksJs.includes("side: side"), 'image and comparison blocks emit side-aware image-region annotations');
+  ok(blocksJs.includes("typeof ctx.saveArtifact === 'function'"), 'shared block context preserves the browser crop uploader');
+
+  const tinyPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+  const p = path.join(HOME, 'region-spec.json');
+  fs.writeFileSync(p, JSON.stringify({
+    title: 'Region artifact',
+    blocks: [{ type: 'image', src: tinyPng, alt: 'pixel' }, { type: 'compare', before: tinyPng, after: tinyPng }],
+  }));
+  const { id, url, exited } = await spawnBlocking(['ask', '--file', p, '--no-open', '--timeout', '60']);
+  const upload = await post(url, '/api/artifact', {
+    dataUrl: tinyPng,
+    blockId: 'b1',
+    width: 1,
+    height: 1,
+  });
+  const uploaded = await upload.json();
+  ok(upload.ok && typeof uploaded.path === 'string' && fs.existsSync(uploaded.path), 'browser crop uploads to a board-owned local image artifact');
+  const annotation = {
+    id: 'a-region',
+    blockId: 'b1',
+    questionId: null,
+    target: { kind: 'image-region', x: 0.1, y: 0.2, w: 0.3, h: 0.4, label: 'pixel', crop: uploaded },
+    text: 'Inspect this area',
+    createdAt: new Date().toISOString(),
+  };
+  await post(url, '/api/draft', { annotations: [annotation] });
+  const draft = await (await fetch(new URL('/api/draft', url))).json();
+  ok(draft.draft.annotations[0].target.crop.path === uploaded.path, 'autosaved image-region annotation retains its validated local crop path');
+  await post(url, '/api/submit', { annotations: [annotation] });
+  const result = JSON.parse((await exited).stdout);
+  ok(result.annotations[0].target.kind === 'image-region' && result.annotations[0].target.crop.path === uploaded.path, 'final result gives the agent region coordinates plus a viewable local crop');
+  ok(fs.existsSync(path.join(HOME, 'boards', `${id}.artifacts`)), 'region crops live beside the owning board record');
+}
+
+// ---------- 37. display-only boards + long-wait defaults ----------
+console.log('37. display-only boards + long-wait defaults');
+{
+  const p = path.join(HOME, 'display-only.json');
+  fs.writeFileSync(p, JSON.stringify({
+    title: 'Just look',
+    responseRequired: false,
+    blocks: [
+      { type: 'markdown', md: 'No acknowledgement is needed.' },
+      { type: 'html', html: '<button>View only</button>' },
+    ],
+  }));
+  const shown = await run(['show', '--file', p, '--detach', '--no-open', '--timeout', '60']);
+  const info = JSON.parse(shown.stdout);
+  const board = await (await fetch(new URL('/api/board', info.url))).json();
+  ok(board.spec.responseRequired === false, 'responseRequired:false normalizes as an explicit display-only board');
+  const page = await (await fetch(info.url)).text();
+  ok(page.includes('"responseRequired":false'), 'browser boot payload carries display-only mode');
+  const displayHtml = await (await fetch(new URL('/html/b/b2', info.url))).text();
+  ok(!displayHtml.includes('relayKit.annotate.auto()'), 'display-only custom HTML omits comment affordances');
+  const rejected = await post(info.url, '/api/submit', {});
+  ok(rejected.status === 409, 'display-only boards reject accidental submissions');
+  await run(['stop', info.boardId]);
+
+  const cliSrc = fs.readFileSync(path.join(ROOT, 'src', 'cli.js'), 'utf8');
+  ok(cliSrc.includes('DEFAULT_WAIT_TIMEOUT_SEC = 86400'), 'rly wait defaults to a full day instead of a short interaction window');
+  const ask = await run(['ask', '-q', 'Long wait?::yesno', '--detach', '--no-open', '--timeout', '60']);
+  const askInfo = JSON.parse(ask.stdout);
+  const indefiniteWait = run(['wait', askInfo.boardId, '--timeout', '0']);
+  await sleep(500);
+  await post(askInfo.url, '/api/submit', { answers: { q1: 'yes' } });
+  const waited = await indefiniteWait;
+  ok(waited.code === 0 && JSON.parse(waited.stdout).status === 'submitted', 'rly wait --timeout 0 waits without a Relay deadline until submit');
+
+  const { byId } = await mcpRoundtrip([
+    { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } } },
+    { jsonrpc: '2.0', method: 'notifications/initialized' },
+    { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'relay_show', arguments: { blocks: [{ type: 'markdown', md: 'FYI' }] } } },
+  ]);
+  ok(byId[2].result.structuredContent.spec.responseRequired === false, 'inline relay_show is display-only by default and does not wait for acknowledgement');
+  ok(/no acknowledgement/i.test(byId[2].result.content[0].text), 'relay_show tells the agent to continue without waiting');
+}
+
 console.log(`\nAll ${passed} assertions passed. (storage: ${HOME})`);
 process.exit(0);

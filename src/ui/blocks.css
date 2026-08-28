@@ -648,11 +648,18 @@
 }
 .blk-imagewrap .blk-img {
   display: block;
-  max-width: 100%;
+  width: 100%;
+  max-width: none;
   height: auto;
   border-radius: 6px;
   object-fit: contain;
   object-position: left top;
+}
+.blk-imgstage {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  line-height: 0;
 }
 /* In full-screen a per-block height must never keep the image small — that
    height only shapes the inline preview; the detail view needs every pixel.
@@ -660,14 +667,16 @@
 .blk-imagewrap.blk-full .blk-img { max-height: none !important; }
 
 /* ---------- viewer controls (full-screen) ---------- */
-/* The full-screen button lives in a reserved strip ABOVE the visual (user
-   feedback: never overlay the content). padding-top reserves the strip;
-   the bar is a full-width transparent row with the button at the right. */
-.blk-viewer { position: relative; padding-top: 34px; }
+/* The controls participate in layout above the visual and use native sticky
+   positioning. The previous JS counter-translation chased scrollTop one event
+   behind the compositor, which made the bar visibly trail trackpad scrolling. */
+.blk-viewer { position: relative; }
 .blk-tools {
-  position: absolute; top: 4px; left: 4px; right: 4px; height: 26px;
+  position: sticky; top: 0; left: 0; width: 100%; height: 34px;
   display: flex; gap: 2px; align-items: center; justify-content: flex-end;
-  z-index: 5;
+  box-sizing: border-box; padding: 4px;
+  background: var(--bg-sunken); border-bottom: 1px solid var(--border);
+  z-index: 16;
 }
 .blk-tools button {
   background: var(--card); border: 1px solid var(--border); color: var(--fg-2);
@@ -693,6 +702,7 @@ body.blk-full-open { overflow: hidden; }
 /* detach the toolbar from the scrolling content and fix it to the viewport top */
 .blk-full > .blk-tools {
   position: fixed; top: 0; left: 0; right: 0; height: 44px;
+  width: auto;
   margin: 0; padding: 0 12px;
   background: var(--card); border-bottom: 1px solid var(--border);
   z-index: 51;
@@ -727,6 +737,7 @@ body.blk-full-open { overflow: hidden; }
 .blk-plantuml.blk-full > svg,
 .blk-plantuml.blk-full > .blk-plantuml-img,
 .blk-imagewrap.blk-full > .blk-img { margin: auto; }
+.blk-imagewrap.blk-full > .blk-imgstage { margin: auto; max-width: none; }
 
 /* Small frame on charts + mermaid so they read as a deliberate card, matching
    the graphviz/plantuml/image blocks (already framed). Scoped to the inner
@@ -898,7 +909,7 @@ body.blk-full-open { overflow: hidden; }
   20% { box-shadow: 0 0 0 3px var(--accent); }
 }
 
-/* ---------- image coordinate pins (block.pins) ---------- */
+/* ---------- image point + area comments ---------- */
 .blk-img-pinnable { cursor: crosshair; }
 .blk-imgpins { position: absolute; inset: 0; pointer-events: none; }
 .blk-imgpin {
@@ -912,3 +923,42 @@ body.blk-full-open { overflow: hidden; }
   display: grid; place-items: center;
 }
 .blk-imgpin:hover { filter: brightness(1.08); }
+.blk-region-layer { position: absolute; inset: 0; pointer-events: none; }
+.blk-region-selection,
+.blk-imgregion {
+  position: absolute;
+  border: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.75) inset;
+  border-radius: 5px;
+}
+.blk-region-selection { display: none; z-index: 7; }
+.blk-imgregion {
+  z-index: 6;
+  pointer-events: auto;
+  cursor: pointer;
+  color: var(--accent-fg);
+  padding: 0;
+  min-width: 10px;
+  min-height: 10px;
+}
+.blk-imgregion::after {
+  content: attr(data-count);
+  position: absolute; top: -11px; right: -11px;
+  min-width: 20px; height: 20px; padding: 0 5px;
+  display: grid; place-items: center;
+  border: 2px solid #fff; border-radius: 999px;
+  background: var(--accent); color: #fff;
+  font: 600 0.68rem/1 var(--sans);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+.blk-region-arming { cursor: crosshair !important; }
+.blk-region-selecting { cursor: crosshair !important; touch-action: none; }
+.blk-region-status {
+  position: absolute; left: 50%; bottom: 12px; z-index: 9;
+  transform: translateX(-50%);
+  padding: 6px 10px; border-radius: 8px;
+  background: rgba(28,27,25,0.86); color: #fff;
+  font: 500 0.74rem/1.2 var(--sans);
+  pointer-events: none;
+}

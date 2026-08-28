@@ -1901,7 +1901,9 @@
       src,
       alt: block.alt || 'image',
       loading: 'lazy',
+      title: ctx.canComment === false ? '' : 'Hold briefly, then drag to comment on an area',
     });
+    const stage = el('div', { class: 'blk-imgstage' }, img);
     // Inline default: the image fills its full width (container width, never
     // upscaled past natural) so it's readable without manual zoom; the CONTAINER
     // caps the height (default 800 via CSS, or block.height) and SCROLLS — we
@@ -1911,18 +1913,30 @@
     img.addEventListener('error', () => {
       container.replaceChildren(el('div', { class: 'blk-error' }, 'Image failed to load'));
     });
-    container.append(img);
+    container.append(stage);
     const attachImgViewer = () =>
       attachViewer(container, {
-        zoomEl: img,
+        zoomEl: stage,
         natural: () => (img.naturalWidth > 0 ? { w: img.naturalWidth, h: img.naturalHeight } : null),
         label: 'image',
         comment: wholeBlockComment(ctx, blockId, 'image'),
       });
     if (img.complete && img.naturalWidth > 0) attachImgViewer();
     else img.addEventListener('load', attachImgViewer, { once: true });
+    if (ctx.annotate && ctx.canComment !== false) {
+      enableImageRegions({
+        host: stage,
+        surface: img,
+        panHost: container,
+        sourceForSide: () => img,
+        sideAtPoint: () => null,
+        ctx,
+        blockId,
+        label: block.alt || 'Image',
+      });
+    }
     if (ctx.annotate && block.pins === true) {
-      enableImagePins(container, img, ctx, blockId, block.alt || 'Image');
+      enableImagePins(stage, img, ctx, blockId, block.alt || 'Image');
     } else if (ctx.annotate) {
       ctx.annotate.register(img, {
         blockId,
@@ -1945,6 +1959,7 @@
     img.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; });
     img.addEventListener('click', (e) => {
       if (ctx.canComment === false) return;
+      if (img._rlySuppressPointClick) { img._rlySuppressPointClick = false; down = null; return; }
       if (down && (Math.abs(e.clientX - down.x) > 4 || Math.abs(e.clientY - down.y) > 4)) { down = null; return; }
       const r = img.getBoundingClientRect();
       if (!r.width || !r.height) return;
@@ -1982,6 +1997,192 @@
     };
     if (ctx.annotate.onBadgeRefresh) ctx.annotate.onBadgeRefresh(syncPins);
     syncPins();
+  }
+
+  // Hold, then drag, to select a rectangular image area. A short move remains
+  // native viewer pan / comparison-slider input; the hold threshold makes the
+  // two gestures coexist without a mode switch. Region coordinates are stored
+  // as normalized fractions, while a pixel crop is uploaded through the host
+  // context so the result gives the agent an actual viewable image artifact.
+  function enableImageRegions({ host, surface, panHost, sourceForSide, sideAtPoint, ctx, blockId, label }) {
+    const layer = el('div', { class: 'blk-region-layer' });
+    const selection = el('div', { class: 'blk-region-selection' });
+    layer.append(selection);
+    host.append(layer);
+    let pending = null;
+    let active = false;
+    let holdTimer = 0;
+    let status = null;
+    const HOLD_MS = 280;
+    const MIN_REGION = 0.012;
+
+    const localPoint = (e) => {
+      const r = host.getBoundingClientRect();
+      return {
+        x: r.width ? Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) : 0,
+        y: r.height ? Math.max(0, Math.min(1, (e.clientY - r.top) / r.height)) : 0,
+      };
+    };
+    const clearStatus = () => { if (status) status.remove(); status = null; };
+    const showStatus = (text) => {
+      clearStatus();
+      status = el('div', { class: 'blk-region-status', role: 'status' }, text);
+      host.append(status);
+    };
+    const reset = () => {
+      clearTimeout(holdTimer);
+      holdTimer = 0;
+      active = false;
+      pending = null;
+      panHost._rlyRegionSelecting = false;
+      host.classList.remove('blk-region-arming', 'blk-region-selecting');
+      selection.style.display = 'none';
+      clearStatus();
+    };
+    const draw = (a, b) => {
+      const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+      const w = Math.abs(a.x - b.x), h = Math.abs(a.y - b.y);
+      selection.style.left = (x * 100) + '%';
+      selection.style.top = (y * 100) + '%';
+      selection.style.width = (w * 100) + '%';
+      selection.style.height = (h * 100) + '%';
+      return { x, y, w, h };
+    };
+    const beginSelection = (pointerId) => {
+      if (!pending || active) return;
+      active = true;
+      panHost._rlyRegionSelecting = true;
+      host.classList.remove('blk-region-arming');
+      host.classList.add('blk-region-selecting');
+      selection.style.display = 'block';
+      draw(pending.start, pending.start);
+      showStatus((pending.side ? pending.side.charAt(0).toUpperCase() + pending.side.slice(1) + ' · ' : '') + 'drag to select an area');
+      try { surface.setPointerCapture(pointerId); } catch (_) {}
+    };
+
+    async function cropRegion(img, region) {
+      if (!img || !img.naturalWidth || !img.naturalHeight) throw new Error('image is not ready');
+      const sx = Math.max(0, Math.floor(region.x * img.naturalWidth));
+      const sy = Math.max(0, Math.floor(region.y * img.naturalHeight));
+      const sw = Math.max(1, Math.min(img.naturalWidth - sx, Math.round(region.w * img.naturalWidth)));
+      const sh = Math.max(1, Math.min(img.naturalHeight - sy, Math.round(region.h * img.naturalHeight)));
+      const scale = Math.min(1, 1400 / sw, 1400 / sh);
+      const width = Math.max(1, Math.round(sw * scale));
+      const height = Math.max(1, Math.round(sh * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const g = canvas.getContext('2d');
+      if (!g) throw new Error('canvas unavailable');
+      g.drawImage(img, sx, sy, sw, sh, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL('image/png');
+      if (!/^data:image\/png;base64,/.test(dataUrl)) throw new Error('crop unavailable');
+      if (ctx.saveArtifact) return ctx.saveArtifact({ dataUrl, mime: 'image/png', width, height, blockId });
+      return { data: dataUrl.slice(dataUrl.indexOf(',') + 1), mime: 'image/png', width, height };
+    }
+
+    const finishRegion = async (region, side) => {
+      const target = {
+        kind: 'image-region',
+        x: Math.round(region.x * 10000) / 10000,
+        y: Math.round(region.y * 10000) / 10000,
+        w: Math.round(region.w * 10000) / 10000,
+        h: Math.round(region.h * 10000) / 10000,
+        side: side || undefined,
+        label,
+      };
+      showStatus('Saving selected area…');
+      try {
+        target.crop = await cropRegion(sourceForSide(side), region);
+      } catch {
+        target.cropUnavailable = true;
+      }
+      clearStatus();
+      ctx.annotate.openExternal({ blockId, questionId: ctx.questionId, target }, host);
+    };
+
+    surface.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || ctx.canComment === false) return;
+      if (e.target.closest && e.target.closest('.cmp-handle, .blk-imgregion, .blk-tools')) return;
+      const p = localPoint(e);
+      pending = {
+        start: p,
+        last: p,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        pointerId: e.pointerId,
+        startedAt: performance.now(),
+        side: sideAtPoint(p.x),
+      };
+      host.classList.add('blk-region-arming');
+      holdTimer = setTimeout(() => beginSelection(e.pointerId), HOLD_MS);
+    });
+    surface.addEventListener('pointermove', (e) => {
+      if (!pending) return;
+      const moved = Math.hypot(e.clientX - pending.clientX, e.clientY - pending.clientY);
+      // Timers can be throttled while an automation host or background tab owns
+      // the event loop. The first post-hold move is also authoritative, so a
+      // genuine hold still enters area mode even if setTimeout fired late.
+      if (!active && performance.now() - pending.startedAt >= HOLD_MS) beginSelection(pending.pointerId);
+      if (!active) {
+        if (moved > 5) reset();
+        return;
+      }
+      e.preventDefault();
+      pending.last = localPoint(e);
+      draw(pending.start, pending.last);
+    });
+    const end = (e) => {
+      if (!pending) return;
+      clearTimeout(holdTimer);
+      if (!active) { reset(); return; }
+      e.preventDefault();
+      const region = draw(pending.start, pending.last || localPoint(e));
+      const side = pending.side;
+      surface._rlySuppressPointClick = true;
+      reset();
+      clearStatus();
+      if (region.w >= MIN_REGION && region.h >= MIN_REGION) finishRegion(region, side);
+    };
+    surface.addEventListener('pointerup', end);
+    // Some Chromium/CDP paths emit pointercancel immediately after granting
+    // capture on the first dragged frame. Once area mode is active, keep the
+    // last drawn rectangle instead of throwing the user's deliberate hold away.
+    surface.addEventListener('pointercancel', (e) => active ? end(e) : reset());
+
+    const syncRegions = () => {
+      for (const node of Array.from(layer.querySelectorAll('.blk-imgregion'))) node.remove();
+      const groups = new Map();
+      for (const a of ctx.annotate.list()) {
+        if (a.blockId !== blockId || !a.target || a.target.kind !== 'image-region') continue;
+        const t = a.target;
+        const key = [t.side || '', t.x, t.y, t.w, t.h].join(':');
+        const group = groups.get(key) || { target: t, count: 0 };
+        group.count++;
+        groups.set(key, group);
+      }
+      for (const { target, count } of groups.values()) {
+        const region = el('button', {
+          class: 'blk-imgregion',
+          type: 'button',
+          'data-count': String(count),
+          title: `${target.side ? target.side + ' · ' : ''}${count} ${count === 1 ? 'comment' : 'comments'}`,
+          'aria-label': `${target.side ? target.side + ' image area' : 'image area'} with ${count} ${count === 1 ? 'comment' : 'comments'}`,
+        });
+        region.style.left = (target.x * 100) + '%';
+        region.style.top = (target.y * 100) + '%';
+        region.style.width = (target.w * 100) + '%';
+        region.style.height = (target.h * 100) + '%';
+        region.addEventListener('pointerdown', (e) => e.stopPropagation());
+        region.addEventListener('click', (e) => {
+          e.stopPropagation();
+          ctx.annotate.openExternal({ blockId, questionId: ctx.questionId, target }, region);
+        });
+        layer.append(region);
+      }
+    };
+    if (ctx.annotate.onBadgeRefresh) ctx.annotate.onBadgeRefresh(syncRegions);
+    syncRegions();
   }
 
   // ---------- palette ----------
@@ -2125,18 +2326,46 @@
     window.addEventListener('resize', sizeBefore);
 
     let dragging = false;
+    let dragMoved = false;
+    let dragStartX = 0;
     const setFromX = (clientX) => {
       const r = frame.getBoundingClientRect();
       if (r.width) { pos = Math.max(0, Math.min(100, ((clientX - r.left) / r.width) * 100)); apply(); }
     };
-    frame.addEventListener('pointerdown', (e) => { dragging = true; setFromX(e.clientX); try { frame.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); });
-    frame.addEventListener('pointermove', (e) => { if (dragging) setFromX(e.clientX); });
-    frame.addEventListener('pointerup', () => { dragging = false; });
-    frame.addEventListener('pointercancel', () => { dragging = false; });
+    frame.addEventListener('pointerdown', (e) => {
+      if (e.target.closest && e.target.closest('.blk-imgregion')) return;
+      dragging = true;
+      dragMoved = false;
+      dragStartX = e.clientX;
+      try { frame.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+    frame.addEventListener('pointermove', (e) => {
+      if (!dragging || frame._rlyRegionSelecting) return;
+      if (Math.abs(e.clientX - dragStartX) > 3) dragMoved = true;
+      if (dragMoved) { setFromX(e.clientX); e.preventDefault(); }
+    });
+    frame.addEventListener('pointerup', (e) => {
+      if (dragging && !dragMoved && !frame._rlyRegionSelecting) setFromX(e.clientX);
+      dragging = false;
+    });
+    frame.addEventListener('pointercancel', () => { dragging = false; dragMoved = false; });
     handle.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowLeft') { pos = Math.max(0, pos - 2); apply(); e.preventDefault(); }
       else if (e.key === 'ArrowRight') { pos = Math.min(100, pos + 2); apply(); e.preventDefault(); }
     });
+    if (ctx.annotate && ctx.canComment !== false) {
+      frame.title = 'Hold briefly, then drag to comment on the visible Before or After image';
+      enableImageRegions({
+        host: frame,
+        surface: frame,
+        panHost: frame,
+        sourceForSide: (side) => side === 'before' ? beforeImg : afterImg,
+        sideAtPoint: (x) => (x * 100 <= pos ? 'before' : 'after'),
+        ctx,
+        blockId,
+        label: 'Comparison',
+      });
+    }
     attachViewer(wrap, { zoomEl: null, label: 'comparison', comment: wholeBlockComment(ctx, blockId, 'comparison') });
     return wrap;
   }
@@ -2181,7 +2410,6 @@
     if (btn) btn.innerHTML = ICON_EXPAND;
     fullOpen = null;
     window.dispatchEvent(new Event('resize'));
-    if (c._rlyToolsSync) c._rlyToolsSync(); // re-pin toolbar to its scrolled corner
     if (c._rlyZoom) c._rlyZoom.reapply(); // restore the compact inline height cap
   }
   document.addEventListener('keydown', (e) => {
@@ -2200,7 +2428,6 @@
     const btn = container.querySelector('.blk-tools .tool-full');
     if (btn) btn.textContent = '✕';
     window.dispatchEvent(new Event('resize'));
-    if (container._rlyToolsSync) container._rlyToolsSync();
     if (container._rlyZoom) container._rlyZoom.reapply();
   }
 
@@ -2303,6 +2530,7 @@
     });
     scrollEl.addEventListener('pointermove', (e) => {
       if (!pending) return;
+      if (scrollEl._rlyRegionSelecting) { pending = false; active = false; return; }
       const dx = e.clientX - sx, dy = e.clientY - sy;
       if (!active) {
         if (Math.abs(dx) < THRESH && Math.abs(dy) < THRESH) return;
@@ -2363,22 +2591,6 @@
     if (!container._rlyPan) container._rlyPan = enablePan(container);
     const refreshPan = container._rlyPan;
 
-    // The toolbar is absolute inside the scroll box, so it scrolls away when the
-    // user pans/scrolls. Counter-translate it by the scroll offset to pin it to
-    // the visible corner (off in full-screen, where it is position:fixed). Bound
-    // once; always re-reads the current toolbar (mermaid rebuilds it on render).
-    if (!container._rlyToolsSync) {
-      const sync = () => {
-        const tb = container._rlyTools;
-        if (!tb) return;
-        if (container.classList.contains('blk-full')) { tb.style.transform = ''; return; }
-        const x = container.scrollLeft, y = container.scrollTop;
-        tb.style.transform = x || y ? 'translate(' + x + 'px,' + y + 'px)' : '';
-      };
-      container.addEventListener('scroll', sync);
-      container._rlyToolsSync = sync;
-    }
-
     // zoom level persists across re-renders; the wheel handler (bound once)
     // delegates through container._rlyZoom so it never holds a stale zoomEl
     if (container._rlyZ === undefined) container._rlyZ = null; // null = fit-to-width
@@ -2427,7 +2639,6 @@
       }
       window.dispatchEvent(new Event('resize')); // annotation badges reposition
       refreshPan();                              // content size → grab affordance
-      container._rlyToolsSync();                 // keep the toolbar pinned
     }
     function currentZ() {
       if (container._rlyZ !== null) return container._rlyZ;
@@ -2550,12 +2761,11 @@
     });
     tools.append(fullBtn);
 
-    container.append(tools);
+    container.prepend(tools);
     container._rlyTools = tools;
     if (zoomable) apply();
     // non-zoomable diagrams (tall mermaid, oversized image) can still overflow
     refreshPan();
-    container._rlyToolsSync();
     if (container._rlyCmtSync) container._rlyCmtSync(); // reflect existing comment
   }
 
@@ -2678,6 +2888,8 @@
       // reports an accepted change (or null to clear back to the original).
       edits: ctx && ctx.edits ? ctx.edits : {},
       canComment: !ctx || ctx.canComment !== false,
+      saveArtifact:
+        ctx && typeof ctx.saveArtifact === 'function' ? ctx.saveArtifact : null,
       canEditBlocks: !ctx || ctx.canEditBlocks !== false,
       onBlockEdit:
         ctx && typeof ctx.onBlockEdit === 'function' ? ctx.onBlockEdit : () => {},

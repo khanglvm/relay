@@ -219,6 +219,7 @@
       allowPartial: raw.allowPartial !== false,
       note: raw.note !== false,
       autoClose: raw.autoClose !== false,
+      responseRequired: raw.responseRequired !== false,
       questions: [],
       submitLabel: typeof raw.submitLabel === 'string' ? raw.submitLabel : '',
     };
@@ -388,7 +389,13 @@
       questionId: questionId == null ? null : questionId,
       // No annotation during the streaming preview (it re-renders); on the final
       // interactive render, wire the engine so blocks register their targets.
-      annotate: composing ? null : Annotate,
+      annotate: composing || (spec && spec.responseRequired === false) ? null : Annotate,
+      canComment: Boolean(spec && spec.responseRequired !== false),
+      saveArtifact: async ({ dataUrl, mime, width, height }) => {
+        const comma = typeof dataUrl === 'string' ? dataUrl.indexOf(',') : -1;
+        if (comma < 0) throw new Error('invalid image crop');
+        return { data: dataUrl.slice(comma + 1), mime: mime || 'image/png', width, height };
+      },
       edits: state.blockEdits,
       onBlockEdit: (blockId, codeOrNull) => {
         if (codeOrNull === null || codeOrNull === undefined) delete state.blockEdits[blockId];
@@ -882,7 +889,7 @@
       app.append(card);
     });
 
-    if (spec.note) {
+    if (spec.note && spec.responseRequired !== false) {
       const note = el('textarea', { placeholder: 'optional note back to the agent…' });
       note.value = state.comment || '';
       note.addEventListener('input', () => { state.comment = note.value; });
@@ -895,6 +902,12 @@
     if (composing) {
       // still streaming in — show a live "composing" note, no submit yet
       app.append(el('div', { class: 'submitbar' }, el('span', { class: 'mcp-composing' }, 'Composing this board…')));
+      reportSize();
+      return;
+    }
+    if (spec.responseRequired === false) {
+      app.append(el('div', { class: 'submitbar display-only' },
+        el('span', { class: 'hint' }, 'Display only · no response requested')));
       reportSize();
       return;
     }
@@ -940,7 +953,9 @@
       lines.push('', 'Inline comments (' + data.annotations.length + '):');
       for (const a of data.annotations) {
         const where = (a.target && (a.target.label || a.target.text || a.target.kind)) || a.blockId || 'element';
-        lines.push('- [' + where + ']: ' + a.text);
+        const crop = a.target && a.target.crop;
+        const cropNote = crop && crop.path ? ' · crop: ' + crop.path : crop && crop.data ? ' · image crop attached' : '';
+        lines.push('- [' + where + ']: ' + a.text + cropNote);
       }
     }
     if (data.blockEdits) lines.push('', 'Edited diagrams: ' + Object.keys(data.blockEdits).join(', '));
@@ -964,24 +979,43 @@
       annotations: data.annotations,
     };
     const text = summarize(data);
+    const messageContent = [{ type: 'text', text }];
+    for (const a of data.annotations || []) {
+      const crop = a && a.target && a.target.crop;
+      if (!crop || typeof crop.data !== 'string' || !crop.data) continue;
+      messageContent.push({ type: 'image', data: crop.data, mimeType: crop.mime || 'image/png' });
+    }
     let messageDelivered = false;
     let contextDelivered = false;
     try {
       // A completed relay form is a user reply, not passive context. Some hosts
       // ACK `ui/update-model-context` without starting a new model turn, so send
       // the transcript as a user message first to wake the agent reliably.
-      await request('ui/message', { role: 'user', content: { type: 'text', text } });
+      await request('ui/message', { role: 'user', content: messageContent });
       messageDelivered = true;
     } catch {
-      // Older/leaner hosts may not expose app-initiated messages.
+      // Older hosts may not advertise image content or may implement the early
+      // single-content draft. Preserve the text wake path before giving up.
+      try {
+        await request('ui/message', { role: 'user', content: [{ type: 'text', text }] });
+        messageDelivered = true;
+      } catch {
+        try {
+          await request('ui/message', { role: 'user', content: { type: 'text', text } });
+          messageDelivered = true;
+        } catch { /* app-initiated messages unavailable */ }
+      }
     }
     try {
       // Keep the structured payload available to hosts that attach app context.
       // This is best-effort because context updates are intentionally silent.
-      await request('ui/update-model-context', { content: [{ type: 'text', text }], structuredContent: structured });
+      await request('ui/update-model-context', { content: messageContent, structuredContent: structured });
       contextDelivered = true;
     } catch {
-      // If ui/message worked, the agent still receives the submission transcript.
+      try {
+        await request('ui/update-model-context', { content: [{ type: 'text', text }], structuredContent: structured });
+        contextDelivered = true;
+      } catch { /* ui/message may still have delivered the result */ }
     }
     submitted = true;
     showDone(messageDelivered, contextDelivered);
@@ -1029,7 +1063,11 @@
     seedDefaults();
     indexHtmlBlocks(spec);
     setStatus('Preparing…');
-    if (Annotate) Annotate.init({ initial: [], onChange: (a) => { state.annotations = Array.isArray(a) ? a : []; } });
+    if (Annotate && spec.responseRequired !== false) {
+      Annotate.init({ initial: [], onChange: (a) => { state.annotations = Array.isArray(a) ? a : []; } });
+    } else if (Annotate && typeof Annotate.teardown === 'function') {
+      Annotate.teardown();
+    }
     try { await preloadVendors(spec); } catch { /* render anyway; blocks degrade individually */ }
     render();
     applyDisplayMode();

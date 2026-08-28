@@ -78,7 +78,7 @@ unchanged; pick whichever surface fits.
 | "Here's the diff — paste it in your editor" | Side-by-side **diff** blocks, syntax-highlighted **code**, **video** walkthroughs, and **file paths you click to open** in the default app |
 | "Which commits should I pick? Resolve this conflict manually." | `rly git pick` / `rly git cherry-pick` boards and color-coded `git-conflict` resolvers with ours/theirs/custom hunk choices |
 | "Type *done* when finished reviewing" | A Submit button; answers, notes, and inline comments returned as JSON |
-| Feedback = another wall of text | Click any chart point, diagram node, table cell, or sentence to comment — the agent replies and the thread grows on the board |
+| Feedback = another wall of text | Click any chart point, diagram node, table cell, or sentence; hold+drag an image area to attach a local crop — the agent replies and the thread grows on the board |
 
 Everything autosaves in real time, detached board links keep serving after
 agent timeouts, multiple boards run at once, and the package has **zero npm
@@ -95,6 +95,7 @@ actually needs them.
 | `rly git conflict [files…]` | auto-detect unmerged conflict files, or open specific local paths, and return resolved content in `result.blockEdits` |
 | `rly share <board-id>` | activate/list/revoke same-Wi-Fi collaborator, reference-only reviewer, or read-only links for a running browser board |
 | `rly view <file.md> …` | open a quick read-only board that renders local markdown file(s), data files, or PDFs — library-free; great for plans, READMEs, reports, quotes |
+| `rly show --file spec.json --display-only` | present a browser board and continue immediately — no comment/note or acknowledgement required; inline `relay_show` uses this mode by default |
 | `rly install --target <agent>` | write relay's rules into an agent's instruction file — `claude` `codex` `cursor` `copilot` `kiro` `windsurf` `cline` `gemini` `opencode` `droid` `agents`; `--all`, `--scope`, `--print`, `--list` |
 | `rly upgrade` | update the CLI **and** refresh the skill in one step (safe around open boards; `--dry-run`, `--cli-only`, `--skill-only`) |
 | `rly mcp` | run relay as an MCP App server so boards render **inline** in the chat — **stdio** for local desktop hosts (Claude Desktop, Codex), or `rly mcp --http` (Streamable HTTP) for web/mobile/remote; `rly mcp config` / `rly mcp install --target claude\|codex` to register it |
@@ -109,6 +110,19 @@ npm test     # smoke tests with no external services (spawns real servers, fake-
 ```
 
 ## Changelog
+
+### 0.16.0 — native viewer chrome, area comments, and durable agent waits
+
+- Viewer toolbars now use browser-native sticky positioning instead of a
+  scroll-event counter-translation; open comment composers re-anchor on scroll
+  and preserve unsaved per-target drafts.
+- Hold then drag on an image to comment on an exact rectangular area. Relay
+  saves the crop beside the browser-board record and returns its path; comparison
+  crops also identify and capture the selected Before/After source.
+- Browser boards support `responseRequired:false` / `--display-only`; inline
+  `relay_show` is display-only by default. Board and waiter deadlines now default
+  to one day (`--timeout 0` removes Relay's deadline), with client-specific
+  background/polling guidance in the agent docs.
 
 ### 0.11.0 — render inline inside the Claude & Codex apps (MCP App)
 - **`rly mcp` — relay as an MCP App** ([SEP-1865](https://modelcontextprotocol.io/seps/1865-mcp-apps-interactive-user-interfaces-for-mcp),

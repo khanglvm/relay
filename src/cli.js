@@ -28,6 +28,8 @@ const BIN = path.join(PKG_ROOT, 'bin', 'rly.js');
 const PKG_JSON = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, 'package.json'), 'utf8'));
 const VERSION = PKG_JSON.version;
 const PKG_NAME = PKG_JSON.name; // e.g. "@khanglvm/relay" — the global package to upgrade
+const DEFAULT_BOARD_TIMEOUT_SEC = 86400;
+const DEFAULT_WAIT_TIMEOUT_SEC = 86400;
 
 const VALUED_FLAGS = new Set([
   'file', 'html', 'html-file', 'title', 'intro', 'timeout', 'port',
@@ -171,6 +173,7 @@ async function resolveSpecInput(args, mode) {
   if (args.htmlFile) raw.htmlFile = args.htmlFile;
   if (args.height) raw.htmlHeight = args.height;
   if (args.submitLabel) raw.submitLabel = args.submitLabel;
+  if (args.displayOnly === true) raw.responseRequired = false;
   if (args.q.length) {
     raw.questions = [...(raw.questions || []), ...args.q.map((s, i) => questionFromInline(s, i))];
   }
@@ -198,7 +201,7 @@ function readFileOrThrow(p) {
 
 async function runOrDetach(record, args) {
   await assertSpecReady(record.spec);
-  const timeoutSec = args.timeout !== undefined ? Math.max(0, Number.parseInt(args.timeout, 10) || 0) : 1800;
+  const timeoutSec = args.timeout !== undefined ? Math.max(0, Number.parseInt(args.timeout, 10) || 0) : DEFAULT_BOARD_TIMEOUT_SEC;
   const port = args.port !== undefined ? Number.parseInt(args.port, 10) || 0 : 0;
   const open = args.open !== false;
 
@@ -231,7 +234,9 @@ async function runOrDetach(record, args) {
       boardId: record.id,
       url: info.url,
       port: info.port,
-      hint: `block for the answers with: rly wait ${record.id}`,
+      hint: record.spec.responseRequired === false
+        ? 'display-only board opened; no response will be collected'
+        : `block for the answers with: rly wait ${record.id}`,
     });
     return 0;
   }
@@ -247,7 +252,7 @@ async function cmdAsk(args, mode) {
   const spec = normalizeSpec(raw);
   await assertSpecReady(spec);
   const record = createBoard(spec);
-  return runOrDetach(record, args);
+  return runOrDetach(record, spec.responseRequired === false ? { ...args, detach: true } : args);
 }
 
 // `rly diff [git args…]` — run `git diff` for the user and open the result as a
@@ -639,11 +644,11 @@ async function fetchPresence(url) {
 async function cmdWait(args) {
   const id = args._[0];
   if (!id) throw new CliError('usage: rly wait <board-id> [--timeout <sec>] [--while-active] [--idle-grace <sec>] [--notify-cmd <cmd>]');
-  const timeoutSec = args.timeout !== undefined ? Math.max(1, Number.parseInt(args.timeout, 10) || 1) : 3600;
+  const timeoutSec = args.timeout !== undefined ? Math.max(0, Number.parseInt(args.timeout, 10) || 0) : DEFAULT_WAIT_TIMEOUT_SEC;
   const whileActive = args.whileActive === true;
   const idleGrace = args.idleGrace !== undefined ? Math.max(0, Number.parseInt(args.idleGrace, 10) || 0) : 180;
   const notifyCmd = typeof args.notifyCmd === 'string' && args.notifyCmd.trim() ? args.notifyCmd : null;
-  let deadline = Date.now() + timeoutSec * 1000;
+  let deadline = timeoutSec === 0 ? Number.POSITIVE_INFINITY : Date.now() + timeoutSec * 1000;
   mustLoad(id);
 
   // Push-wake: run the agent's --notify-cmd after a TERMINAL result, then print.
@@ -1086,7 +1091,7 @@ the user should view — put it in relay instead of printing it.**
   user-facing "wake this agent turn from a browser submit" command. In Codex,
   keep the waiter in the foreground until the user submits:
   \`rly ask --file spec.json --detach\` then
-  \`rly wait <boardId> --timeout 1800 --while-active --idle-grace 300\`.
+  \`rly wait <boardId> --timeout 86400 --while-active --idle-grace 3600\`.
   If wait exits with \`wait-timeout\`, immediately run \`rly result <boardId>\`;
   if it is still open and the user may continue, run \`rly wait\` again. Do not
   use \`--on-result\` as the primary Codex return path; normal Codex CLI sessions
@@ -1094,6 +1099,10 @@ the user should view — put it in relay instead of printing it.**
   Detached boards are durable: a board timeout hands the agent a \`timeout\`
   result but keeps the same URL/port serving until Submit or \`rly stop\`. Do
   not create a new board just because a wait timed out.
+- **No response needed** → \`rly show --file spec.json --display-only\`. It
+  returns immediately and shows no note, comments, or Submit/Acknowledge action.
+  In MCP App mode, \`relay_show\` is display-only by default; \`relay_ask\` is the
+  response-bearing tool.
 - **A plan, structure, architecture, data, or prototype** → a relay board with
   diagram/chart/table/code/image/html blocks — never ASCII diagrams or walls of prose.
 - **"Show me the diff / git diff / these changes"** → \`rly diff\` (runs git diff →
@@ -1116,7 +1125,7 @@ the user should view — put it in relay instead of printing it.**
 - **There's a purpose-built component for most content — use the MOST SPECIFIC one,
   never plain prose when a block fits.** Blocks: \`table\` (sortable/filterable/CSV,
   load from .csv/.json), \`chart\`, \`kpi\` (stat cards), \`mermaid\`/\`graphviz\`/\`plantuml\`,
-  \`code\`, \`diff\`, \`git-conflict\`, \`image\` (+\`pins\`), \`compare\` (before/after), \`video\`, \`pdf\`, \`palette\`,
+  \`code\`, \`diff\`, \`git-conflict\`, \`image\` (hold+drag area crops; +\`pins\` for points), \`compare\` (before/after with side-aware area crops), \`video\`, \`pdf\`, \`palette\`,
   \`typography\`, \`html\`. Question types: \`single\`/\`multi\`/\`yesno\`/\`scale\`/\`color\`/
   \`text\`/\`textarea\` plus \`rank\` (prioritize), \`allocate\` (split a budget), \`checklist\`
   (per-item sign-off). For a business user, reach for \`kpi\`+\`chart\`+\`table\` and
@@ -1580,7 +1589,7 @@ async function cmdServeInternal(args) {
     id,
     port: args.port !== undefined ? Number.parseInt(args.port, 10) || 0 : 0,
     open: args.open !== false,
-    timeoutSec: args.timeout !== undefined ? Math.max(0, Number.parseInt(args.timeout, 10) || 0) : 1800,
+    timeoutSec: args.timeout !== undefined ? Math.max(0, Number.parseInt(args.timeout, 10) || 0) : DEFAULT_BOARD_TIMEOUT_SEC,
     quiet: true,
     // Detached board: timeout hands back to the agent but keeps the same
     // URL/port serving until Submit or explicit stop.
@@ -1600,7 +1609,9 @@ USAGE
                                       quick inline questions ("!" = required, label::type::options)
   rly ask ... --detach                no blocking: prints {boardId,url} now; collect via \`rly wait <id>\`
   rly ask ... --on-result "<cmd>"     push-wake: run <cmd> when the board finishes (result JSON on stdin)
-  rly show --html-file viz.html       visualization-only board (submit button = acknowledge)
+  rly show --html-file viz.html       visualization board (submit button = acknowledge)
+  rly show --file spec.json --display-only
+                                      present without comments/acknowledgement; returns immediately
   rly view <file.md> [more.md …]      quick read-only board rendering markdown file(s) (no lib)
                                       (.csv/.tsv/.json render as a filterable, sortable table;
                                        .pdf streams in an inline PDF viewer)
@@ -1611,7 +1622,7 @@ USAGE
                                       add --code for split code view with per-hunk Apply/Skip/Hold
   rly git conflict [files…]           board for resolving conflict-marker files; with no files, auto-detects
                                       unmerged git files and returns resolved content in result.blockEdits
-  rly wait <id> [--timeout 3600]      block until board finishes, print result JSON
+  rly wait <id> [--timeout 86400]     block up to one day until the board finishes (0 = no deadline)
                                       --while-active [--idle-grace 180]: keep waiting past the deadline
                                         while the user is still viewing/focused & recently active
                                       --notify-cmd "<cmd>": run <cmd> on a terminal result (JSON on stdin)
@@ -1655,7 +1666,7 @@ USAGE
 
 COMMON FLAGS
   --title <s> --intro <s> --html-file <f> --height <px> --submit-label <s>
-  --timeout <sec> (default 1800; 0 = none) --port <n> --no-open --detach
+  --timeout <sec> (default 86400; 0 = none) --port <n> --no-open --detach --display-only
 
 EXIT CODES   0 submitted/acknowledged · 2 timeout · 3 cancelled · 4 usage · 5 not found
 

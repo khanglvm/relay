@@ -111,7 +111,7 @@ function tools() {
     {
       name: 'relay_show',
       description:
-        'Present work to the user on an inline board WITHOUT necessarily asking questions — a plan, an architecture diagram, data, a diff, a prototype — using rich blocks (markdown, mermaid, graphviz, chart, table, code, diff, image, html). The board shows a Submit/Acknowledge button. Same spec as relay_ask; typically blocks-only.',
+        'Present work to the user on an inline display-only board — a plan, architecture diagram, data, diff, prototype, or image — using rich blocks. It returns immediately and does not ask the user to acknowledge. Set responseRequired:true only when feedback or acknowledgement is actually needed.',
       inputSchema: schema,
       _meta: uiToolMeta(),
     },
@@ -157,7 +157,7 @@ async function buildResult(method, params, clientProtocol) {
         },
         serverInfo: { name: 'relay', version: PKG.version },
         instructions:
-          'relay renders interactive boards inline. Call relay_ask to collect decisions/feedback with real form controls, or relay_show to present plans/diagrams/data — instead of asking in plain text. When the user submits, relay sends their answers back as a user message so the agent continues.',
+          'relay renders boards inline. Call relay_ask to collect decisions/feedback and wait for its user-message submission. Call relay_show to present plans/diagrams/data without waiting; it is display-only unless responseRequired:true is explicit.',
       };
     case 'ping':
       return {};
@@ -209,9 +209,12 @@ async function callTool(params) {
     return { content: [{ type: 'text', text: 'unknown tool: ' + name }], isError: true };
   }
   const args = (params && params.arguments && typeof params.arguments === 'object') ? params.arguments : {};
+  const normalizedArgs = name === 'relay_show' && args.responseRequired === undefined
+    ? { ...args, responseRequired: false }
+    : args;
   let spec;
   try {
-    spec = normalizeSpec(args);
+    spec = normalizeSpec(normalizedArgs);
     await assertSpecReady(spec);
   } catch (err) {
     const msg = err instanceof CliError ? err.message : String((err && err.message) || err);
@@ -232,6 +235,9 @@ async function callTool(params) {
 // when the board clearly didn't render for the user.
 function boardText(spec) {
   const nQ = spec.questions.length;
+  if (spec.responseRequired === false) {
+    return `Relay board "${spec.title}" is now displayed to the user. No acknowledgement is requested; continue your work without waiting.`;
+  }
   if (!nQ) {
     return `Relay board "${spec.title}" is now displayed to the user. They can review it and acknowledge; any feedback will be delivered back to you.`;
   }

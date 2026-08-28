@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import crypto from 'node:crypto';
 
 // All state lives under one dir so multiple boards/instances never collide.
 // RLY_HOME override exists for tests and sandboxed agents.
@@ -21,6 +22,19 @@ export function newId() {
 
 const boardPath = (id) => path.join(BOARDS_DIR, `${id}.json`);
 const runningPath = (id) => path.join(RUNNING_DIR, `${id}.json`);
+export const artifactDirPath = (id) => path.join(BOARDS_DIR, `${id}.artifacts`);
+
+export function saveBoardArtifact(id, bytes, ext = 'png') {
+  ensureDirs();
+  if (!/^b-[a-z0-9]+$/i.test(String(id))) throw new Error('invalid board id');
+  const cleanExt = /^(?:png|jpe?g|webp)$/i.test(String(ext)) ? String(ext).toLowerCase() : 'png';
+  const dir = artifactDirPath(id);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = `region-${Date.now().toString(36)}-${crypto.randomBytes(4).toString('hex')}.${cleanExt}`;
+  const target = path.join(dir, file);
+  fs.writeFileSync(target, bytes);
+  return target;
+}
 
 export function createBoard(spec) {
   ensureDirs();
@@ -72,6 +86,7 @@ export function deleteBoard(id) {
   try {
     fs.unlinkSync(boardPath(id));
     try { fs.unlinkSync(path.join(BOARDS_DIR, `${id}.result.json`)); } catch { /* no sidecar */ }
+    try { fs.rmSync(artifactDirPath(id), { recursive: true, force: true }); } catch { /* no artifacts */ }
     return true;
   } catch {
     return false;

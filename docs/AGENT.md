@@ -54,7 +54,7 @@ stderr. Exit codes: `0` submitted/acknowledged · `2` timeout · `3` cancelled �
 prints the result JSON:
 
 ```sh
-rly ask --file spec.json --timeout 1800
+rly ask --file spec.json --timeout 86400   # one day; 0 = no Relay deadline
 ```
 
 **2. Detached (recommended when your shell tool has an execution time limit).**
@@ -62,7 +62,7 @@ Returns immediately with the board URL; collect later:
 
 ```sh
 rly ask --file spec.json --detach     # → {"status":"open","boardId":"b-…","url":"…"}
-rly wait b-xxxxx --timeout 3500       # blocks until submit, prints result JSON
+rly wait b-xxxxx --timeout 86400      # default: one day; pass 0 for no deadline
 rly result b-xxxxx                    # non-blocking peek; while open it includes
                                       # the live autosaved draft of the user's answers
 ```
@@ -140,8 +140,9 @@ Both take **the exact same board spec** documented below (the tool `inputSchema`
 fills it in, and their answers come back to you (answers, per-question notes,
 comment) as a user-message turn, with structured context synced when the host
 supports it — read them just as you would the CLI's result JSON. There is **no
-`--detach`/`rly wait` dance, no stdout parsing, and no timeout** in this mode; the
-board stays live until the user submits and the host delivers the result.
+`--detach`/`rly wait` dance, no stdout parsing, and no timeout** in this mode.
+`relay_ask` stays live until the user submits and the host delivers the result;
+`relay_show` is display-only by default and the agent continues immediately.
 
 **Near-full parity with the browser board.** Local `codeFile` / `htmlFile` /
 `diffFile` and local **image** files work inline too — the server inlines them
@@ -166,11 +167,24 @@ rly ask -q "Deploy to prod now?::yesno" -q "!Environment::single::dev,staging,pr
 #         label::type::comma,separated,options          leading "!" = required
 ```
 
-Visualization-only (no questions; submit button reads "Acknowledge"):
+Visualization-only, with acknowledgement/feedback:
 
 ```sh
 rly show --html-file prototype.html --title "Dashboard concept" --height 600
 ```
+
+Display-only (the agent continues immediately; no note, comments, or
+Submit/Acknowledge action):
+
+```sh
+rly show --file spec.json --display-only
+# equivalent spec field: {"responseRequired": false, "blocks": [...]}
+```
+
+`--display-only` automatically detaches the browser board. In MCP App mode,
+`relay_show` is display-only by default; set `responseRequired:true` only when
+the user really needs to acknowledge or leave feedback. `relay_ask` remains the
+response-bearing tool.
 
 Read a markdown file (no questions; library-free renderer; submit reads "Done"):
 
@@ -219,6 +233,7 @@ choices plus the full resolved file in `result.blockEdits[blockId]`:
   "allowPartial": true,             // default true: user may submit with gaps -> "skipped"
   "note": true,                     // default true: optional free-text box -> result "comment"
   "autoClose": true,                // default true: tab tries to close itself after submit
+  "responseRequired": true,         // false = display-only; no feedback/action, agent continues
   "submitLabel": "Submit",
   "questions": [
     { "id": "approach", "type": "single", "label": "Which approach?", "required": true,
@@ -521,11 +536,11 @@ the question-types section above.
 | `diff` | proposed code changes / before-after — a unified diff rendered as a colored git-style comparison (no git needed) |
 | `video` | demos, screen recordings, walkthroughs — YouTube/Vimeo embeds, a media URL, or a local video file (streamed) |
 | `pdf` | quotes, reports, exports, forms — local `.pdf` files or PDF URLs rendered inline; local files stream from the board server |
-| `image` | screenshots, mockup exports, photos — local files embed and work offline |
+| `image` | screenshots, mockup exports, photos — local files embed and work offline; hold then drag to comment on an exact area |
 | `palette` | color palettes / themes — swatch cards with hover-hex + click-to-copy; pair with a `color` question to let the user pick |
 | `kpi` | big-number metric cards (`items:[{label,value,delta?,dir?,sub?}]`) with up/down/flat-tinted deltas — at-a-glance numbers without a chart |
 | `typography` | type specimens (`specimens:[{label?,size?,weight?,font?,text?}]`) — react to type choices like a palette |
-| `compare` | before/after images with a draggable divider (`before`/`after` = url/path/`{src,label}`) — redesigns, before-after fixes |
+| `compare` | before/after images with a draggable divider (`before`/`after` = url/path/`{src,label}`); area comments preserve which side was selected |
 | `html` | anything else — pixel-perfect mockups, custom widgets, embeds |
 
 Two cross-block fields work on **any** block: `"ref":"name"` makes it openable in
@@ -533,6 +548,14 @@ a modal via a markdown `[label](#ref:name)` link (point a question at a visual
 shown earlier — no scrolling); `image` blocks also take `"pins":true` for
 click-to-drop coordinate pin-comments. `table` blocks take `"rowsFile"` (load
 rows from .csv/.tsv/.json), `"filterable"`, and `"exportable"` (CSV download).
+
+Every interactive `image` and `compare` block also supports area feedback:
+hold briefly, then drag a rectangle. Relay saves a pixel crop beside the board
+record and returns its local path with the annotation, so the agent can open the
+exact pixels instead of inferring from a whole-image comment. In a comparison,
+the side visible where the hold began is recorded as `before` or `after` and the
+crop comes from that source image. Remote images that prevent browser canvas
+access still return coordinates and a `cropUnavailable` marker.
 
 ### Height rules
 
@@ -633,6 +656,8 @@ intro. Annotations are autosaved with the draft and returned in the final result
 | `text` | `quote`, `prefix` (≤30 chars before), `suffix` (≤30 after) | selecting text in a markdown block |
 | `html-element` | `ref`, `label`, `detail?` | hovering any element in a custom-HTML block (auto), or a `data-relay-annotate` / `relayKit.commentable()` element |
 | `image` | `label` | clicking a PlantUML diagram or an image block |
+| `image-point` | `x`, `y`, `label` | clicking an image authored with `pins:true` |
+| `image-region` | `x`, `y`, `w`, `h`, `label`, optional `side`, `crop` | holding then dragging on an image or comparison; `crop.path` is the local image artifact in browser mode |
 
 Read annotations as first-class feedback — they often carry the sharpest insight
 (e.g. a user circling the one data point that concerns them, or quoting the exact
@@ -663,14 +688,15 @@ time). Use it instead of guessing timeouts:
 ```sh
 rly result b-xxxxx     # open board → includes "presence":
                        #   {open, seen, visible, focused, secondsSinceActivity, secondsSincePing}
-rly wait b-xxxxx --timeout 550 --while-active --idle-grace 180
+rly wait b-xxxxx --timeout 86400 --while-active --idle-grace 3600
 ```
 
 `--while-active` keeps extending the wait as long as the user is demonstrably
 active (page visible/focused and interaction within `--idle-grace` seconds,
-default 180); once they go idle it returns the normal `wait-timeout` JSON,
-with `presence` attached so you can decide what to do next. Prefer this over
-raising `--timeout`.
+default 180); once the deadline is reached and they are idle it returns the
+normal `wait-timeout` JSON, with `presence` attached. Relay now defaults both a
+board and `rly wait` to 86,400 seconds (one day); pass `--timeout 0` for no Relay
+deadline when the host can safely own a long-running waiter.
 
 ### A `timeout` on a detached board is NOT the end
 
@@ -685,7 +711,7 @@ tells them you stopped waiting and to prompt you afterward. So if you got a
 so a late submit push-wakes you. A blocking `rly ask` (no `--detach`) still ends
 hard on timeout, since there's no separate waiter to hand back to.
 
-## Push-wake — get notified instead of polling
+## Waiting and push-wake across agent clients
 
 ```sh
 rly ask --file spec.json --detach --on-result 'curl -s -X POST localhost:9999/wake -d @-'
@@ -697,7 +723,19 @@ the board reaches a terminal status — submitted, acknowledged, timeout, or
 cancelled — with the full result JSON piped to stdin and `RLY_BOARD_ID`,
 `RLY_STATUS`, `RLY_URL` in the environment. `--notify-cmd` does the same from
 a `wait` that obtains a terminal result. Write a file your harness watches,
-hit a webhook — whatever wakes you.
+hit a webhook — whatever wakes you. This is passive only when that client or
+harness has an actual inbound wake mechanism; Relay does not pretend that a
+file write alone starts a new model turn.
+
+| Client/surface | Recommended Relay return path |
+|---|---|
+| MCP App (`relay_ask`) | No CLI wait. The inline board stays live and sends `ui/message` on submit, which starts the user-return turn. |
+| MCP App (`relay_show`) | Display-only by default. Present it and continue immediately; no acknowledgement is requested. |
+| Claude Code | Run `rly wait <id> --timeout 0` as a [background Bash task](https://docs.anthropic.com/en/docs/claude-code/interactive-mode#background-bash-commands); retain its task id/output rather than opening a second board. |
+| Gemini CLI | Run the waiter in the background and set [`tools.shell.backgroundCompletionBehavior` to `"inject"`](https://geminicli.com/docs/reference/configuration/) so completion is returned to the agent; `"notify"` only informs the chat UI. |
+| Codex | Keep one foreground waiter. Codex background terminals use explicit `write_stdin` polling (the [poll window defaults to five minutes](https://developers.openai.com/codex/config-reference)); the process can outlive each poll, but no portable browser-submit API wakes a stopped turn. |
+| OpenCode | Core Bash is foreground. Its [ecosystem](https://opencode.ai/docs/ecosystem/) lists background-PTY extensions; use one only when installed, otherwise keep the waiter foreground. |
+| Pi | Core intentionally has [no background Bash](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/usage.md); keep the waiter foreground or use an explicitly installed background-task extension. |
 
 ### Codex browser-board pattern
 
@@ -709,7 +747,7 @@ submits:
 
 ```sh
 rly ask --file spec.json --detach
-rly wait b-xxxxx --timeout 1800 --while-active --idle-grace 300
+rly wait b-xxxxx --timeout 86400 --while-active --idle-grace 3600
 ```
 
 If `rly wait` exits with `wait-timeout`, immediately run `rly result <boardId>`.

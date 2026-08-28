@@ -3,6 +3,7 @@
 
   const boot = JSON.parse(document.getElementById('boot').textContent);
   const spec = boot.spec;
+  const responseRequired = spec.responseRequired !== false;
   const access = boot.access || {
     role: 'owner',
     canShare: true,
@@ -29,7 +30,7 @@
     if (access.reviewSessionId) headers['x-relay-review-session'] = access.reviewSessionId;
     return headers;
   }
-  const canPersistFeedback = Boolean(access.canEditAnswers || access.canComment || access.canEditBlocks);
+  const canPersistFeedback = responseRequired && Boolean(access.canEditAnswers || access.canComment || access.canEditBlocks);
 
   // ---------- helpers ----------
   function el(tag, attrs = {}, ...children) {
@@ -541,7 +542,7 @@
   // RelayAnnotate owns the live annotation list; mirror it into state on every
   // change so payload()/autosave/submit carry it exactly like answers.
   const Annotate = typeof window.RelayAnnotate !== 'undefined' ? window.RelayAnnotate : null;
-  if (Annotate) {
+  if (Annotate && responseRequired) {
     Annotate.init({
       initial: state.annotations,
       permissions: {
@@ -558,6 +559,8 @@
         if (window.__relayBroadcastCounts) window.__relayBroadcastCounts();
       },
     });
+  } else if (Annotate && !responseRequired && typeof Annotate.teardown === 'function') {
+    Annotate.teardown();
   }
 
   // Editable-mermaid: record (or clear) the user's edit for a block, then
@@ -575,6 +578,17 @@
     onBlockEdit(d.blockId, d.value);
   });
 
+  async function saveRegionArtifact(artifact) {
+    const res = await fetch('/api/artifact', {
+      method: 'POST',
+      headers: authHeaders({ 'content-type': 'application/json' }),
+      body: JSON.stringify(artifact),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !body || !body.path) throw new Error(body && body.error ? body.error : 'could not save image crop');
+    return body;
+  }
+
   // ctx for RelayBlocks.render — theme()/htmlSrc per the shared contract, plus
   // the editable-mermaid plumbing (edits map + onBlockEdit callback).
   function blockCtx(questionId) {
@@ -586,8 +600,9 @@
         return '/html/b/' + encodeURIComponent(blockId) + '?' + params.toString();
       },
       questionId: questionId == null ? null : questionId,
-      annotate: Annotate,
-      canComment: access.canComment !== false,
+      annotate: responseRequired ? Annotate : null,
+      canComment: responseRequired && access.canComment !== false,
+      saveArtifact: responseRequired && access.canComment !== false ? saveRegionArtifact : null,
       edits: state.blockEdits,
       onBlockEdit,
       canEditBlocks: access.canEditBlocks !== false,
@@ -1145,7 +1160,7 @@
     app.append(card);
   });
 
-  if (spec.note) {
+  if (spec.note && responseRequired) {
     const note = el('textarea', { placeholder: 'optional note back to the agent…' });
     note.value = state.comment || '';
     note.addEventListener('input', () => {
@@ -1167,6 +1182,10 @@
   const hint = el('span', { class: 'hint' },
     QS.length && spec.allowPartial ? 'Unanswered questions are returned as skipped.' : '');
   const submitbar = el('div', { class: 'submitbar' }, submitBtn, hint, saveEl);
+  if (!responseRequired) {
+    submitbar.replaceChildren(el('span', { class: 'hint' }, 'Display only · no response requested'));
+    submitbar.classList.add('display-only');
+  }
   app.append(submitbar);
 
   function copyText(text, btn) {
@@ -1415,7 +1434,7 @@
   //   parent → {relay:'annotate-counts', counts:{ref:n}}     it draws badges
   // We own the annotation state, popover, and the submitted result; the iframe
   // owns hover/pin/badges over its own (cross-origin) DOM.
-  if (Annotate) {
+  if (Annotate && responseRequired) {
     const frameOf = (source) => {
       for (const f of document.querySelectorAll('iframe.viz')) {
         if (f.contentWindow === source) return f;

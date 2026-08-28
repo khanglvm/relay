@@ -48,6 +48,11 @@
         return truncate(t.label || 'Image', 50);
       case 'image-point':
         return (t.label ? truncate(t.label, 30) + ' · ' : 'Image · ') + 'pin ' + Math.round((t.x || 0) * 100) + '%, ' + Math.round((t.y || 0) * 100) + '%';
+      case 'image-region': {
+        const source = t.side ? t.side.charAt(0).toUpperCase() + t.side.slice(1) + ' · ' : '';
+        const area = `${Math.round((t.w || 0) * 100)}×${Math.round((t.h || 0) * 100)}% area`;
+        return (t.label ? truncate(t.label, 30) + ' · ' : 'Image · ') + source + area;
+      }
       case 'table-cell': {
         let s = `Table · row ${(Number(t.row) || 0) + 1} · ${t.col}`;
         if (t.value !== undefined && t.value !== null && t.value !== '') s += ` — “${truncate(t.value, 30)}”`;
@@ -109,8 +114,10 @@
   let pinTimer = null;
   let pinEntry = null;
   let popOpen = false;
-  let popScrollY = 0;
   let popSave = null;
+  let popAnchorEl = null;
+  let popPositionFrame = 0;
+  const commentDrafts = new Map();
   // Frozen by the host (e.g. relay's connection-lost block): suppress every way
   // to START a comment, so the user can't type feedback that won't be saved.
   let disabled = false;
@@ -341,16 +348,21 @@
     });
 
     // Capture-phase: also fires for nested scroll containers (mermaid pane…).
+    // Keep an open composer re-anchored instead of closing it: scrolling is a
+    // normal review action, and DOM-only draft text must never disappear merely
+    // because the user looked elsewhere on the board.
     window.addEventListener('scroll', (e) => {
       hidePin();
       hideSelBtn();
       if (!popOpen) return;
       if (dom.pop.contains(e.target)) return; // textarea scrolling inside
-      const isPage = e.target === document || e.target === document.documentElement || e.target === document.body;
-      if (!isPage || Math.abs(window.scrollY - popScrollY) > 80) closePopover();
+      schedulePositionPopover();
     }, true);
 
-    window.addEventListener('resize', scheduleBadgeRefresh);
+    window.addEventListener('resize', () => {
+      scheduleBadgeRefresh();
+      schedulePositionPopover();
+    });
   }
 
   // ---------- comments rail ----------
@@ -491,10 +503,33 @@
   }
 
   // ---------- popover ----------
+  function positionPopover() {
+    popPositionFrame = 0;
+    if (!popOpen || !dom || !popAnchorEl || !popAnchorEl.isConnected) return;
+    const pop = dom.pop;
+    const rect = popAnchorEl.getBoundingClientRect();
+    const pw = pop.offsetWidth;
+    const ph = pop.offsetHeight;
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - pw - 8));
+    let top = rect.bottom + 8;
+    if (top + ph > window.innerHeight - 8 && rect.top - ph - 8 >= 8) top = rect.top - ph - 8;
+    top = Math.max(8, Math.min(top, window.innerHeight - ph - 8));
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+  }
+
+  function schedulePositionPopover() {
+    if (!popOpen || popPositionFrame) return;
+    popPositionFrame = requestAnimationFrame(positionPopover);
+  }
+
   function closePopover() {
     if (!popOpen) return;
     popOpen = false;
     popSave = null;
+    popAnchorEl = null;
+    if (popPositionFrame) cancelAnimationFrame(popPositionFrame);
+    popPositionFrame = 0;
     dom.pop.style.display = 'none';
     dom.pop.replaceChildren();
   }
@@ -548,6 +583,7 @@
     if (disabled) return;
     ensureDom();
     const hasExisting = matching(info).length > 0;
+    const draftKey = sigOf(info.blockId, info.target);
     // Read-only viewers can open existing threads from their badges, but a
     // target with no feedback has nothing to show and must not expose an empty
     // add-comment dialog.
@@ -632,34 +668,35 @@
     pop.append(existingWrap);
 
     const ta = el('textarea', { class: 'ann-ta', placeholder: 'Add a comment…', rows: '3' });
+    ta.value = commentDrafts.get(draftKey) || '';
+    ta.addEventListener('input', () => {
+      if (ta.value) commentDrafts.set(draftKey, ta.value);
+      else commentDrafts.delete(draftKey);
+    });
     const save = el('button', { class: 'ann-save', type: 'button' }, 'Save');
     const cancel = el('button', { class: 'ann-cancel', type: 'button' }, 'Cancel');
     popSave = () => {
       const text = ta.value.trim();
       if (text) addAnnotation(info, text);
+      commentDrafts.delete(draftKey);
       closePopover();
     };
     save.addEventListener('click', () => popSave && popSave());
-    cancel.addEventListener('click', closePopover);
+    cancel.addEventListener('click', () => {
+      commentDrafts.delete(draftKey);
+      closePopover();
+    });
     if (permissions.add) pop.append(ta, el('div', { class: 'ann-pop-actions' }, save, cancel));
 
-    // Position: prefer below the anchor, flip above when out of room,
-    // clamp to the viewport with an 8px margin. Fixed positioning, so we
-    // recompute on open and simply close on big scrolls.
+    // Position: prefer below the anchor, flip above when out of room, and clamp
+    // to the viewport. Scroll/resize re-run this through one animation frame so
+    // the composer tracks browser scrolling smoothly without losing its draft.
     pop.style.display = 'block';
     pop.style.visibility = 'hidden';
-    const rect = anchorEl.getBoundingClientRect();
-    const pw = pop.offsetWidth;
-    const ph = pop.offsetHeight;
-    const left = Math.max(8, Math.min(rect.left, window.innerWidth - pw - 8));
-    let top = rect.bottom + 8;
-    if (top + ph > window.innerHeight - 8 && rect.top - ph - 8 >= 8) top = rect.top - ph - 8;
-    top = Math.max(8, Math.min(top, window.innerHeight - ph - 8));
-    pop.style.left = left + 'px';
-    pop.style.top = top + 'px';
-    pop.style.visibility = '';
     popOpen = true;
-    popScrollY = window.scrollY;
+    popAnchorEl = anchorEl;
+    positionPopover();
+    pop.style.visibility = '';
     if (permissions.add) ta.focus();
     else popClose.focus();
   }
@@ -921,6 +958,7 @@
     registered = [];
     textRoots.clear();
     highlightMap.clear();
+    commentDrafts.clear();
     if (dom) {
       dom.pin.remove();
       dom.selBtn.remove();

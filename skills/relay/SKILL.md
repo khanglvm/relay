@@ -85,8 +85,8 @@ priority call in a `rank` question — not in paragraphs. Unsure which exists? R
 | `code` | source / config / command output — highlighted, line numbers, hover-a-line to comment |
 | `diff` | code changes — colored unified/split, multi-file (`rly diff` builds the whole board) |
 | `git-conflict` | conflict-marker files — side-by-side ours/theirs/base with hunk choices; returns resolved content in `result.blockEdits[blockId]` |
-| `image` | screenshots / mockups / renders — zoom+pan; `pins:true` → click-to-drop point comments |
-| `compare` | a before/after pair — draggable divider |
+| `image` | screenshots / mockups / renders — zoom+pan; hold+drag → area crop comment; `pins:true` → point comments |
+| `compare` | a before/after pair — draggable divider; area comments retain the selected side |
 | `video` | a demo / screen recording / walkthrough |
 | `pdf` | a quote / report / exported document that should render inline |
 | `palette` | color schemes — swatch cards, hover-hex, click-to-copy |
@@ -130,7 +130,7 @@ blocking `rly ask` that gets killed cancels the board. Always prefer:
 
 ```sh
 rly ask --file spec.json --detach    # returns {"boardId":"b-…","url":…} immediately
-rly wait b-xxxxx --timeout 550       # blocks until submit, prints result JSON
+rly wait b-xxxxx --timeout 86400     # default: one day; 0 = no Relay deadline
                                      # (on exit 2 "wait-timeout" just run wait again)
 rly result b-xxxxx                   # non-blocking peek (includes live draft)
 ```
@@ -142,7 +142,7 @@ create a new board just because a wait timed out.
 For long waits prefer presence-aware waiting over a huge --timeout:
 
 ```sh
-rly wait b-xxxxx --timeout 550 --while-active --idle-grace 180
+rly wait b-xxxxx --timeout 86400 --while-active --idle-grace 3600
 # keeps extending while the user is demonstrably viewing/typing on the board;
 # returns wait-timeout promptly once they are idle/gone (presence included)
 rly result b-xxxxx        # while open also shows presence {visible, focused, secondsSinceActivity}
@@ -159,7 +159,7 @@ So in Codex, keep the waiter in the foreground until the user submits:
 
 ```sh
 rly ask --file spec.json --detach
-rly wait b-xxxxx --timeout 1800 --while-active --idle-grace 300
+rly wait b-xxxxx --timeout 86400 --while-active --idle-grace 3600
 ```
 
 If `rly wait` exits with `wait-timeout`, immediately run `rly result <boardId>`.
@@ -168,8 +168,29 @@ If it is still open and the user may continue, run `rly wait` again. Do not use
 webhooks, but normal Codex CLI sessions do not expose a portable inbound API
 that wakes the current agent turn.
 
-Blocking mode (`rly ask --file spec.json --timeout 1800`, no --detach) is fine
+Blocking mode (`rly ask --file spec.json --timeout 86400`, no `--detach`) is fine
 ONLY when your shell tool has no execution time limit.
+
+Relay defaults board and waiter deadlines to one day; use `--timeout 0` when the
+client can safely own an indefinite process. Choose the return path by host:
+
+- Inline MCP `relay_ask`: no CLI wait; its `ui/message` submission wakes the
+  return turn. Inline `relay_show` is display-only by default and does not wait.
+- Claude Code: background `rly wait <id> --timeout 0` as a background Bash task.
+- Gemini CLI: background the waiter and use
+  `tools.shell.backgroundCompletionBehavior: "inject"`.
+- Codex: keep one foreground waiter; background terminals require explicit
+  polling and do not expose a portable browser-submit wake API.
+- OpenCode/Pi: keep it foreground unless a background-task extension is
+  explicitly installed (Pi core has no background Bash).
+
+Use `--on-result`/`--notify-cmd` only when the surrounding harness exposes a real
+webhook, file watcher, or inbound wake path.
+
+To present without asking for any response, use
+`rly show --file spec.json --display-only` (equivalent to
+`"responseRequired":false`). It returns immediately and shows no note,
+comments, or Submit/Acknowledge action.
 
 Useful flags: `--no-open` (don't auto-open the browser — for tests/CI; real
 users need the tab, so omit it normally) · `--title` · `--timeout <sec>`.
@@ -418,6 +439,15 @@ Add `"pins": true` to an `image` block: the user clicks any point on the image t
 drop a comment anchored to that exact spot (Figma-style), returned as an
 `{kind:"image-point", x, y}` annotation. Ideal for design/mockup review.
 
+### Comment on an exact image area (local crop)
+
+Every interactive `image` and `compare` block supports hold-then-drag area
+feedback without another spec flag. Relay returns an `image-region` target with
+normalized `x`, `y`, `w`, and `h`; browser boards also save the selected pixels
+beside the board and return `target.crop.path`, which the agent should open with
+its image viewer. Comparison targets include `side:"before"|"after"`, and the
+crop comes from that source image rather than the composited slider view.
+
 ### Show a git diff in one step — `rly diff`
 
 `rly diff [git args…]` runs `git diff` and opens the result as a diff board —
@@ -449,7 +479,7 @@ mention annotation in the board intro.
   "id": "a1",
   "questionId": "q-id or null",
   "blockId": "b2",
-  "target": { "kind": "chart-element | mermaid-node | graphviz-node | table-cell | text | html-element | image | image-point | code-line", "..." },
+  "target": { "kind": "chart-element | mermaid-node | graphviz-node | table-cell | text | html-element | image | image-point | image-region | code-line", "..." },
   "text": "user comment",
   "author": "user",
   "createdAt": "ISO",

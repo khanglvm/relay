@@ -853,6 +853,7 @@ export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
     allowPartial: raw.allowPartial !== false,
     note: raw.note !== false,
     autoClose: raw.autoClose !== false,
+    responseRequired: raw.responseRequired !== false,
     questions: [],
     submitLabel: '',
   };
@@ -997,6 +998,9 @@ export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
   if (!spec.questions.length && !spec.blocks.length) {
     throw new CliError('Spec needs "questions" and/or "blocks"/"html" — nothing to show.');
   }
+  if (!spec.responseRequired && spec.questions.length) {
+    throw new CliError('responseRequired:false is display-only and cannot contain questions. Use responseRequired:true when answers are needed.');
+  }
   spec.submitLabel = asStr(raw.submitLabel).trim() || (spec.questions.length ? 'Submit' : 'Acknowledge');
   return spec;
 }
@@ -1126,6 +1130,7 @@ export const SPEC_SCHEMA = {
     allowPartial: { type: 'boolean', default: true, description: 'When true, users may submit with unanswered questions (returned in "skipped").' },
     note: { type: 'boolean', default: true, description: 'Show an optional free-text note box ("Anything else?") returned as "comment".' },
     autoClose: { type: 'boolean', default: true, description: 'Try to close the browser tab automatically after submit.' },
+    responseRequired: { type: 'boolean', default: true, description: 'Set false for a display-only board: no questions, note box, comments, or Submit/Acknowledge action are shown, and the presenting agent should continue immediately.' },
     submitLabel: { type: 'string', description: 'Submit button label. Defaults: "Submit", or "Acknowledge" when there are no questions.' },
     questions: {
       type: 'array',
