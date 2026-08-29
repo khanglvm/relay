@@ -78,7 +78,7 @@ unchanged; pick whichever surface fits.
 | "Here's the diff — paste it in your editor" | Side-by-side **diff** blocks, syntax-highlighted **code**, **video** walkthroughs, and **file paths you click to open** in the default app |
 | "Which commits should I pick? Resolve this conflict manually." | `rly git pick` / `rly git cherry-pick` boards and color-coded `git-conflict` resolvers with ours/theirs/custom hunk choices |
 | "Type *done* when finished reviewing" | A Submit button; answers, notes, and inline comments returned as JSON |
-| Feedback = another wall of text | Click any chart point, diagram node, table cell, or sentence; hold+drag an image area to attach a local crop — the agent replies and the thread grows on the board |
+| Feedback = another wall of text | Click any chart point, diagram node, table cell, or sentence; drag an image region to attach a local crop — the agent replies and the thread grows on the board |
 
 Everything autosaves in real time, detached board links keep serving after
 agent timeouts, multiple boards run at once, and the package has **zero npm
@@ -110,6 +110,15 @@ npm test     # smoke tests with no external services (spawns real servers, fake-
 ```
 
 ## Changelog
+
+### 0.16.1 — reliable area-comment zones
+
+- Primary drag now draws a comment area directly on image and comparison views;
+  **Area** remains as a visible one-shot lock. Image pan uses Space-drag or the
+  middle button, while the comparison divider moves only from its handle.
+- The selected rectangle remains visible while its comment is composed. Saved
+  zones carry a comment icon plus count, reopen for add/edit/delete, and disappear
+  automatically when their final comment is removed.
 
 ### 0.16.0 — native viewer chrome, area comments, and durable agent waits
 

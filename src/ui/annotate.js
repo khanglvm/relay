@@ -115,6 +115,7 @@
   let pinEntry = null;
   let popOpen = false;
   let popSave = null;
+  let popCloseHook = null;
   let popAnchorEl = null;
   let popPositionFrame = 0;
   const commentDrafts = new Map();
@@ -523,15 +524,20 @@
     popPositionFrame = requestAnimationFrame(positionPopover);
   }
 
-  function closePopover() {
+  function closePopover(reason = 'dismissed') {
     if (!popOpen) return;
+    const closeHook = popCloseHook;
     popOpen = false;
     popSave = null;
+    popCloseHook = null;
     popAnchorEl = null;
     if (popPositionFrame) cancelAnimationFrame(popPositionFrame);
     popPositionFrame = 0;
     dom.pop.style.display = 'none';
     dom.pop.replaceChildren();
+    if (closeHook) {
+      try { closeHook(reason); } catch (_) { /* lifecycle hooks are best-effort */ }
+    }
   }
 
   // ---------- delete a comment (with confirm) ----------
@@ -589,11 +595,12 @@
     // add-comment dialog.
     if (!permissions.add && !hasExisting) return;
     closePopover();
+    popCloseHook = typeof info.onClose === 'function' ? info.onClose : null;
     hidePin();
     const pop = dom.pop;
     // Header: target label + an explicit CLOSE button, so × always means "close".
     const popClose = el('button', { class: 'ann-pop-close', type: 'button', title: 'Close', 'aria-label': 'Close' }, '×');
-    popClose.addEventListener('click', closePopover);
+    popClose.addEventListener('click', () => closePopover('dismissed'));
     pop.replaceChildren(el('div', { class: 'ann-pop-head' }, el('div', { class: 'ann-pop-label' }, humanize(info.target)), popClose));
 
     // Existing comments on this exact target, rendered as threads: author
@@ -679,12 +686,13 @@
       const text = ta.value.trim();
       if (text) addAnnotation(info, text);
       commentDrafts.delete(draftKey);
-      closePopover();
+      if (text) closePopover('saved');
+      else closePopover('empty');
     };
     save.addEventListener('click', () => popSave && popSave());
     cancel.addEventListener('click', () => {
       commentDrafts.delete(draftKey);
-      closePopover();
+      closePopover('cancelled');
     });
     if (permissions.add) pop.append(ta, el('div', { class: 'ann-pop-actions' }, save, cancel));
 

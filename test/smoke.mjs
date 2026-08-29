@@ -1867,6 +1867,17 @@ console.log('36. native viewer chrome + image-region feedback');
   ok(annotateJs.includes('commentDrafts') && annotateJs.includes('positionPopover'), 'comment drafts persist per target while the popover re-anchors on scroll');
   ok(blocksJs.includes("kind: 'image-region'") && blocksJs.includes("side: side"), 'image and comparison blocks emit side-aware image-region annotations');
   ok(blocksJs.includes("typeof ctx.saveArtifact === 'function'"), 'shared block context preserves the browser crop uploader');
+  ok(blocksJs.includes("class: 'tool-region'") && blocksJs.includes("'aria-pressed'"), 'image viewers expose a discoverable one-shot area-comment mode');
+  ok(blocksJs.includes('_rlyRegionMode') && blocksJs.includes('setModeActive'), 'area-comment mode gates image panning and comparison-divider dragging');
+  ok(blocksJs.includes('blk-imgregion-provisional') && blocksJs.includes('onClose:'), 'a provisional area remains visible until its comment composer closes');
+  ok(blocksJs.includes('blk-imgregion-badge') && blocksJs.includes('blk-imgregion-count'), 'persisted area zones render a comment icon plus count indicator');
+  ok(annotateJs.includes('popCloseHook') && annotateJs.includes("closePopover('saved')"), 'annotation composer reports save/cancel lifecycle to provisional zones');
+  ok(blocksJs.includes('if (!active && moved > 5) beginSelection'), 'direct primary drag starts image-area selection without a mode click');
+  ok(blocksJs.includes("const handleTarget = e.target.closest('.cmp-handle')"), 'comparison divider dragging starts only from its handle');
+  ok(blocksJs.includes('viewerSpacePan') && blocksJs.includes('e.button === 1'), 'commentable-image panning uses Space-drag or middle-button drag instead of stealing area selection');
+  ok(/class: 'blk-img',[\s\S]{0,220}draggable: 'false'/.test(blocksJs), 'standalone images disable native browser dragging before area selection');
+  ok(/\.cmp-frame\s*\{[^}]*cursor:\s*crosshair/s.test(blocksCss), 'comparison canvas uses the area-selection cursor away from the divider');
+  ok(/\.cmp-handle\s*\{[^}]*cursor:\s*ew-resize/s.test(blocksCss), 'comparison resize cursor is scoped to the divider handle');
 
   const tinyPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
   const p = path.join(HOME, 'region-spec.json');

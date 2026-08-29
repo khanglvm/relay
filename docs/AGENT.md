@@ -536,7 +536,7 @@ the question-types section above.
 | `diff` | proposed code changes / before-after — a unified diff rendered as a colored git-style comparison (no git needed) |
 | `video` | demos, screen recordings, walkthroughs — YouTube/Vimeo embeds, a media URL, or a local video file (streamed) |
 | `pdf` | quotes, reports, exports, forms — local `.pdf` files or PDF URLs rendered inline; local files stream from the board server |
-| `image` | screenshots, mockup exports, photos — local files embed and work offline; hold then drag to comment on an exact area |
+| `image` | screenshots, mockup exports, photos — local files embed and work offline; drag to comment on exact pixels |
 | `palette` | color palettes / themes — swatch cards with hover-hex + click-to-copy; pair with a `color` question to let the user pick |
 | `kpi` | big-number metric cards (`items:[{label,value,delta?,dir?,sub?}]`) with up/down/flat-tinted deltas — at-a-glance numbers without a chart |
 | `typography` | type specimens (`specimens:[{label?,size?,weight?,font?,text?}]`) — react to type choices like a palette |
@@ -550,12 +550,18 @@ click-to-drop coordinate pin-comments. `table` blocks take `"rowsFile"` (load
 rows from .csv/.tsv/.json), `"filterable"`, and `"exportable"` (CSV download).
 
 Every interactive `image` and `compare` block also supports area feedback:
-hold briefly, then drag a rectangle. Relay saves a pixel crop beside the board
-record and returns its local path with the annotation, so the agent can open the
-exact pixels instead of inferring from a whole-image comment. In a comparison,
-the side visible where the hold began is recorded as `before` or `after` and the
-crop comes from that source image. Remote images that prevent browser canvas
-access still return coordinates and a `cropUnavailable` marker.
+primary drag draws a rectangle directly; the viewer's **Area** control remains a
+discoverable one-shot lock for the same gesture. On images, Space-drag or the
+middle mouse button pans. In comparisons, only dragging the divider handle moves
+the split. The provisional rectangle remains visible while the comment is
+composed; a saved zone shows a comment icon plus count and reopens for
+add/edit/delete. Removing its final comment removes the zone. Relay saves a pixel
+crop beside the board record and returns its local path with the annotation, so
+the agent can open the exact pixels instead of inferring from a whole-image
+comment. In a comparison, the visible side where drawing began is recorded as
+`before` or `after` and the crop comes from that source image. Remote images that
+prevent browser canvas access still return coordinates and a `cropUnavailable`
+marker.
 
 ### Height rules
 

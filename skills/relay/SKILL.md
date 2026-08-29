@@ -85,7 +85,7 @@ priority call in a `rank` question — not in paragraphs. Unsure which exists? R
 | `code` | source / config / command output — highlighted, line numbers, hover-a-line to comment |
 | `diff` | code changes — colored unified/split, multi-file (`rly diff` builds the whole board) |
 | `git-conflict` | conflict-marker files — side-by-side ours/theirs/base with hunk choices; returns resolved content in `result.blockEdits[blockId]` |
-| `image` | screenshots / mockups / renders — zoom+pan; hold+drag → area crop comment; `pins:true` → point comments |
+| `image` | screenshots / mockups / renders — drag → area crop; Space-drag/middle-button → pan; `pins:true` → point comments |
 | `compare` | a before/after pair — draggable divider; area comments retain the selected side |
 | `video` | a demo / screen recording / walkthrough |
 | `pdf` | a quote / report / exported document that should render inline |
@@ -441,12 +441,16 @@ drop a comment anchored to that exact spot (Figma-style), returned as an
 
 ### Comment on an exact image area (local crop)
 
-Every interactive `image` and `compare` block supports hold-then-drag area
-feedback without another spec flag. Relay returns an `image-region` target with
-normalized `x`, `y`, `w`, and `h`; browser boards also save the selected pixels
-beside the board and return `target.crop.path`, which the agent should open with
-its image viewer. Comparison targets include `side:"before"|"after"`, and the
-crop comes from that source image rather than the composited slider view.
+Every interactive `image` and `compare` block accepts direct primary drag for the
+desired rectangle; **Area** remains as a discoverable one-shot lock. Image pan is
+Space-drag or middle-button drag, and a comparison divider moves only from its
+handle. The provisional zone remains while the user writes, and a saved zone
+exposes a comment icon/count plus add/edit/delete threads; deleting its last
+comment removes the zone. Relay returns an `image-region` target with normalized
+`x`, `y`, `w`, and `h`; browser boards also save the selected pixels beside the
+board and return `target.crop.path`, which the agent should open with its image
+viewer. Comparison targets include `side:"before"|"after"`, and the crop comes
+from that source image rather than the composited slider view.
 
 ### Show a git diff in one step — `rly diff`
 

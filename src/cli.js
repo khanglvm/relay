@@ -1125,7 +1125,7 @@ the user should view — put it in relay instead of printing it.**
 - **There's a purpose-built component for most content — use the MOST SPECIFIC one,
   never plain prose when a block fits.** Blocks: \`table\` (sortable/filterable/CSV,
   load from .csv/.json), \`chart\`, \`kpi\` (stat cards), \`mermaid\`/\`graphviz\`/\`plantuml\`,
-  \`code\`, \`diff\`, \`git-conflict\`, \`image\` (hold+drag area crops; +\`pins\` for points), \`compare\` (before/after with side-aware area crops), \`video\`, \`pdf\`, \`palette\`,
+  \`code\`, \`diff\`, \`git-conflict\`, \`image\` (drag for crop comments; Space-drag/middle-button to pan; +\`pins\` for points), \`compare\` (before/after with side-aware area crops; divider-handle drag), \`video\`, \`pdf\`, \`palette\`,
   \`typography\`, \`html\`. Question types: \`single\`/\`multi\`/\`yesno\`/\`scale\`/\`color\`/
   \`text\`/\`textarea\` plus \`rank\` (prioritize), \`allocate\` (split a budget), \`checklist\`
   (per-item sign-off). For a business user, reach for \`kpi\`+\`chart\`+\`table\` and

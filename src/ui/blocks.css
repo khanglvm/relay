@@ -651,6 +651,8 @@
   width: 100%;
   max-width: none;
   height: auto;
+  -webkit-user-drag: none;
+  user-select: none;
   border-radius: 6px;
   object-fit: contain;
   object-position: left top;
@@ -757,6 +759,9 @@ body.blk-full-open { overflow: hidden; }
    dragging. During an active drag the inner svg/img/canvas ignore the pointer
    so hover pins/cursors don't flicker and the whole surface shows "grabbing". */
 .blk-pannable { cursor: grab; }
+.blk-has-regions.blk-pannable { cursor: crosshair; }
+body.blk-space-pan .blk-has-regions.blk-pannable,
+body.blk-space-pan .blk-has-regions.blk-pannable * { cursor: grab !important; }
 .blk-panning { cursor: grabbing; user-select: none; }
 .blk-panning svg,
 .blk-panning img,
@@ -789,6 +794,19 @@ body.blk-full-open { overflow: hidden; }
   background: var(--accent); border-color: var(--accent); color: var(--accent-fg);
 }
 .blk-tools .tool-comment.has-comment:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--accent-fg); }
+.blk-tools .tool-region {
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.blk-tools .tool-region svg { display: block; }
+.blk-tools .tool-region.is-active {
+  background: var(--accent); border-color: var(--accent); color: var(--accent-fg);
+}
+.blk-tools .tool-region.is-active:hover {
+  background: var(--accent-hover); border-color: var(--accent-hover); color: var(--accent-fg);
+}
+@media (max-width: 520px) {
+  .blk-tools .tool-region-label { display: none; }
+}
 
 /* code blocks reuse the viewer toolbar (comment + full-screen); the pre keeps
    its own card, the wrapper only hosts the toolbar strip */
@@ -847,7 +865,7 @@ body.blk-full-open { overflow: hidden; }
 .cmp-frame {
   position: relative; overflow: hidden; user-select: none; touch-action: none;
   border: 1px solid var(--border); border-radius: 12px; line-height: 0;
-  cursor: ew-resize;
+  cursor: crosshair;
 }
 .cmp-img { display: block; width: 100%; height: auto; }
 .cmp-before { position: absolute; inset: 0; width: 50%; overflow: hidden; }
@@ -855,6 +873,7 @@ body.blk-full-open { overflow: hidden; }
 .cmp-handle {
   position: absolute; top: 0; bottom: 0; left: 50%; width: 2px;
   background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.25); transform: translateX(-1px);
+  cursor: ew-resize;
 }
 .cmp-handle-grip {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -941,17 +960,29 @@ body.blk-full-open { overflow: hidden; }
   padding: 0;
   min-width: 10px;
   min-height: 10px;
+  appearance: none;
 }
-.blk-imgregion::after {
-  content: attr(data-count);
+.blk-imgregion-badge {
   position: absolute; top: -11px; right: -11px;
-  min-width: 20px; height: 20px; padding: 0 5px;
-  display: grid; place-items: center;
+  min-width: 24px; height: 22px; padding: 0 6px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 3px;
   border: 2px solid #fff; border-radius: 999px;
   background: var(--accent); color: #fff;
   font: 600 0.68rem/1 var(--sans);
   box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  pointer-events: none;
 }
+.blk-imgregion-badge svg { width: 10px; height: 10px; }
+.blk-imgregion-count { min-width: 0.7em; text-align: center; }
+.blk-imgregion-provisional {
+  z-index: 8;
+  border-style: dashed;
+  background: color-mix(in srgb, var(--card) 34%, var(--accent) 20%);
+}
+.blk-imgregion-provisional .blk-imgregion-badge { opacity: 0.9; }
+.blk-region-mode,
+.blk-region-mode * { cursor: crosshair !important; }
+.blk-region-mode { touch-action: none; }
 .blk-region-arming { cursor: crosshair !important; }
 .blk-region-selecting { cursor: crosshair !important; touch-action: none; }
 .blk-region-status {

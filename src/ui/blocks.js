@@ -1888,6 +1888,24 @@
   }
 
   // ---------- image ----------
+  let activeRegionMode = null;
+  let viewerSpacePan = false;
+  const setViewerSpacePan = (enabled) => {
+    viewerSpacePan = Boolean(enabled);
+    document.body.classList.toggle('blk-space-pan', viewerSpacePan);
+  };
+  document.addEventListener('keydown', (e) => {
+    const tag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '';
+    if (e.code === 'Space' && !e.repeat && !['input', 'textarea', 'select'].includes(tag)) {
+      setViewerSpacePan(true);
+      e.preventDefault();
+    }
+  });
+  document.addEventListener('keyup', (e) => {
+    if (e.code === 'Space') setViewerSpacePan(false);
+  });
+  window.addEventListener('blur', () => setViewerSpacePan(false));
+
   // src is a remote URL, or absent for embedded local files (served by the
   // board server at /img/b/<id>). Same sizing rule as diagrams: never upscale
   // past natural width; zoom/full-screen viewer attached once loaded.
@@ -1901,8 +1919,10 @@
       src,
       alt: block.alt || 'image',
       loading: 'lazy',
-      title: ctx.canComment === false ? '' : 'Hold briefly, then drag to comment on an area',
+      draggable: 'false',
+      title: ctx.canComment === false ? '' : 'Drag to draw a comment area · Space-drag to pan',
     });
+    img.addEventListener('dragstart', (e) => e.preventDefault());
     const stage = el('div', { class: 'blk-imgstage' }, img);
     // Inline default: the image fills its full width (container width, never
     // upscaled past natural) so it's readable without manual zoom; the CONTAINER
@@ -1914,27 +1934,28 @@
       container.replaceChildren(el('div', { class: 'blk-error' }, 'Image failed to load'));
     });
     container.append(stage);
+    const region = ctx.annotate && ctx.canComment !== false
+      ? enableImageRegions({
+          host: stage,
+          surface: img,
+          panHost: container,
+          sourceForSide: () => img,
+          sideAtPoint: () => null,
+          ctx,
+          blockId,
+          label: block.alt || 'Image',
+        })
+      : null;
     const attachImgViewer = () =>
       attachViewer(container, {
         zoomEl: stage,
         natural: () => (img.naturalWidth > 0 ? { w: img.naturalWidth, h: img.naturalHeight } : null),
         label: 'image',
         comment: wholeBlockComment(ctx, blockId, 'image'),
+        region,
       });
     if (img.complete && img.naturalWidth > 0) attachImgViewer();
     else img.addEventListener('load', attachImgViewer, { once: true });
-    if (ctx.annotate && ctx.canComment !== false) {
-      enableImageRegions({
-        host: stage,
-        surface: img,
-        panHost: container,
-        sourceForSide: () => img,
-        sideAtPoint: () => null,
-        ctx,
-        blockId,
-        label: block.alt || 'Image',
-      });
-    }
     if (ctx.annotate && block.pins === true) {
       enableImagePins(stage, img, ctx, blockId, block.alt || 'Image');
     } else if (ctx.annotate) {
@@ -2009,11 +2030,14 @@
     const selection = el('div', { class: 'blk-region-selection' });
     layer.append(selection);
     host.append(layer);
+    panHost._rlyHasRegions = true;
+    panHost.classList.add('blk-has-regions');
     let pending = null;
     let active = false;
-    let holdTimer = 0;
     let status = null;
-    const HOLD_MS = 280;
+    let modeActive = false;
+    const modeHooks = new Set();
+    let controller = null;
     const MIN_REGION = 0.012;
 
     const localPoint = (e) => {
@@ -2030,8 +2054,6 @@
       host.append(status);
     };
     const reset = () => {
-      clearTimeout(holdTimer);
-      holdTimer = 0;
       active = false;
       pending = null;
       panHost._rlyRegionSelecting = false;
@@ -2039,6 +2061,30 @@
       selection.style.display = 'none';
       clearStatus();
     };
+    const setModeActive = (next) => {
+      const enabled = Boolean(next);
+      if (enabled && activeRegionMode && activeRegionMode !== controller) {
+        activeRegionMode.setModeActive(false);
+      }
+      if (!enabled && pending) reset();
+      if (modeActive === enabled) return;
+      modeActive = enabled;
+      panHost._rlyRegionMode = enabled;
+      host.classList.toggle('blk-region-mode', enabled);
+      activeRegionMode = enabled ? controller : (activeRegionMode === controller ? null : activeRegionMode);
+      for (const fn of modeHooks) { try { fn(enabled); } catch (_) {} }
+    };
+    controller = {
+      setModeActive,
+      isModeActive: () => modeActive,
+      onModeChange: (fn) => {
+        if (typeof fn === 'function') modeHooks.add(fn);
+        return () => modeHooks.delete(fn);
+      },
+    };
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modeActive) setModeActive(false);
+    });
     const draw = (a, b) => {
       const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
       const w = Math.abs(a.x - b.x), h = Math.abs(a.y - b.y);
@@ -2047,6 +2093,34 @@
       selection.style.width = (w * 100) + '%';
       selection.style.height = (h * 100) + '%';
       return { x, y, w, h };
+    };
+    const createRegionZone = (target, count, provisional = false) => {
+      const badge = el('span', { class: 'blk-imgregion-badge', 'aria-hidden': 'true' });
+      badge.innerHTML = ICON_COMMENT;
+      badge.append(el('span', { class: 'blk-imgregion-count' }, String(count)));
+      const sideLabel = target.side ? target.side + ' ' : '';
+      const region = el('button', {
+        class: 'blk-imgregion' + (provisional ? ' blk-imgregion-provisional' : ''),
+        type: 'button',
+        title: provisional
+          ? `Add a comment to this ${sideLabel}area`
+          : `${target.side ? target.side + ' · ' : ''}${count} ${count === 1 ? 'comment' : 'comments'}`,
+        'aria-label': provisional
+          ? `New ${sideLabel}image area comment`
+          : `${sideLabel}image area with ${count} ${count === 1 ? 'comment' : 'comments'}`,
+      }, badge);
+      region.style.left = (target.x * 100) + '%';
+      region.style.top = (target.y * 100) + '%';
+      region.style.width = (target.w * 100) + '%';
+      region.style.height = (target.h * 100) + '%';
+      region.addEventListener('pointerdown', (e) => e.stopPropagation());
+      if (!provisional) {
+        region.addEventListener('click', (e) => {
+          e.stopPropagation();
+          ctx.annotate.openExternal({ blockId, questionId: ctx.questionId, target }, region);
+        });
+      }
+      return region;
     };
     const beginSelection = (pointerId) => {
       if (!pending || active) return;
@@ -2091,6 +2165,8 @@
         side: side || undefined,
         label,
       };
+      const provisional = createRegionZone(target, 0, true);
+      layer.append(provisional);
       showStatus('Saving selected area…');
       try {
         target.crop = await cropRegion(sourceForSide(side), region);
@@ -2098,12 +2174,21 @@
         target.cropUnavailable = true;
       }
       clearStatus();
-      ctx.annotate.openExternal({ blockId, questionId: ctx.questionId, target }, host);
+      ctx.annotate.openExternal({
+        blockId,
+        questionId: ctx.questionId,
+        target,
+        onClose: () => provisional.remove(),
+      }, provisional);
     };
 
     surface.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0 || ctx.canComment === false) return;
+      if (e.button !== 0 || viewerSpacePan || ctx.canComment === false) return;
       if (e.target.closest && e.target.closest('.cmp-handle, .blk-imgregion, .blk-tools')) return;
+      if (modeActive) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
       const p = localPoint(e);
       pending = {
         start: p,
@@ -2111,38 +2196,41 @@
         clientX: e.clientX,
         clientY: e.clientY,
         pointerId: e.pointerId,
-        startedAt: performance.now(),
+        explicitMode: modeActive,
         side: sideAtPoint(p.x),
       };
       host.classList.add('blk-region-arming');
-      holdTimer = setTimeout(() => beginSelection(e.pointerId), HOLD_MS);
+      if (modeActive) beginSelection(e.pointerId);
     });
     surface.addEventListener('pointermove', (e) => {
       if (!pending) return;
       const moved = Math.hypot(e.clientX - pending.clientX, e.clientY - pending.clientY);
-      // Timers can be throttled while an automation host or background tab owns
-      // the event loop. The first post-hold move is also authoritative, so a
-      // genuine hold still enters area mode even if setTimeout fired late.
-      if (!active && performance.now() - pending.startedAt >= HOLD_MS) beginSelection(pending.pointerId);
+      if (!active && moved > 5) beginSelection(pending.pointerId);
       if (!active) {
-        if (moved > 5) reset();
         return;
       }
       e.preventDefault();
+      e.stopPropagation();
       pending.last = localPoint(e);
       draw(pending.start, pending.last);
     });
     const end = (e) => {
       if (!pending) return;
-      clearTimeout(holdTimer);
       if (!active) { reset(); return; }
       e.preventDefault();
       const region = draw(pending.start, pending.last || localPoint(e));
       const side = pending.side;
+      const explicitMode = pending.explicitMode;
       surface._rlySuppressPointClick = true;
       reset();
       clearStatus();
-      if (region.w >= MIN_REGION && region.h >= MIN_REGION) finishRegion(region, side);
+      if (region.w >= MIN_REGION && region.h >= MIN_REGION) {
+        if (explicitMode) setModeActive(false);
+        finishRegion(region, side);
+      } else if (explicitMode) {
+        showStatus('Drag a larger area');
+        setTimeout(clearStatus, 1200);
+      }
     };
     surface.addEventListener('pointerup', end);
     // Some Chromium/CDP paths emit pointercancel immediately after granting
@@ -2151,7 +2239,7 @@
     surface.addEventListener('pointercancel', (e) => active ? end(e) : reset());
 
     const syncRegions = () => {
-      for (const node of Array.from(layer.querySelectorAll('.blk-imgregion'))) node.remove();
+      for (const node of Array.from(layer.querySelectorAll('.blk-imgregion:not(.blk-imgregion-provisional)'))) node.remove();
       const groups = new Map();
       for (const a of ctx.annotate.list()) {
         if (a.blockId !== blockId || !a.target || a.target.kind !== 'image-region') continue;
@@ -2162,27 +2250,12 @@
         groups.set(key, group);
       }
       for (const { target, count } of groups.values()) {
-        const region = el('button', {
-          class: 'blk-imgregion',
-          type: 'button',
-          'data-count': String(count),
-          title: `${target.side ? target.side + ' · ' : ''}${count} ${count === 1 ? 'comment' : 'comments'}`,
-          'aria-label': `${target.side ? target.side + ' image area' : 'image area'} with ${count} ${count === 1 ? 'comment' : 'comments'}`,
-        });
-        region.style.left = (target.x * 100) + '%';
-        region.style.top = (target.y * 100) + '%';
-        region.style.width = (target.w * 100) + '%';
-        region.style.height = (target.h * 100) + '%';
-        region.addEventListener('pointerdown', (e) => e.stopPropagation());
-        region.addEventListener('click', (e) => {
-          e.stopPropagation();
-          ctx.annotate.openExternal({ blockId, questionId: ctx.questionId, target }, region);
-        });
-        layer.append(region);
+        layer.append(createRegionZone(target, count));
       }
     };
     if (ctx.annotate.onBadgeRefresh) ctx.annotate.onBadgeRefresh(syncRegions);
     syncRegions();
+    return controller;
   }
 
   // ---------- palette ----------
@@ -2333,19 +2406,20 @@
       if (r.width) { pos = Math.max(0, Math.min(100, ((clientX - r.left) / r.width) * 100)); apply(); }
     };
     frame.addEventListener('pointerdown', (e) => {
-      if (e.target.closest && e.target.closest('.blk-imgregion')) return;
+      const handleTarget = e.target.closest('.cmp-handle');
+      if (!handleTarget || frame._rlyRegionMode) return;
       dragging = true;
       dragMoved = false;
       dragStartX = e.clientX;
       try { frame.setPointerCapture(e.pointerId); } catch (_) {}
     });
     frame.addEventListener('pointermove', (e) => {
-      if (!dragging || frame._rlyRegionSelecting) return;
+      if (!dragging || frame._rlyRegionMode || frame._rlyRegionSelecting) return;
       if (Math.abs(e.clientX - dragStartX) > 3) dragMoved = true;
       if (dragMoved) { setFromX(e.clientX); e.preventDefault(); }
     });
     frame.addEventListener('pointerup', (e) => {
-      if (dragging && !dragMoved && !frame._rlyRegionSelecting) setFromX(e.clientX);
+      if (dragging && !dragMoved && !frame._rlyRegionMode && !frame._rlyRegionSelecting) setFromX(e.clientX);
       dragging = false;
     });
     frame.addEventListener('pointercancel', () => { dragging = false; dragMoved = false; });
@@ -2353,9 +2427,10 @@
       if (e.key === 'ArrowLeft') { pos = Math.max(0, pos - 2); apply(); e.preventDefault(); }
       else if (e.key === 'ArrowRight') { pos = Math.min(100, pos + 2); apply(); e.preventDefault(); }
     });
+    let region = null;
     if (ctx.annotate && ctx.canComment !== false) {
-      frame.title = 'Hold briefly, then drag to comment on the visible Before or After image';
-      enableImageRegions({
+      frame.title = 'Drag to draw a comment area · drag the divider handle to compare';
+      region = enableImageRegions({
         host: frame,
         surface: frame,
         panHost: frame,
@@ -2366,7 +2441,12 @@
         label: 'Comparison',
       });
     }
-    attachViewer(wrap, { zoomEl: null, label: 'comparison', comment: wholeBlockComment(ctx, blockId, 'comparison') });
+    attachViewer(wrap, {
+      zoomEl: null,
+      label: 'comparison',
+      comment: wholeBlockComment(ctx, blockId, 'comparison'),
+      region,
+    });
     return wrap;
   }
 
@@ -2399,6 +2479,10 @@
   const ICON_COMMENT =
     '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
     '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"/></svg>';
+  const ICON_REGION =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<rect x="3" y="4" width="14" height="12" rx="2" stroke-dasharray="3 2"/>' +
+    '<path d="M14 14.5h6.5v4H18l-2.5 2v-2H14z" fill="currentColor" stroke="none"/></svg>';
 
   function exitFull() {
     if (!fullOpen) return;
@@ -2520,7 +2604,8 @@
     const refresh = () => scrollEl.classList.toggle('blk-pannable', pannable());
 
     scrollEl.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0 || !pannable()) return;
+      const panGesture = e.button === 1 || (e.button === 0 && (!scrollEl._rlyHasRegions || viewerSpacePan));
+      if (!panGesture || scrollEl._rlyRegionMode || !pannable()) return;
       // leave the toolbar, the diagram editor, and real controls interactive
       if (e.target.closest && e.target.closest('.blk-tools, .blk-editor, button, a, input, textarea, select')) return;
       pending = true; active = false;
@@ -2530,7 +2615,7 @@
     });
     scrollEl.addEventListener('pointermove', (e) => {
       if (!pending) return;
-      if (scrollEl._rlyRegionSelecting) { pending = false; active = false; return; }
+      if (scrollEl._rlyRegionMode || scrollEl._rlyRegionSelecting) { pending = false; active = false; return; }
       const dx = e.clientX - sx, dy = e.clientY - sy;
       if (!active) {
         if (Math.abs(dx) < THRESH && Math.abs(dy) < THRESH) return;
@@ -2581,6 +2666,10 @@
   // comment (optional) = { open(anchor), active(), subscribe(fn) } wiring the
   // "comment on the whole block" button + its already-commented style.
   function attachViewer(container, opts) {
+    if (container._rlyRegionHook) {
+      try { container._rlyRegionHook(); } catch (_) {}
+      container._rlyRegionHook = null;
+    }
     if (container._rlyTools) container._rlyTools.remove();
     container.classList.add('blk-viewer');
     const zoomable = Boolean(opts && opts.zoomEl);
@@ -2693,6 +2782,34 @@
       if (!container._rlyCmtHook && cmt.subscribe) {
         container._rlyCmtHook = cmt.subscribe(() => container._rlyCmtSync && container._rlyCmtSync());
       }
+    }
+
+    if (opts && opts.region) {
+      const regionCtl = opts.region;
+      const regionLabel = el('span', { class: 'tool-region-label' }, 'Area');
+      const regionBtn = el('button', {
+        class: 'tool-region',
+        type: 'button',
+        title: 'Draw an area comment',
+        'aria-label': 'Draw an area comment',
+        'aria-pressed': 'false',
+      });
+      regionBtn.innerHTML = ICON_REGION;
+      regionBtn.append(regionLabel);
+      const syncRegionMode = (enabled) => {
+        regionBtn.classList.toggle('is-active', enabled);
+        regionBtn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+        regionBtn.title = enabled ? 'Cancel area comment' : 'Draw an area comment';
+        regionBtn.setAttribute('aria-label', regionBtn.title);
+        regionLabel.textContent = enabled ? 'Drawing' : 'Area';
+      };
+      regionBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        regionCtl.setModeActive(!regionCtl.isModeActive());
+      });
+      container._rlyRegionHook = regionCtl.onModeChange(syncRegionMode);
+      syncRegionMode(regionCtl.isModeActive());
+      tools.append(regionBtn);
     }
 
     if (zoomable) {
