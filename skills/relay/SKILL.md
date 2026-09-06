@@ -1,618 +1,147 @@
 ---
 name: relay
-description: "Collect user decisions & answers — choice, multi, yes-no, text, scale, rank, checklist, allocate, color — and present plans, data, code, git diffs/conflicts, designs, charts, tables, diagrams, images, PDFs, videos, HTML, palettes, typography, and file views on a browser or inline MCP board. Returns JSON answers/notes/comments/annotations/blockEdits on Submit. Use PROACTIVELY for 2+ questions, visual review, plans, metrics, tables, diffs, git pick/cherry-pick/conflict decisions, markdown files, or anything the terminal cannot render well. Use the most specific component instead of prose. Skip single yes/no."
+description: "Present files, visuals, plans, diffs, and structured user decisions in a Relay browser or inline MCP board. Use for visual review, rich reports, or multiple related questions; use native chat for simple answers and single confirmations."
 ---
 
-# relay (`rly`)
+# Relay (`rly`)
 
-CLI that opens a local web board for the user, blocks until they click
-**Submit**, and prints their answers plus element-level annotations as JSON to
-stdout. Works for any agent (Claude Code, Codex, …). Answers autosave in real
-time; the tab auto-closes after submit.
+Choose the surface and component that lets the user understand or decide with
+least effort. Use Relay for files, visuals, substantial plans, and related
+questions. Keep ordinary progress updates and brief answers in chat. Follow the
+user’s existing authorization; a board is not an extra approval requirement.
 
-If `rly` is not installed: `npm i -g @khanglvm/relay` or invoke via
-`npx -y @khanglvm/relay <command …>`.
+## Choose the operation
 
-**Inside the Claude or Codex app?** relay is also an MCP App: if the
-`relay_ask` / `relay_show` tools are available, call them with the same board
-spec (below) and the board renders **inline in the chat** — no terminal, no
-browser tab; the user's answers come straight back to you. Set it up once with
-`rly mcp install --target claude|codex` (or `rly mcp config`). Everything below
-describes the spec both surfaces share.
+- **Show content without asking for feedback:** `rly show --file spec.json --display-only`.
+  Returns immediately; no Submit button or waiter is needed.
+- **Collect answers or comments:** `rly ask --file spec.json --detach`, then wait
+  for that board’s result. Put related questions on one board.
+- **Read a file:** `rly view report.md --display-only`; also accepts CSV/TSV/JSON
+  tables and PDF. Use a `code` block with `codeFile` for source code.
+- **Show changes:** `rly diff`; `rly git pick`, `rly git cherry-pick --code`, and
+  `rly git conflict` collect commit/hunk choices. Apply only the user’s choices.
+- **Continue an existing board:** identify it by URL/port/title with `rly list`
+  or `rly history`. Use `rly rescue <id>` for a disconnected tab (same port),
+  `rly reopen <id>` for a new tab with saved input, or `rly update <id> --file
+  spec.json` to change its content. `rly reuse` deliberately starts a blank run.
 
-**Full reference: run `rly agent` (complete guide) and `rly schema` (spec JSON
-Schema).** The essentials are below.
+If Relay MCP tools are available in the current host, `relay_ask` collects input
+inline and `relay_show` is display-only by default. Use the actual exposed tool
+schema; setup details are in `rly mcp config`. Local file-link previews require
+the **browser board** server. For inline MCP, embed file content using `mdFile`,
+`codeFile`, or an image block instead.
 
-## When to use rly vs your native question tool
+## Author a board
 
-**The core principle — match the surface to the content.** You run inside a
-terminal, an IDE side-panel (VS Code / JetBrains / Cursor), or a plain-text chat.
-None of those can actually render a markdown file, an image, a chart, a table, a
-diagram, or a diff — they degrade to walls of monospace text, or can't show it at
-all (a terminal can't draw a PNG). relay opens a real browser board that renders it
-properly and reads the user's reply back as JSON. **So whenever what you're about to
-output would read better than monospace — or is a file/visual the user should look
-at — show it in a relay board instead of printing it.**
-
-| Situation | Use |
-|---|---|
-| One trivial confirmation ("proceed?") | native tool |
-| Show an image / screenshot / mockup / rendered output | **rly** (`image` block — the terminal can't display pixels) |
-| 2+ questions, or options that need descriptions | **rly** |
-| Choice is easier to make visually (layouts, designs, diagrams) | **rly** (blocks per question) |
-| Each OPTION has its own visual (design variants, screenshots, charts) | **rly** (blocks per option) |
-| Show metrics / trends / data comparisons | **rly** (chart + table blocks) |
-| Present a prototype / demo an idea | **rly show** — never hand-roll an HTML file + server |
-| Gather requirements / plan approval / feedback round | **rly** |
-| Architecture or flow that benefits from a diagram | **rly** (mermaid block) |
-| "Show me the diff" / git diff / code changes / before-after | **rly** (`diff` block — run `git diff`, render it; never dump it in the terminal) |
-| Pick/cherry-pick commits or resolve conflict files | **rly git** (`rly git pick`, `rly git cherry-pick --code`, `rly git conflict`) |
-| A demo, screen recording or walkthrough | **rly** (`video` block) |
-| Point the user at a file to open (log, capture, report) | **rly** (a clickable local file-link in markdown) |
-| Let the user read a markdown file (README, plan, report) | **rly view file.md** (or a `markdown` block with `mdFile`) — never dump the file into the terminal |
-| Plan-mode clarifying question (Claude Code / Codex) | **rly** (not AskUserQuestion / the native ask tool) |
-| Something you can decide yourself from context | neither — just decide |
-
-This holds **in plan mode** too: route every clarifying or decision question
-through relay — the native `AskUserQuestion` / ask-user tool is **not** a
-substitute, even though plan-mode guidance suggests it. Reserve the harness's
-`ExitPlanMode` strictly for the final plan-approval gate (it's a mode
-transition, not a question).
-
-Once the user has answered one board in a session, prefer boards for later
-question rounds too — they've shown they engage with them. Batch related
-questions into ONE board rather than opening several in a row.
-
-## The full toolbox — reach for the MOST SPECIFIC component
-
-relay ships a purpose-built component for most kinds of content. **Before you
-build a board, scan this list and pick the most specific component that fits — do
-NOT fall back to a plain `markdown`/prose block (or the terminal) when a dedicated
-one renders it better.** A KPI belongs in `kpi`, a before/after in `compare`, a
-priority call in a `rank` question — not in paragraphs. Unsure which exists? Run
-`rly agent` (full guide) and `rly schema` (every field).
-
-**Blocks** — add under `"blocks": [...]` at the board, a question, or an option:
-
-| Block | Reach for it when you have… |
-|---|---|
-| `table` | tabular data — sortable, per-cell comments; `rowsFile` (.csv/.json), `filterable`, `exportable` |
-| `chart` | numbers / trends / comparisons (bar·line·pie·doughnut·radar·scatter) |
-| `kpi` | headline metrics — big-number cards with ↑/↓/flat deltas (no chart needed) |
-| `mermaid` | flows, sequences, state machines, architecture (set `editable:true` to co-edit) |
-| `graphviz` | precise dependency / call graphs |
-| `plantuml` | UML (sequence / class / component) |
-| `code` | source / config / command output — highlighted, line numbers, hover-a-line to comment |
-| `diff` | code changes — colored unified/split, multi-file (`rly diff` builds the whole board) |
-| `git-conflict` | conflict-marker files — side-by-side ours/theirs/base with hunk choices; returns resolved content in `result.blockEdits[blockId]` |
-| `image` | screenshots / mockups / renders — drag → area crop; Space-drag/middle-button → pan; `pins:true` → point comments |
-| `compare` | a before/after pair — draggable divider; area comments retain the selected side |
-| `video` | a demo / screen recording / walkthrough |
-| `pdf` | a quote / report / exported document that should render inline |
-| `palette` | color schemes — swatch cards, hover-hex, click-to-copy |
-| `typography` | type choices — specimens at given size/weight/font |
-| `html` | anything bespoke — custom widgets, pixel-perfect mockups |
-| `markdown` | prose / context ONLY (not data, metrics, or visuals — those have their own block) |
-
-Any block also takes `"ref":"name"` → a question can link to it with
-`[label](#ref:name)` and it opens **in a full-screen modal**, so the user views the
-data without scrolling back up.
-
-**Question types** — pick by the shape of the answer you need:
-
-| Type | Reach for it when you need… | Answer JSON |
-|---|---|---|
-| `single` | one choice (radio; "Other" + a note are on by default) | `"value"` |
-| `multi` | several choices | `["a","b"]` |
-| `rank` | a **priority order** over options (roadmap, triage) | `["b","a","c"]` |
-| `allocate` | a **budget split** across options (tradeoffs, %, points) | `{opt: number}` |
-| `checklist` | **per-item sign-off / QA** (Pass·Fail·N·A, or custom) | `{opt: status}` |
-| `scale` | a rating on a 1–N scale | number |
-| `yesno` | a binary decision | `"yes"`/`"no"` |
-| `color` | a color pick — native picker + presets, or a `palette` of labeled swatch cards (each commentable); any CSS color system | color string |
-| `text` / `textarea` | short / long free text | string |
-
-**By who you're serving** (don't make a business user read a wall of prose):
-
-- **Business / PM / exec** → `kpi` + `chart` + `table` for the numbers; `rank` to
-  prioritize, `allocate` for tradeoffs, `checklist` for sign-off, `scale` for confidence.
-- **Designer** → `image` (+`pins` for point feedback), `compare` (before/after),
-  `palette`, `typography`; put a visual INSIDE each option so they pick by looking.
-- **Engineer** → `diff` (`rly diff`), `code` (line-comments), `mermaid`/`graphviz`
-  for architecture, editable mermaid to co-design.
-- **Data / analyst** → `table` with `rowsFile`/`filterable`/`exportable`
-  (`rly view data.csv`), `chart` for the shape of it.
-
-## Choose a pattern
-
-**DEFAULT: detached.** Most agent shell tools kill long-running commands, and a
-blocking `rly ask` that gets killed cancels the board. Always prefer:
-
-```sh
-rly ask --file spec.json --detach    # returns {"boardId":"b-…","url":…} immediately
-rly wait b-xxxxx --timeout 86400     # default: one day; 0 = no Relay deadline
-                                     # (on exit 2 "wait-timeout" just run wait again)
-rly result b-xxxxx                   # non-blocking peek (includes live draft)
-```
-
-Detached boards are durable: their own timeout hands the agent a `timeout`
-result but keeps the same URL/port serving until Submit or `rly stop`. Do not
-create a new board just because a wait timed out.
-
-For long waits prefer presence-aware waiting over a huge --timeout:
-
-```sh
-rly wait b-xxxxx --timeout 86400 --while-active --idle-grace 3600
-# keeps extending while the user is demonstrably viewing/typing on the board;
-# returns wait-timeout promptly once they are idle/gone (presence included)
-rly result b-xxxxx        # while open also shows presence {visible, focused, secondsSinceActivity}
-```
-
-Push-wake instead of polling: add --on-result '<shell cmd>' to ask/show/reopen
-(or --notify-cmd on wait) - the command runs the moment the board finishes,
-with the full result JSON on stdin and RLY_BOARD_ID/RLY_STATUS/RLY_URL in env.
-
-**Codex browser-board pattern.** Codex does not have a normal, user-facing
-"wake this agent turn from a browser submit" command. If the Codex turn stops
-waiting, a later board submit can leave the user needing to prompt manually.
-So in Codex, keep the waiter in the foreground until the user submits:
-
-```sh
-rly ask --file spec.json --detach
-rly wait b-xxxxx --timeout 86400 --while-active --idle-grace 3600
-```
-
-If `rly wait` exits with `wait-timeout`, immediately run `rly result <boardId>`.
-If it is still open and the user may continue, run `rly wait` again. Do not use
-`--on-result` as the primary Codex return path; it can write files or hit
-webhooks, but normal Codex CLI sessions do not expose a portable inbound API
-that wakes the current agent turn.
-
-Blocking mode (`rly ask --file spec.json --timeout 86400`, no `--detach`) is fine
-ONLY when your shell tool has no execution time limit.
-
-Relay defaults board and waiter deadlines to one day; use `--timeout 0` when the
-client can safely own an indefinite process. Choose the return path by host:
-
-- Inline MCP `relay_ask`: no CLI wait; its `ui/message` submission wakes the
-  return turn. Inline `relay_show` is display-only by default and does not wait.
-- Claude Code: background `rly wait <id> --timeout 0` as a background Bash task.
-- Gemini CLI: background the waiter and use
-  `tools.shell.backgroundCompletionBehavior: "inject"`.
-- Codex: keep one foreground waiter; background terminals require explicit
-  polling and do not expose a portable browser-submit wake API.
-- OpenCode/Pi: keep it foreground unless a background-task extension is
-  explicitly installed (Pi core has no background Bash).
-
-Use `--on-result`/`--notify-cmd` only when the surrounding harness exposes a real
-webhook, file watcher, or inbound wake path.
-
-To present without asking for any response, use
-`rly show --file spec.json --display-only` (equivalent to
-`"responseRequired":false`). It returns immediately and shows no note,
-comments, or Submit/Acknowledge action.
-
-Useful flags: `--no-open` (don't auto-open the browser — for tests/CI; real
-users need the tab, so omit it normally) · `--title` · `--timeout <sec>`.
-
-Exit codes: 0 submitted · 2 timeout · 3 cancelled · 5 not found. On
-timeout/cancel the result still contains the autosaved `draft` of partial
-answers and any annotations written so far.
-
-## Same-Wi-Fi sharing
-
-Browser boards are local-owner only by default. A phone/tablet/other laptop on
-the same Wi-Fi gets a locked page until sharing is explicitly activated. The
-owner can click the topbar **Share** icon, or an agent can manage the same links
-with `rly share`:
-
-```sh
-rly share b-xxxxx                         # list active share roles
-rly share b-xxxxx --role review           # activate a reviewer link
-rly share b-xxxxx --role collab           # activate a collaborator link
-rly share b-xxxxx --role read             # activate a read-only link
-rly share b-xxxxx --role review --revoke  # revoke one role
-rly share b-xxxxx --revoke --all          # revoke all active share links
-```
-
-Use `review` for independent feedback. Each reviewer browser gets an isolated
-draft and can answer, comment, and submit a **reference-only side review**. That
-submission never finishes the board or wakes/completes the waiting agent; the
-owner (or owner-authorized collaborator) must still provide the final answer.
-When the owner asks for current reviewer input, run `rly result <id>` and inspect
-`sideReviews.submissions` plus `sideReviews.drafts`; both are explicitly marked
-reference-only. Use `read` for a view-only link with no answers, comments, block
-edits, local-file opening, or submit. Use `collab` only when the user explicitly
-wants that device to act as the owner: collaborators can edit answers, comment,
-open allowed local file links, and final-submit. Shared viewers refresh from the
-relevant live draft when another viewer in the same role/session saves.
-Active share links are durable too: they keep the same token across a same-port
-`rly reopen`/`rly rescue` until `rly share --revoke` disables them.
-
-## Minimal spec
+Write valid JSON to a file; avoid embedding large specs in shell arguments.
+Use `rly schema` for exact fields and `rly agent` for detailed recipes, sharing,
+HTML/annotation APIs, and less common components. Load those only as needed.
 
 ```json
 {
-  "title": "Pick the approach",
-  "intro": "Context for the user. Hover chart points or select text to leave comments.",
+  "title": "Implementation review",
+  "blocks": [
+    {"type": "markdown", "md": "Review the [source](/absolute/path/app.js:98)."},
+    {"type": "code", "codeFile": "/absolute/path/app.js", "ref": "source"}
+  ],
   "questions": [
-    { "id": "approach", "type": "single", "label": "Which one?", "required": true,
-      "options": [{ "value": "a", "label": "A", "description": "fast" }, "B"], "other": true },
-    { "id": "parts", "type": "multi", "label": "Include?", "options": ["api", "ui"], "note": true },
-    { "id": "ship", "type": "yesno", "label": "Ship now?" },
-    { "id": "why", "type": "textarea", "label": "Reasoning?" },
-    { "id": "conf", "type": "scale", "label": "Confidence", "min": 1, "max": 5,
-      "minLabel": "low", "maxLabel": "high" }
+    {"id": "approach", "type": "single", "label": "Which approach?",
+     "options": [{"value": "small", "label": "Small change", "description": "Keep the current interface."},
+                 {"value": "replace", "label": "Replace", "description": "Introduce the new interface."}]},
+    {"id": "notes", "type": "textarea", "label": "What needs adjusting?", "required": false}
   ]
 }
 ```
 
-Types: `single`, `multi`, `yesno`, `text`, `textarea`, `scale`, `color`
-(native picker + hex; optional `"presets":["#…"]` or a `"palette"` of labeled,
-commentable swatch cards — any CSS color system), `rank`, `checklist`, `allocate`.
-Users may submit with unanswered questions (returned in `skipped`) unless
-`"allowPartial": false` or per-question `"required": true`.
+Use stable question IDs and descriptive option values. Questions and individual
+options can carry their own `blocks`; put each design variant inside its option.
+Use `required:true` only for answers necessary to continue.
 
-```jsonc
-{ "id": "brand", "type": "color", "label": "Pick a brand color",
-  "palette": [{ "value": "#c2674b", "label": "Terracotta" }, { "value": "rgb(77,138,102)", "label": "Forest" }, "rebeccapurple"] }
-// clicking a swatch = the answer; hover a swatch to comment on that specific color.
-```
-
-The optional per-question note box (`result.notes[id]`) defaults ON for the
-**decision types** — `single`, `rank`, `checklist`, `allocate` — so the user can
-qualify a pick; `"note": false` hides it, `"note": true` adds it to other types.
-
-`rank` — the user drags (or uses ↑/↓) to order the `options` by priority; the
-answer is the **ordered array of option values**, highest first. Needs ≥2
-options; always returns a value (an untouched rank submits the authored order),
-so it's never `skipped`. Use for roadmap/feature prioritization instead of a
-single pick. Options take `description` and per-option `blocks` like single/multi.
-
-```json
-{ "id": "roadmap", "type": "rank", "label": "Order these by priority",
-  "options": [{ "value": "diff", "label": "rly diff", "description": "git diff → board" }, "rank type", "image pins"] }
-```
-
-`checklist` — each `option` gets a per-item status (default **Pass / Fail / N·A**;
-override with `"statuses"`). Answer is a map `{optionValue: statusValue}`. For QA
-passes and sign-off gates.
-
-```json
-{ "id": "qa", "type": "checklist", "label": "Release sign-off", "options": ["login","search","checkout"] }
-```
-
-`allocate` — the user distributes a budget (`"total"`, default 100) across the
-`options` with sliders + a live running-total bar. Answer is a map
-`{optionValue: number}`. Captures intensity/tradeoffs, not just a pick.
-
-```json
-{ "id": "spend", "type": "allocate", "label": "Split the quarter", "total": 100, "unit": "pts",
-  "options": ["features","tech debt","infra"] }
-```
-
-Set `"note": true` on a question to add a small optional free-text field under
-it — use when the user may want to qualify their choice. Returned as
-`result.notes[questionId]`. `single` (radio) questions include this note by
-default (so a pick can carry a comment); set `"note": false` to hide it.
-
-Quick one-liners without a spec file:
-
-```sh
-rly ask -q "Deploy now?::yesno" -q "!Env::single::dev,staging,prod"   # "!" = required
-```
-
-## Blocks cheat-sheet
-
-Add `"blocks": [...]` to the root, to any question, or to any OPTION of a
-single/multi question.
-
-```jsonc
-{ "type": "markdown", "md": "## Section\n**prose**" }
-{ "type": "markdown", "mdFile": "README.md" }   // render a local .md file (no lib)
-{ "type": "mermaid",  "code": "graph TD; A-->B",     "height": 400 }
-{ "type": "graphviz", "dot": "digraph { a -> b }",   "height": 300 }
-{ "type": "plantuml", "code": "@startuml\nA->B\n@enduml", "height": 300 }
-{ "type": "plantuml", "code": "...", "server": "https://plantuml.example.com" }
-{ "type": "chart",    "kind": "bar",  "title": "...",
-  "labels": ["Jan","Feb"], "series": [{"label":"x","data":[1,2]}], "height": 320 }
-{ "type": "chart",    "config": { /* full Chart.js v4 config */ }, "height": 300 }
-{ "type": "table",    "columns": ["A","B"], "rows": [["x","y"]], "sortable": true }
-// ^ use a `table` block for tabular data — sortable + per-cell comments.
-//   (markdown blocks render GFM pipe tables too, but those are display-only.)
-{ "type": "table",    "rowsFile": "data.csv", "filterable": true, "exportable": true }
-// ^ load rows from a local .csv/.tsv/.json; filterable = live filter box,
-//   exportable = CSV download. (`rly view data.csv` does all of this for you.)
-{ "type": "kpi",      "title": "This quarter", "items": [
-  { "label": "Revenue", "value": "$1.2M", "delta": "12%", "dir": "up" },
-  { "label": "Churn",   "value": "2.1%",  "delta": "0.4pp", "dir": "down", "sub": "lower=better" } ] }
-// ^ big-number metric cards with up/down/flat-tinted deltas — no chart needed.
-{ "type": "typography", "font": "Georgia, serif", "specimens": [
-  { "label": "Display", "size": "40px", "weight": "600", "text": "Ship faster" },
-  { "label": "Body",    "size": "16px", "text": "The quick brown fox…" } ] }
-// ^ type specimens at given size/weight/font — react to type like a palette.
-{ "type": "compare",  "before": "v1.png", "after": "v2.png", "beforeLabel": "Old", "afterLabel": "New" }
-// ^ before/after images with a draggable divider (redesign / before-after fix).
-{ "type": "code",     "lang": "js",  "code": "const x = 1;", "filename": "demo.js" }
-{ "type": "code",     "codeFile": "src/server.js" }   // load text from a local file
-{ "type": "diff",     "lang": "js",  "filename": "src/auth.js", "view": "split",
-  "diff": "@@ -1,3 +1,3 @@\n ctx\n-old line\n+new line\n ctx" }
-// ^ a unified / `git diff` text rendered as a colored, line-numbered comparison
-//   (no git needed — just paste the diff). "view":"split" = side-by-side; the
-//   viewer also has a live Unified⇄Split toggle. "diffFile" loads it from a file.
-{ "type": "git-conflict", "file": "src/app.js" }
-{ "type": "git-conflict", "filename": "app.js", "content": "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> feature\n" }
-// ^ conflict markers rendered as a resolver: choose ours/theirs/both/custom per
-//   hunk. User choices + full resolved content return in result.blockEdits[blockId].
-{ "type": "video",    "src": "https://youtu.be/dQw4w9WgXcQ", "title": "Demo walkthrough" }
-{ "type": "video",    "src": "recordings/demo.mp4", "title": "Local capture", "height": 360 }
-// ^ YouTube/Vimeo URL embeds a player; an http(s) media URL or a local video
-//   file (mp4/webm/ogv/mov/mkv/m4v) plays inline (local files stream, not embedded).
-{ "type": "pdf",      "src": "reports/quote.pdf", "title": "Quote", "height": 900 }
-// ^ local .pdf files and http(s) PDF URLs render inline; local files stream, not embedded.
-{ "type": "html",     "html": "<p>hi</p>",           "height": 360 }
-{ "type": "html",     "htmlFile": "viz.html",         "height": 400 }
-{ "type": "image",    "src": "screenshot.png" }       // local file, URL, or data URI
-{ "type": "image",    "src": "https://…/mock.png", "alt": "Mockup B", "height": 220 }
-// ^ `height` only sets the COMPACT inline preview — every image keeps a full-
-//   screen + zoom (⌘/Ctrl+wheel or −/+, up to 8× native) + drag-to-pan viewer,
-//   so detail is always reachable regardless of height. Local images embed up
-//   to 8 MB; for a huge/high-detail image pass an http(s) URL (streamed, no cap).
-{ "type": "palette",  "palettes": [{ "name":"Brand", "colors":["#3B8EA5","#6DBAD1","#1E6278"], "featured": true }] }
-// ^ color palettes as swatch cards: hover=hex, click=copy. Shorthand {"type":"palette","colors":[…]}; pair with a `color` question.
-```
-
-### View a markdown file quickly
-
-To let the user *read* a `.md` file (README, a plan you wrote, a generated
-report), don't paste it into the terminal — render it:
-
-```sh
-rly view PLAN.md                 # one file → board titled "PLAN.md", "Done" button
-rly view README.md CHANGELOG.md  # several files, each with a filename heading
-rly view docs/spec.md --detach   # detached like ask/show; then `rly wait <id>`
-```
-
-`rly view` is sugar over `rly show` with `markdown` blocks (`mdFile`). The
-built-in renderer is library-free and covers headings, lists, `**/_` emphasis,
-code, quotes, GFM pipe tables, remote/data images, and click-to-open local
-links. To mix a file into a larger board, use a `markdown` block with
-`"mdFile"` alongside questions or other blocks.
-
-### Visual options — show each choice, don't describe it
-
-When the options themselves are visual (design variants, layouts, color
-schemes, chart styles, architecture alternatives, screenshots), put a compact
-block INSIDE each option so the user compares by looking, not by reading and
-guessing:
-
-```jsonc
-{ "id": "layout", "type": "single", "label": "Which landing layout?",
-  "options": [
-    { "value": "hero",  "label": "Hero",  "description": "big banner",
-      "blocks": [{ "type": "image", "src": "hero.png", "height": 180 }] },
-    { "value": "split", "label": "Split", "description": "text + visual",
-      "blocks": [{ "type": "html", "html": "<div style='display:flex'>…</div>", "height": 180 }] }
-  ] }
-```
-
-Any block type works per option. Keep option visuals compact (`height`
-~140–260) — they sit inside the option card. Clicking a visual never toggles
-the option (and stays annotatable); the label row selects. Use per-option
-blocks whenever a question's choices have visual/example context; skip them
-for plainly textual options.
-
-Chart.js, Mermaid, and Graphviz are **vendored and lazy-loaded** — the package
-has no npm runtime dependencies, but these browser assets are bundled for rich
-blocks. PlantUML uses the public plantuml.com server by default;
-pass `"server"` for a self-hosted instance. Legacy `"html"` / `"htmlFile"` /
-`"htmlHeight"` on root or questions are still accepted and normalised automatically.
-
-### Local file links — clickable, open in the default app
-
-Write a local path in any markdown (the `intro` or a `markdown` block) — `~/clip.mp4`,
-`./src/app.ts`, `/abs/report.pdf`, a `file://` URL, or a backtick-wrapped path — and it
-renders as a click-to-open link that opens the file in the user's OS default app
-(editor, video player, viewer …); `[label](~/path)` works too. Only paths you actually
-wrote on the board can be opened (same-origin + allowlist guarded). Surface a real
-clickable path instead of telling the user to paste it into a terminal.
-
-### Connect a question to a visual shown above (reference modal)
-
-When a board has visuals up top and questions below, the user loses the link
-between them. Give any block a stable `"ref"` name, then reference it from a
-markdown link — clicking it opens that visual in a full-screen modal **in place**,
-no scrolling:
-
-```jsonc
-{ "type": "chart", "ref": "velocity", "kind": "line", "labels": [...], "series": [...] }
-// then in the intro, a markdown block, or a question's own markdown block:
-{ "type": "markdown", "md": "Decide from the [📈 Velocity](#ref:velocity) chart above." }
-```
-
-`[label](#ref:name)` opens the block named `name`; `[label](#block:b2)` opens by
-id. Use it so every question that depends on data points right at it.
-
-### Pin comments on a mockup (image coordinates)
-
-Add `"pins": true` to an `image` block: the user clicks any point on the image to
-drop a comment anchored to that exact spot (Figma-style), returned as an
-`{kind:"image-point", x, y}` annotation. Ideal for design/mockup review.
-
-### Comment on an exact image area (local crop)
-
-Every interactive `image` and `compare` block accepts direct primary drag for the
-desired rectangle; **Area** remains as a discoverable one-shot lock. Image pan is
-Space-drag or middle-button drag, and a comparison divider moves only from its
-handle. The provisional zone remains while the user writes, and a saved zone
-exposes a comment icon/count plus add/edit/delete threads; deleting its last
-comment removes the zone. Relay returns an `image-region` target with normalized
-`x`, `y`, `w`, and `h`; browser boards also save the selected pixels beside the
-board and return `target.crop.path`, which the agent should open with its image
-viewer. Comparison targets include `side:"before"|"after"`, and the crop comes
-from that source image rather than the composited slider view.
-
-### Show a git diff in one step — `rly diff`
-
-`rly diff [git args…]` runs `git diff` and opens the result as a diff board —
-sugar for the "show me the diff" flow. Git args/flags pass straight through; a
-multi-file diff renders with a per-file header + a jump bar.
-
-```sh
-rly diff --detach              # working-tree diff
-rly diff --staged --split      # staged changes, side-by-side
-rly diff HEAD~1 HEAD -- src/   # a commit's diff, scoped to a path
-```
-
-`code` blocks also support **line-anchored comments**: hover a line number to
-comment on that exact line (returned as `{kind:"code-line", line}`).
-
-## Annotations
-
-Users can hover chart points, diagram nodes (mermaid + graphviz), table cells,
-any element of a custom-HTML block, or select text in markdown to leave inline
-comments. Custom HTML is hover-commentable automatically — to scope/label what's
-annotatable, mark elements with `data-relay-annotate="Label"` (any signal turns
-the auto-pick off); opt a block out with `data-relay-annotate="off"`. Always
-mention annotation in the board intro.
-
-`result.annotations` is an array of:
-
-```json
-{
-  "id": "a1",
-  "questionId": "q-id or null",
-  "blockId": "b2",
-  "target": { "kind": "chart-element | mermaid-node | graphviz-node | table-cell | text | html-element | image | image-point | image-region | code-line", "..." },
-  "text": "user comment",
-  "author": "user",
-  "createdAt": "ISO",
-  "replies": [{ "author": "agent", "text": "acknowledged", "createdAt": "ISO" }]
-}
-```
-
-Read annotations before generating your next output — a comment on a specific
-data point often carries sharper signal than a checkbox answer.
-
-## Reading the result — four feedback channels
-
-A result is more than `answers`. **Always read all four** — never act on
-`answers` alone; the user's real intent often lives in the others:
-
-| field | what it is |
+| Content | Component |
 |---|---|
-| `answers` | per-question values `{ questionId: value }` (skipped ones absent, listed in `skipped`) |
-| `notes` | **per-question free-text notes** `{ questionId: "text" }` — the note box under a question. **Always present (`{}` when empty)**; iterate it every time. `single` (radio) questions show this box by default, so it's a very common place for the user's reasoning — and easy to miss. |
-| `comment` | one board-level free-text note ("Anything else?") |
-| `annotations` | element-level inline comments (array; see below) |
+| Prose / documents | `markdown` with `md` or `mdFile` |
+| Source / changes | `code` with `codeFile`; `diff` with `diffFile`; `git-conflict` |
+| Data / headline metrics | `table` with `rowsFile`, `chart`, `kpi` |
+| Flows / dependencies / UML | `mermaid`, `graphviz`, `plantuml` |
+| Mockups / before-after | `image`, `compare` |
+| Media / reports | `video`, `pdf` |
+| Design choices | `palette`, `typography` |
+| Custom interactive content | sandboxed `html` |
 
-A `notes[questionId]`, a `comment`, or an `annotation` can qualify or override
-the matching `answers` value (e.g. `answers.approach = "a"` but
-`notes.approach = "actually B"` → the user means B). Reconcile them before
-generating output. The same channels appear under `draft` on timeout/cancel.
+| Answer shape | Question type |
+|---|---|
+| One / several choices | `single`, `multi` |
+| Binary / rating / color | `yesno`, `scale`, `color` |
+| Free text | `text`, `textarea` |
+| Priorities / budget / sign-off | `rank`, `allocate`, `checklist` |
 
-**Don't let your shell truncate the result.** A board with several annotations
-prints a large JSON blob, and most agent shell tools cap stdout — so you silently
-get only the first few annotations and miss the rest. Two rules:
+Any block can have `"ref":"source"`; `[View source](#ref:source)` opens its viewer
+from another part of the board. `mermaid` with `editable:true` returns user edits
+in `blockEdits`. For image feedback, primary drag selects a region/crop;
+Space-drag or middle-drag pans. A compare divider moves only by its handle.
+`pins:true` adds image point comments.
 
-- **Never pipe `rly wait`/`rly result` through `head`/`tail`/`sed`** (or any
-  output cap). That's exactly how annotations get dropped.
-- The full result is **always written to a file**, surfaced as the FIRST field
-  of the output: `"resultFile": "~/.relay/boards/<id>.result.json"`. If the
-  output looks cut off (or to be safe on any board with annotations), **read
-  that file with your file tool** instead of trusting stdout — it's the complete,
-  untruncated payload.
+## File references that open in a modal
 
-### Reply to annotations (agent → user conversation)
+In the intro or a markdown block, use `[label](/absolute/path/file.js:98)`.
+Absolute paths are most reliable across authoring directories. `./`, `../`,
+`~/`, `file://` URLs, bare paths, and backtick paths are also recognized. Encode
+spaces in file URLs, for example `[report](file:///tmp/My%20Report.md)`.
 
-```sh
-# 1. Read result from a previous board
-rly result <id>   # or rly wait <id>
+- `:line`, `:line:column`, and `#Lstart-Lend` select source lines. Columns are
+  accepted; highlighting is by line.
+- UTF-8 source/config/log files have numbered, highlighted source previews.
+  Markdown renders as a document; CSV/TSV as a table; HTML as a sandboxed static
+  page. These views also offer a Source button.
+- Images, PDF, and browser-compatible audio/video render within the modal.
+  Playback depends on the browser’s codec support.
+- Text previews are limited to 1 MiB and 20,000 lines. Missing files show an
+  error; binary/oversized files and directories offer **Open in app**.
+- Only local paths explicitly referenced by the board are accessible. Links
+  discovered inside a preview do not grant access to more files. References
+  read the current disk content; use content blocks for a captured snapshot or
+  for annotations. Preview modals do not collect annotations.
+- Owner and collaborator browser sessions can preview/open local references.
+  Read-only and reviewer shares cannot; embed needed content as blocks for them.
 
-# 2. Build replies file
-# replies.json: [{"annotationId":"a1","text":"Good catch — fixed."}]
+After a CLI upgrade, running boards retain their previous server/UI snapshot.
+For a board that needs the new viewer, preserve its saved input and reconnect
+that same board with the updated CLI; do not replace it with a new board ID.
 
-# 3. Reopen as a conversation
-rly reopen <id> --replies replies.json
-```
+## Wait and read feedback
 
-Unknown annotation IDs cause an error listing valid IDs (exit 4).
-
-## Recipes
-
-**Plan approval** — board-level `markdown` block rendering the plan, one `yesno`
-"Approve this plan?", one `multi` "Which parts should change?" (`"note": true`),
-one `textarea` for concerns.
-
-**Requirements gathering** — one board with: `single` for the core approach
-(options with `description`s + `"other": true`), `multi` for scope, `scale` for
-urgency, `textarea` for constraints.
-
-**A/B design review** — `single` question where EACH option carries its own
-`html`/`image` block rendering that variant (see Visual options above); `scale`
-for confidence; `textarea` for what's missing from both.
-
-**Show a git diff / code changes** — when the user says "show me the diff" /
-"show me git diff" / "review these changes": capture `git diff` (or `git diff
-<ref>`, `git show <sha>`) and present it in a `diff` block — set `"view":
-"split"` for side-by-side — instead of dumping it in the terminal. Pair it with
-a `yesno` "Apply these changes?" and a `textarea` for feedback; users can select
-diff text to comment on a specific line. For a brand-new file prefer a `code` block; for a
-recorded walkthrough of the change add a `video` block.
-
-**Metrics review** — board-level `chart` block (bar or line) showing the key
-numbers, followed by a `table` block for the raw data; at least one question
-asking what to act on. In the intro, tell the user they can click chart points
-and table cells to comment on specific values.
-
-## Diagram co-editing (user edits your diagram)
-
-Add "editable": true to a mermaid block: the user gets an Edit button with
-live-preview source editing. Their version comes back as
-result.blockEdits["<blockId>"] - diff it against your original to see what
-they changed. Recipe: propose an architecture as an editable mermaid block +
-one yesno "Does this match your mental model?" + a textarea for notes.
-
-## Reuse & management
-
-`rly history` (saved boards) · `rly spec <id>` (print spec to modify) ·
-`rly reuse <id>` (re-run blank) · `rly reopen <id>` (re-open with saved
-answers prefilled) · `rly reopen <id> --replies file.json` (add agent replies) ·
-`rly rescue <id>` (re-serve a dropped board on its ORIGINAL port) ·
-`rly list` / `rly open` / `rly stop <id>` · `rly rm <id>`.
-Multiple boards can run concurrently. Detached boards keep serving past timeout;
-use `rly stop` when you actually want to close one.
-
-### Continue a board — reconnect, NEVER recreate it
-
-When the user refers to a board that already exists — a URL/port ("the board on
-`127.0.0.1:59926`"), "the board from yesterday", "reopen it", "it disconnected"
-— do **NOT** run `rly ask`/`rly show`. A fresh board lands on a **new port**,
-**strands the user's open tab** on the dead one, and **loses their comments**.
-Find the real board and reconnect it:
-
-1. **Identify it** — `rly list` (running) and `rly history` (saved) print each
-   board's id, title, and url/port. Match by what the user said (port, title).
-2. **Tab still open but "connection lost"** (server died / machine slept) →
-   `rly rescue <id>`. Re-serves on the SAME port so that tab reconnects on its
-   own and re-flushes any comments it buffered — no new tab, no lost input.
-3. **Want a fresh tab** with prior answers prefilled → `rly reopen <id>` (also
-   reuses the board's last port, so an old tab still reconnects).
-4. `rly reuse <id>` is the ONLY "make a new board from this one" path — use it
-   solely for a deliberately blank re-run, never to "continue" or "reconnect".
-
-Rule of thumb: **an existing board is reconnected (`rescue`/`reopen`), never
-re-asked.** Only call `rly ask`/`rly show` for a genuinely new question.
-
-### Live mutation — `rly update`
-
-Push a new spec to a running board. The page reloads and prefills answers from the
-autosaved draft — answers survive, the user sees a toast "Board updated by the agent".
+For a response-bearing browser board, retain the returned board ID and keep a
+foreground waiter running in Codex:
 
 ```sh
-rly update <boardId> --file new-spec.json        # replace spec
-rly update <boardId> --title T --intro I         # patch fields
-rly update <boardId> -q "!Priority::single::p0,p1"  # append question
+rly ask --file spec.json --detach
+rly wait <boardId> --timeout 1800 --while-active --idle-grace 300
 ```
 
-Batch your changes into one call — the page reloads for the user on each update.
+Keep the process/session handle if the shell tool yields. Resume that process
+until it exits; use the host’s background-completion mechanism only when it is
+available. If the wait times out, run `rly result <boardId>` before deciding
+whether another wait is needed. A timeout is not an answer. Detached boards
+remain available on the same port until submitted or explicitly stopped.
+`--timeout 0` disables the Relay deadline; the default is one day.
+
+Read **answers, notes, comment, annotations, and blockEdits** together. Notes and
+annotations can qualify a selected answer. On timeout/cancel, these may be under
+`draft`; treat them as unfinished feedback. Reviewer submissions are side
+reviews and never finalize the owner’s board.
+
+For large results, use the returned `resultFile` to read the complete JSON.
+Avoid truncating stdout with `head`/`tail`; inspect every feedback channel before
+acting. To reply to annotations, write
+`[{"annotationId":"a1","text":"Updated the example."}]` to a file and run
+`rly reopen <id> --replies replies.json`.
+
+## Details on demand
+
+- `rly agent`: full guide, HTML/diagram editing, sharing roles, annotations,
+  result shapes, and lifecycle recipes.
+- `rly schema`: authoritative board fields; `rly <command> --help` for CLI flags.
+- `examples/`: ready-to-adapt board specs for visual options, diagrams, and color.
+- `rly share <id> --role review|collab|read`: activate sharing only when requested;
+  `--revoke` disables the selected role. Keep share tokens out of reports/logs.
+- `rly upgrade --force`: update CLI/skill while running boards keep their snapshot.

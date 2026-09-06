@@ -120,6 +120,16 @@ npm test     # smoke tests with no external services (spawns real servers, fake-
   zones carry a comment icon plus count, reopen for add/edit/delete, and disappear
   automatically when their final comment is removed.
 
+### 0.17.0 — file reference previews
+
+- Local source references now resolve `:line[:column]` and `#Lstart-Lend` and
+  open in a keyboard-accessible modal at the cited lines.
+- Preview Markdown, source/config/logs, CSV/TSV, static sandboxed HTML, images,
+  PDFs, and browser-compatible audio/video. Text is bounded to 1 MiB/20,000
+  lines; unsupported files retain an explicit **Open in app** fallback.
+- Shorter agent skill and installed instructions, with clear display-only,
+  feedback, file-preview, and existing-board workflows.
+
 ### 0.16.0 — native viewer chrome, area comments, and durable agent waits
 
 - Viewer toolbars now use browser-native sticky positioning instead of a

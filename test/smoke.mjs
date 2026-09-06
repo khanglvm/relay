@@ -1033,11 +1033,27 @@ console.log('23. file-link open endpoint');
 {
   const realFile = path.join(HOME, 'open-me.txt');
   fs.writeFileSync(realFile, 'hello');
+  const sourceFile = path.join(HOME, 'source.js');
+  fs.writeFileSync(sourceFile, 'const first = 1;\nconst second = 2;\n');
+  const previewFiles = {
+    'preview.md': '# Preview\n\nReadable **markdown**.',
+    'preview.html': '<h1>HTML preview</h1><script>window.previewScriptRan=true</script>',
+    'preview.csv': 'name,value\n"hello, world",2\n',
+    'preview.json': '{"enabled":true}',
+    'empty.txt': '',
+    'binary.bin': Buffer.from([0, 1, 2, 255]),
+    'large.txt': 'x'.repeat(1024 * 1024 + 1),
+    'preview.svg': '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"/>',
+    'preview.pdf': '%PDF-1.4\npreview',
+    'preview.mp4': Buffer.from([0, 0, 0, 24, 102, 116, 121, 112]),
+    'preview.mp3': Buffer.from('ID3'),
+  };
+  for (const [name, content] of Object.entries(previewFiles)) fs.writeFileSync(path.join(HOME, name), content);
   const missingFile = path.join(HOME, 'gone.txt'); // referenced but does NOT exist
   const OPEN_SPEC = {
     title: 'Open board',
     // both paths are referenced in markdown → both are allowlisted
-    intro: `See [the file](${realFile}) and \`${missingFile}\`.`,
+    intro: `See [the file](${realFile}) and \`${missingFile}\`. [source](${sourceFile}:2:4) [directory](${HOME}) ` + Object.keys(previewFiles).map((name) => `[${name}](${path.join(HOME, name)})`).join(' '),
     blocks: [{ type: 'markdown', md: `Open ${realFile}` }],
     questions: [{ id: 'ok', type: 'yesno', label: 'OK?' }],
   };
@@ -1077,6 +1093,42 @@ console.log('23. file-link open endpoint');
   }
   ok(log.includes(realFile), 'the OS opener was invoked with the resolved file path');
 
+  const preview = async (file) => {
+    const res = await post(url, '/api/file-preview', { path: file });
+    return { status: res.status, body: await res.json() };
+  };
+  const source = await preview(sourceFile + ':2:4');
+  ok(source.status === 200 && source.body.kind === 'code' && source.body.line === 2 && source.body.text.includes('const second'), 'source citation previews the real file and selected line');
+  const hashSource = await preview(sourceFile + '#L1-L2');
+  ok(hashSource.body.line === 1 && hashSource.body.endLine === 2, 'hash citations preserve highlighted line ranges');
+  ok((await preview('/etc/hostname')).status === 403, 'preview rejects unreferenced files');
+  ok((await preview(sourceFile + '/../unreferenced')).status === 403, 'preview rejects path traversal');
+  ok((await preview(missingFile)).status === 404, 'preview reports missing references');
+  ok((await preview('')).status === 400, 'preview requires a path');
+  const foreignPreview = await fetch(new URL('/api/file-preview', url), {
+    method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example.com' }, body: JSON.stringify({ path: sourceFile }),
+  });
+  ok(foreignPreview.status === 403, 'preview rejects foreign origins');
+  const expectedKinds = { 'preview.md': 'markdown', 'preview.html': 'html', 'preview.csv': 'table', 'preview.json': 'code', 'empty.txt': 'code', 'binary.bin': 'unsupported', 'large.txt': 'unsupported', 'preview.svg': 'image', 'preview.pdf': 'pdf', 'preview.mp4': 'video', 'preview.mp3': 'audio' };
+  for (const [name, kind] of Object.entries(expectedKinds)) {
+    const result = await preview(path.join(HOME, name));
+    ok(result.status === 200 && result.body.kind === kind, `${name} has a bounded ${kind} preview`);
+    if (kind === 'table') ok(result.body.block.rows[0].name === 'hello, world', 'CSV preview preserves quoted delimiters');
+  }
+  ok((await preview(HOME)).body.kind === 'unsupported', 'directory preview offers a fallback without reading entries');
+  const mediaUrl = new URL('/api/file-content', url);
+  mediaUrl.searchParams.set('path', path.join(HOME, 'preview.pdf'));
+  const media = await fetch(mediaUrl, { headers: { range: 'bytes=0-3' } });
+  ok(media.status === 206 && await media.text() === '%PDF', 'media preview preserves binary range streaming');
+  ok(media.headers.get('content-security-policy').includes('sandbox') && media.headers.get('x-content-type-options') === 'nosniff', 'streamed previews restrict active content');
+  ok((await fetch(mediaUrl, { headers: { origin: 'https://evil.example.com' } })).status === 403, 'media stream rejects foreign origins');
+  mediaUrl.searchParams.set('path', '/etc/hostname');
+  ok((await fetch(mediaUrl)).status === 403, 'media stream rejects unreferenced files');
+  mediaUrl.searchParams.set('path', sourceFile);
+  ok((await fetch(mediaUrl)).status === 415, 'text source cannot be loaded as active streamed content');
+  const citedOpen = await post(url, '/api/open', { path: sourceFile + ':2' });
+  ok(citedOpen.status === 200 && (await citedOpen.json()).path === sourceFile, 'Open in app strips source line suffixes too');
+
   await post(url, '/api/submit', { answers: { ok: 'yes' } });
   await exited;
 }
@@ -1087,6 +1139,7 @@ console.log('23b. share activation permissions');
   const shareSpec = path.join(HOME, 'share-permissions.json');
   fs.writeFileSync(shareSpec, JSON.stringify({
     title: 'Share permissions',
+    intro: `[shared file](${path.join(HOME, 'open-me.txt')}) [shared image](${path.join(HOME, 'preview.svg')})`,
     blocks: [{ type: 'html', html: '<button id="shared-html-control">Shared HTML</button>' }],
     questions: [{ id: 'q1', type: 'yesno', label: 'Ship?' }],
   }));
@@ -1183,6 +1236,11 @@ console.log('23b. share activation permissions');
   const readSubmit = await requestViaHost(url, '/api/submit', { method: 'POST', token: readToken, body: { answers: { q1: 'yes' } } });
   const readOpen = await requestViaHost(url, '/api/open', { method: 'POST', token: readToken, body: { path: '/tmp/nope' }, origin: `http://${TEST_SHARE_HOST}:${new URL(url).port}` });
   ok(readDraft.status === 403 && readSubmit.status === 403 && readOpen.status === 403, 'read-only share cannot autosave, submit, or open local files');
+  for (const token of [readToken, reviewToken, 'invalid']) {
+    const deniedPreview = await requestViaHost(url, '/api/file-preview', { method: 'POST', token, body: { path: path.join(HOME, 'open-me.txt') } });
+    const deniedStream = await requestViaHost(url, '/api/file-content?path=' + encodeURIComponent(path.join(HOME, 'preview.svg')), { token });
+    ok(deniedPreview.status === 403 && deniedStream.status === 403, 'read/review/inactive sessions cannot preview or stream local references');
+  }
 
   const revokedReview = await run(['share', id, '--role', 'review', '--revoke']);
   ok(revokedReview.code === 0 && JSON.parse(revokedReview.stdout).status === 'revoked', 'agent can revoke a reviewer share link');
@@ -1195,6 +1253,10 @@ console.log('23b. share activation permissions');
   const collabToken = collabUrl.searchParams.get('token');
   const collabPage = await requestViaHost(url, collabUrl.pathname + collabUrl.search, { token: collabToken });
   ok(collabPage.status === 200 && collabPage.body.includes('"role":"collab"') && collabPage.body.includes('"canSubmit":true') && collabPage.body.includes('"canFinalize":true'), 'collaborator link retains owner-authorized final submit permission');
+  const collabPreview = await requestViaHost(url, '/api/file-preview', { method: 'POST', token: collabToken, body: { path: path.join(HOME, 'open-me.txt') } });
+  ok(collabPreview.status === 200 && collabPreview.json.text === 'hello', 'authorized collaborators can preview referenced files');
+  const collabStream = await requestViaHost(url, '/api/file-content?path=' + encodeURIComponent(path.join(HOME, 'preview.svg')) + '&token=' + encodeURIComponent(collabToken));
+  ok(collabStream.status === 200 && collabStream.body.includes('<svg'), 'collaborator media previews authenticate with a query token');
 
   await post(url, '/api/submit', { answers: { q1: 'no' }, comment: 'owner final' });
   const done = await exited;

@@ -1066,72 +1066,26 @@ function stampSkillVersion() {
 // AGENTS.md, …). A skill is only a tier-1 hint that agents can ignore; these
 // rules, appended to the instructions the agent always reads, enforce usage.
 // Printed to stdout so `rly skill rules >> CLAUDE.md` is the whole install.
-const SKILL_RULES = `## relay — show it in the browser, don't dump it in the terminal
+const SKILL_RULES = `## relay — visual boards and structured feedback
 
-**Why:** your output surface — a terminal, an IDE side-panel (VS Code, JetBrains,
-Cursor), a plain-text chat — can't actually render a markdown file, an image, a
-chart, a table, a diagram, or a diff. It shows them as walls of monospace text, or
-not at all (a terminal can't display a PNG). relay opens a real browser board that
-renders them properly AND reads the user's reply back as JSON. **Rule of thumb: if
-what you're about to output would look better than monospace text — or is a file
-the user should view — put it in relay instead of printing it.**
-
-- **Markdown file / doc / README / plan / report** → \`rly view file.md\` (renders it
-  in the browser, no library; \`.csv\`/\`.json\` → a sortable table; \`.pdf\` → an
-  inline PDF viewer). Never \`cat\` a doc into the terminal for the user to read.
-- **Image / screenshot / mockup / diagram / chart / table** → a relay board with an
-  \`image\` block (or \`mermaid\`/\`graphviz\`/\`chart\`/\`table\`/\`kpi\`/\`compare\`). The
-  terminal can't show pixels; relay can — with click-to-zoom and comment-in-place.
-- **The user's decisions, feedback, requirements, or approval** (anything beyond one
-  trivial yes/no) → a relay board, NOT plain terminal text and NOT the native
-  \`AskUserQuestion\` / ask-user tool. Build a spec and run
-  \`rly ask --file spec.json --detach\`, then \`rly wait <boardId>\`. **Holds in plan
-  mode too**; reserve \`ExitPlanMode\` for the final plan-approval gate only.
-- **Codex-specific browser-board pattern:** Codex does not have a normal,
-  user-facing "wake this agent turn from a browser submit" command. In Codex,
-  keep the waiter in the foreground until the user submits:
-  \`rly ask --file spec.json --detach\` then
-  \`rly wait <boardId> --timeout 86400 --while-active --idle-grace 3600\`.
-  If wait exits with \`wait-timeout\`, immediately run \`rly result <boardId>\`;
-  if it is still open and the user may continue, run \`rly wait\` again. Do not
-  use \`--on-result\` as the primary Codex return path; normal Codex CLI sessions
-  do not expose a portable inbound API that wakes the current agent turn.
-  Detached boards are durable: a board timeout hands the agent a \`timeout\`
-  result but keeps the same URL/port serving until Submit or \`rly stop\`. Do
-  not create a new board just because a wait timed out.
-- **No response needed** → \`rly show --file spec.json --display-only\`. It
-  returns immediately and shows no note, comments, or Submit/Acknowledge action.
-  In MCP App mode, \`relay_show\` is display-only by default; \`relay_ask\` is the
-  response-bearing tool.
-- **A plan, structure, architecture, data, or prototype** → a relay board with
-  diagram/chart/table/code/image/html blocks — never ASCII diagrams or walls of prose.
-- **"Show me the diff / git diff / these changes"** → \`rly diff\` (runs git diff →
-  a diff board), or render diff text in a \`diff\` block — never paste a raw diff.
-- **Git pick/cherry-pick/conflict decisions** → \`rly git pick\`, \`rly git cherry-pick\`,
-  or \`rly git conflict [files]\`. Conflict boards can also be authored with a
-  \`git-conflict\` block from inline \`content\` or a local \`file\`/\`path\`; user
-  hunk choices come back in \`result.blockEdits[blockId]\` with resolved content.
-- Point the user at a file with a clickable local path in a markdown block; embed a
-  screen recording with a \`video\` block; when answer choices are visual, give each
-  option its own visual (\`options[].blocks\`) so the user picks by looking.
-- Same-Wi-Fi sharing is locked by default. When the user wants another device to
-  review or co-fill a running board, manage explicit links with \`rly share <id>\`:
-  \`--role review\` creates an answer/comment link whose submissions are reference-only
-  side reviews (\`rly result\` exposes them but they never complete \`rly wait\`),
-  \`--role collab\` creates an owner-authorized edit/comment/final-submit link,
-  \`--role read\` creates a view-only link, and \`--revoke\` disables active links. Active
-  share links are durable across same-port \`rly reopen\`/\`rly rescue\` until
-  revoked.
-- **There's a purpose-built component for most content — use the MOST SPECIFIC one,
-  never plain prose when a block fits.** Blocks: \`table\` (sortable/filterable/CSV,
-  load from .csv/.json), \`chart\`, \`kpi\` (stat cards), \`mermaid\`/\`graphviz\`/\`plantuml\`,
-  \`code\`, \`diff\`, \`git-conflict\`, \`image\` (drag for crop comments; Space-drag/middle-button to pan; +\`pins\` for points), \`compare\` (before/after with side-aware area crops; divider-handle drag), \`video\`, \`pdf\`, \`palette\`,
-  \`typography\`, \`html\`. Question types: \`single\`/\`multi\`/\`yesno\`/\`scale\`/\`color\`/
-  \`text\`/\`textarea\` plus \`rank\` (prioritize), \`allocate\` (split a budget), \`checklist\`
-  (per-item sign-off). For a business user, reach for \`kpi\`+\`chart\`+\`table\` and
-  \`rank\`/\`allocate\`/\`checklist\`; full menu + fields: \`rly agent\` and \`rly schema\`.
-- Read the result JSON from stdout; treat \`comment\` and \`annotations\` as
-  first-class feedback. Full guide: \`rly agent\`.`;
+- Use Relay for files, visuals, plans, diffs, and multiple related questions.
+  Keep brief answers and progress updates in chat; follow existing user authorization.
+- Show without feedback: \`rly show --file spec.json --display-only\` (no waiter).
+  Collect input: \`rly ask --file spec.json --detach\`, then keep
+  \`rly wait <boardId> --timeout 1800 --while-active --idle-grace 300\` in the
+  foreground. If it times out, read \`rly result <boardId>\` before continuing.
+- Use the most specific block: table/chart/kpi for data, image/compare for visuals,
+  code/diff for source, mermaid for flows, markdown for prose, html for custom UI.
+  \`rly view\`, \`rly diff\`, and \`rly git\` are shortcuts; visual options use \`options[].blocks\`.
+- Browser file links such as \`[source](/absolute/app.js:98)\` open supported files
+  in a modal and highlight source lines. Unsupported files offer Open in app.
+  For inline MCP or shared reviewers, embed file content as blocks instead.
+- Reconnect existing boards by ID with \`rly rescue\` / \`rly reopen\`; update
+  content with \`rly update\`. Preserve the original port and saved input.
+- Read answers, notes, comment, annotations, and blockEdits together. Use the
+  returned resultFile when stdout is truncated; a timeout is not an answer.
+- Full skill: \`rly skill path\`; fields: \`rly schema\`; advanced recipes and
+  sharing permissions: \`rly agent\`. Load details only when needed.`;
 
 function cmdSkill(rest) {
   const sub = rest[0];

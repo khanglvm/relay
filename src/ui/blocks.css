@@ -4,6 +4,54 @@
 .blk { margin: 14px 0 0; }
 .blk:first-child { margin-top: 0; }
 
+/* File previews keep the board's scroll position and use native modal focus. */
+.rly-file-dialog {
+  width: min(1180px, calc(100vw - 32px));
+  height: min(900px, calc(100dvh - 32px));
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg);
+  color: var(--fg);
+  overflow: hidden;
+}
+.rly-file-dialog[open] { display: flex; flex-direction: column; }
+.rly-file-dialog::backdrop { background: rgb(0 0 0 / 55%); }
+.rly-file-header { display: flex; align-items: center; gap: 16px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.rly-file-heading { flex: 1; min-width: 0; }
+.rly-file-heading h2 { margin: 0 0 5px; font: 600 1rem var(--sans); overflow-wrap: anywhere; }
+.rly-file-location { font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; }
+.rly-file-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.rly-file-actions .btn {
+  white-space: nowrap; padding: 8px 12px; min-height: 36px;
+  font: 500 0.85rem var(--sans); color: var(--fg);
+  background: var(--bg-sunken); border: 1px solid var(--border); border-radius: 7px; cursor: pointer;
+}
+.rly-file-actions .btn:hover { background: var(--accent-soft); border-color: var(--accent); }
+.rly-file-actions .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rly-file-actions .btn:disabled { opacity: 0.5; cursor: default; }
+.rly-file-body { flex: 1; min-height: 0; overflow: auto; padding: 20px; }
+.rly-file-body > .blk-markdown { max-width: 75ch; margin: 0 auto; }
+.rly-file-body .blk-tools { display: none; }
+.rly-file-source { font: 0.85rem/1.6 var(--mono, monospace); width: max-content; min-width: 100%; }
+.rly-file-line { display: flex; white-space: pre; min-height: 1.6em; }
+.rly-file-line-number { flex: 0 0 5ch; padding-right: 2ch; text-align: right; color: var(--muted); user-select: none; }
+.rly-file-line.is-target { background: var(--accent-soft, var(--bg-sunken)); outline: 1px solid var(--accent); outline-offset: -1px; }
+.rly-file-media { display: block; max-width: 100%; margin: 0 auto; }
+.rly-file-image { object-fit: contain; max-height: 100%; }
+.rly-file-frame, .rly-file-pdf { width: 100%; height: 100%; min-height: 300px; border: 0; background: white; }
+.rly-file-video { max-height: 100%; }
+.rly-file-audio { width: min(100%, 600px); }
+@media (max-width: 600px) {
+  .rly-file-dialog { width: calc(100vw - 12px); height: calc(100dvh - 12px); border-radius: 10px; }
+  .rly-file-header { padding: 12px; flex-wrap: wrap; gap: 12px; }
+  .rly-file-heading { flex-basis: 100%; }
+  .rly-file-body { padding: 12px; }
+  .rly-file-actions .btn { min-height: 44px; }
+}
+
 /* ---------- shared error card ---------- */
 .blk-error {
   color: var(--muted);
@@ -140,15 +188,19 @@
 }
 /* subtle tinter colors via theme vars only */
 .blk-pre .tok-kw,
+.rly-file-source .tok-kw,
 .blk-difftable .tok-kw,
 .blk-markdown .md .tok-kw { color: var(--accent); }
 .blk-pre .tok-str,
+.rly-file-source .tok-str,
 .blk-difftable .tok-str,
 .blk-markdown .md .tok-str { color: var(--ok); }
 .blk-pre .tok-com,
+.rly-file-source .tok-com,
 .blk-difftable .tok-com,
 .blk-markdown .md .tok-com { color: var(--muted); font-style: italic; }
 .blk-pre .tok-num,
+.rly-file-source .tok-num,
 .blk-difftable .tok-num,
 .blk-markdown .md .tok-num { color: var(--fg-2); }
 

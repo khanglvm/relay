@@ -17,6 +17,7 @@ import {
 } from './store.js';
 import { openUrl } from './open.js';
 import { assertSpecReady } from './spec.js';
+import { splitFileReference, filePreview, mediaType } from './file-preview.js';
 
 const UI_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'ui');
 const PKG_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -492,7 +493,7 @@ function looksLikeLocalPath(s) {
 // Expands ~ / file:// and resolves a (possibly relative) path to an absolute,
 // normalized one against the board's authoring cwd. null on a malformed URL.
 function resolveLocalPath(raw, baseCwd) {
-  let p = String(raw || '').trim();
+  let p = splitFileReference(raw).path;
   if (!p) return null;
   if (/^file:\/\//i.test(p)) {
     try {
@@ -547,6 +548,7 @@ function buildOpenAllowlist(spec, baseCwd) {
 // Same-origin fetches send no Origin or our own; a foreign Origin is a
 // cross-site POST and must not be allowed to open a local file.
 function sameOrigin(req, port, extraHosts = []) {
+  if (req.headers['sec-fetch-site'] === 'cross-site') return false;
   const origin = req.headers.origin;
   if (!origin) return true;
   try {
@@ -1070,13 +1072,14 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
           savePref({ fontScale: body.fontScale });
         }
         sendJson(res, 200, { ok: true });
-      } else if (req.method === 'POST' && pathname === '/api/open') {
-        // Open a board-referenced local file in the OS default app. Guarded by
-        // a same-origin check + an allowlist of paths the board actually links.
+      } else if ((req.method === 'POST' && ['/api/open', '/api/file-preview'].includes(pathname)) ||
+                 (['GET', 'HEAD'].includes(req.method) && pathname === '/api/file-content')) {
+        // Preview, stream, or open only a board-referenced local file. All three
+        // paths share the same origin, role, and reference allowlist checks.
         if (!sameOrigin(req, actualPort, [advertisedHost])) return sendJson(res, 403, { error: 'cross-origin requests cannot open files' });
         const access = accessFor(req, reqUrl);
         if (access.role !== 'owner' && access.role !== 'collab') return sendJson(res, 403, { error: 'this share cannot open local files' });
-        const body = JSON.parse((await readBody(req)) || '{}');
+        const body = req.method === 'POST' ? JSON.parse((await readBody(req)) || '{}') : { path: reqUrl.searchParams.get('path') };
         const raw = typeof body.path === 'string' ? body.path : '';
         if (!raw.trim()) return sendJson(res, 400, { error: 'missing "path"' });
         const baseCwd = record.cwd || process.cwd();
@@ -1092,6 +1095,16 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
           stat = null;
         }
         if (!stat) return sendJson(res, 404, { error: 'file not found', path: target });
+        if (pathname === '/api/file-preview') {
+          return sendJson(res, 200, { ok: true, ...filePreview(target, stat, splitFileReference(raw)) });
+        }
+        if (pathname === '/api/file-content') {
+          const media = mediaType(target);
+          if (!stat.isFile() || !media) return sendJson(res, 415, { error: 'this file type cannot be streamed' });
+          res.setHeader('X-Content-Type-Options', 'nosniff');
+          res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'");
+          return streamFile(req, res, target, media[1]);
+        }
         if (!openUrl(target)) return sendJson(res, 500, { error: 'could not open the file' });
         sendJson(res, 200, { ok: true, path: target, name: path.basename(target) });
       } else if (req.method === 'POST' && pathname === '/api/draft') {
