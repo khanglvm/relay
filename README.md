@@ -1,12 +1,13 @@
 # Relay
 
-Relay gives your AI coding agent a browser board for showing work and asking
-for feedback. Review a design, compare a diff, or answer several questions in
-one place. Click an element to comment, then submit; the agent receives your
-answers as JSON and continues working.
+Relay gives your AI coding agent a board for showing work and asking for
+feedback. Review a design, compare a diff, or answer several questions in one
+place, in your browser or inside a chat app that supports MCP Apps.
 
-It works with agents such as Claude Code and Codex. Boards can also appear
-inside chat apps that support MCP Apps.
+Feedback stays attached to the thing you mean: a chart point, a line of text,
+or a marked area of an image. When you submit, the agent gets your choices
+and comments as structured JSON, including the target of each comment.
+It works with agents such as Claude Code and Codex.
 
 ![An agent opens a Relay board, the user reviews and submits, and the agent continues](https://raw.githubusercontent.com/khanglvm/relay/main/docs/assets/demo.gif)
 
