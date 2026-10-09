@@ -846,18 +846,23 @@ body.blk-space-pan .blk-has-regions.blk-pannable * { cursor: grab !important; }
   background: var(--accent); border-color: var(--accent); color: var(--accent-fg);
 }
 .blk-tools .tool-comment.has-comment:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--accent-fg); }
-.blk-tools .tool-region {
+.blk-tools .tool-region,
+.blk-tools .tool-hover-comments {
   display: inline-flex; align-items: center; gap: 5px;
 }
-.blk-tools .tool-region svg { display: block; }
-.blk-tools .tool-region.is-active {
+.blk-tools .tool-region svg,
+.blk-tools .tool-hover-comments svg { display: block; }
+.blk-tools .tool-region.is-active,
+.blk-tools .tool-hover-comments.is-active {
   background: var(--accent); border-color: var(--accent); color: var(--accent-fg);
 }
-.blk-tools .tool-region.is-active:hover {
+.blk-tools .tool-region.is-active:hover,
+.blk-tools .tool-hover-comments.is-active:hover {
   background: var(--accent-hover); border-color: var(--accent-hover); color: var(--accent-fg);
 }
 @media (max-width: 520px) {
-  .blk-tools .tool-region-label { display: none; }
+  .blk-tools .tool-region-label,
+  .blk-tools .tool-hover-label { display: none; }
 }
 
 /* code blocks reuse the viewer toolbar (comment + full-screen); the pre keeps

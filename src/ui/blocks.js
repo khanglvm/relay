@@ -2483,6 +2483,9 @@
     '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
     '<rect x="3" y="4" width="14" height="12" rx="2" stroke-dasharray="3 2"/>' +
     '<path d="M14 14.5h6.5v4H18l-2.5 2v-2H14z" fill="currentColor" stroke="none"/></svg>';
+  const ICON_EYE =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
 
   function exitFull() {
     if (!fullOpen) return;
@@ -2784,6 +2787,30 @@
       }
     }
 
+    if (opts && opts.comment && opts.hoverComments) {
+      const hoverCtl = opts.hoverComments;
+      const hoverBtn = el('button', {
+        class: 'tool-hover-comments',
+        type: 'button',
+        'aria-label': 'Show element comment overlays',
+      });
+      hoverBtn.innerHTML = ICON_EYE;
+      hoverBtn.append(el('span', { class: 'tool-hover-label' }, 'Hover comments'));
+      const syncHoverMode = () => {
+        const enabled = hoverCtl.isEnabled();
+        hoverBtn.classList.toggle('is-active', enabled);
+        hoverBtn.setAttribute('aria-pressed', String(enabled));
+        hoverBtn.title = enabled ? 'Hide element comment overlays' : 'Show element comment overlays';
+      };
+      hoverBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        hoverCtl.setEnabled(!hoverCtl.isEnabled());
+        syncHoverMode();
+      });
+      syncHoverMode();
+      tools.append(hoverBtn);
+    }
+
     if (opts && opts.region) {
       const regionCtl = opts.region;
       const regionLabel = el('span', { class: 'tool-region-label' }, 'Area');
@@ -2894,19 +2921,47 @@
   }
 
   // ---------- html (sandboxed iframe) ----------
+  function syncHtmlHoverComments(frame) {
+    try {
+      frame.contentWindow.postMessage({ relay: 'annotate-hover', enabled: frame.dataset.relayHoverComments !== 'off' }, '*');
+    } catch (_) {}
+  }
+
+  // The kit can load after the iframe's load event; its ready message also
+  // restores the current toggle when the embedded page reloads.
+  window.addEventListener('message', (e) => {
+    if (!e.data || e.data.relay !== 'annotate-ready') return;
+    for (const frame of document.querySelectorAll('iframe.viz[data-relay-hover-comments]')) {
+      if (frame.contentWindow === e.source) { syncHtmlHoverComments(frame); break; }
+    }
+  });
+
   function renderHtml(block, ctx, blockId) {
     const height = clampHeight(block.height, 360);
     const iframe = el('iframe', {
       class: 'viz',
       'data-block-id': blockId,
       'data-question-id': ctx.questionId || '',
+      'data-relay-hover-comments': 'on',
       src: ctx.htmlSrc(blockId),
       height: String(height),
       sandbox: 'allow-scripts allow-forms allow-popups allow-modals',
       loading: 'lazy',
     });
+    iframe.addEventListener('load', () => syncHtmlHoverComments(iframe));
     const wrap = el('div', { class: 'blk-htmlwrap' }, iframe);
-    attachViewer(wrap, { zoomEl: null, label: 'embed', comment: wholeBlockComment(ctx, blockId, 'embed') });
+    attachViewer(wrap, {
+      zoomEl: null,
+      label: 'embed',
+      comment: wholeBlockComment(ctx, blockId, 'embed'),
+      hoverComments: {
+        isEnabled: () => iframe.dataset.relayHoverComments !== 'off',
+        setEnabled: (enabled) => {
+          iframe.dataset.relayHoverComments = enabled ? 'on' : 'off';
+          syncHtmlHoverComments(iframe);
+        },
+      },
+    });
     return wrap;
   }
 

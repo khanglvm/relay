@@ -401,6 +401,7 @@
     let started = false;
     let hot = null;          // currently outlined element
     let pin = null;          // floating pin button
+    let hoverEnabled = true;
     let hideTimer = 0;
     let lastCounts = {};
     let overlayBadges = [];  // [{el, badge}] for replaced elements
@@ -453,18 +454,25 @@
     function ensurePin() {
       if (pin || !document.body) return pin;
       pin = document.createElement('button');
+      pin.className = 'relay-ann-pin';
       pin.type = 'button';
       pin.setAttribute('aria-label', 'Add a comment');
       pin.title = 'Add a comment';
       pin.style.cssText = [
-        'position:fixed', 'z-index:2147483647', 'display:none', 'width:22px', 'height:22px',
+        'all:initial', 'position:fixed', 'z-index:2147483647', 'display:none', 'width:22px', 'height:22px',
+        'box-sizing:border-box', 'margin:0',
         'padding:0', 'border:none', 'border-radius:50%', 'cursor:pointer', 'background:' + accent(),
         'color:#fff', 'align-items:center', 'justify-content:center', 'line-height:0',
         'box-shadow:0 1px 4px rgba(0,0,0,.3)',
-      ].join(';');
+      ].map((rule) => rule + ' !important').join(';');
       pin.innerHTML =
         '<svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">' +
         '<path d="M3 2.5h10A1.5 1.5 0 0 1 14.5 4v5a1.5 1.5 0 0 1-1.5 1.5H8.4L5 13.4v-2.9H3A1.5 1.5 0 0 1 1.5 9V4A1.5 1.5 0 0 1 3 2.5Z" fill="currentColor"/></svg>';
+      pin.querySelector('svg').style.cssText =
+        'all:initial !important;display:block !important;width:11px !important;height:11px !important;fill:currentColor !important;color:inherit !important;';
+      pin.querySelector('path').style.setProperty('fill', 'currentColor', 'important');
+      pin.addEventListener('focus', () => pin.style.setProperty('outline', '2px solid ' + accent(), 'important'));
+      pin.addEventListener('blur', () => pin.style.removeProperty('outline'));
       pin.addEventListener('mouseenter', () => clearTimeout(hideTimer));
       pin.addEventListener('mouseleave', scheduleHide);
       pin.addEventListener('click', (e) => {
@@ -478,16 +486,16 @@
     }
 
     function showPinFor(el) {
-      if (!ensurePin()) return;
+      if (!hoverEnabled || !ensurePin()) return;
       clearTimeout(hideTimer);
       if (hot && hot !== el) hot.classList.remove('relay-ann-hot');
       hot = el;
       el.classList.add('relay-ann-hot');
       const r = el.getBoundingClientRect();
       const w = 22;
-      pin.style.display = 'flex';
-      pin.style.left = Math.max(2, Math.min(r.right - w / 2, window.innerWidth - w - 2)) + 'px';
-      pin.style.top = Math.max(2, Math.min(r.top - w / 2, window.innerHeight - w - 2)) + 'px';
+      pin.style.setProperty('display', 'flex', 'important');
+      pin.style.setProperty('left', Math.max(2, Math.min(r.right - w / 2, window.innerWidth - w - 2)) + 'px', 'important');
+      pin.style.setProperty('top', Math.max(2, Math.min(r.top - w / 2, window.innerHeight - w - 2)) + 'px', 'important');
     }
 
     function scheduleHide() {
@@ -499,7 +507,7 @@
       clearTimeout(hideTimer);
       if (hot) hot.classList.remove('relay-ann-hot');
       hot = null;
-      if (pin) pin.style.display = 'none';
+      if (pin) pin.style.setProperty('display', 'none', 'important');
     }
 
     // Ask the parent to open its annotation popover for this element.
@@ -631,8 +639,13 @@
       }, true);
       window.addEventListener('resize', () => { hidePin(); repositionOverlays(); });
       window.addEventListener('message', (e) => {
+        if (e.source !== parent) return;
         const m = e.data;
         if (m && typeof m === 'object' && m.relay === 'annotate-counts') renderBadges(m.counts || {});
+        if (m && typeof m === 'object' && m.relay === 'annotate-hover' && typeof m.enabled === 'boolean') {
+          hoverEnabled = m.enabled;
+          if (!hoverEnabled) hidePin();
+        }
       });
       // Re-pick up DOM that author JS builds after load. We observe childList
       // only (not attributes, so our own hover-class toggles don't fire it) and
