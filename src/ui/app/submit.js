@@ -3,7 +3,7 @@
     let firstBad = null;
     for (const q of QS) {
       const required = q.required || !spec.allowPartial;
-      const bad = required && getValue(q) === undefined;
+      const bad = required && (getValue(q) === undefined || (q.type === 'pick' && window.RelayPick.short(q, state.answers[q.id])));
       cards[q.id].classList.toggle('error', bad);
       if (bad && !firstBad) firstBad = cards[q.id];
     }

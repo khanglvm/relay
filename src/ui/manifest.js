@@ -25,12 +25,13 @@ const plain = (file) => ({ open: '', files: [file], close: '' });
 const iife = (open, files) => ({ open, files, close: IIFE_CLOSE });
 
 export const STYLE_PARTS = [plain('ui/style.css')];
-export const BLOCKS_STYLE_PARTS = [plain('ui/blocks.css'), plain('ui/a2ui.css')];
+export const BLOCKS_STYLE_PARTS = [plain('ui/blocks.css'), plain('ui/a2ui.css'), plain('ui/pick.css')];
 export const ANNOTATE_STYLE_PARTS = [plain('ui/annotate.css')];
 
 export const BLOCKS_SCRIPT_PARTS = [
   plain('ui/a2ui-state.js'),
   plain('ui/a2ui.js'),
+  plain('ui/pick.js'),
   iife(BLOCKS_OPEN, [
     'ui/blocks/core.js',
     'ui/blocks/markdown.js',

@@ -38,6 +38,7 @@
     }
     for (const q of QS) if (q.type === 'allocate') state.answers[q.id] = seedAllocate(q, state.answers[q.id]);
     for (const q of QS) if (q.type === 'checklist') state.answers[q.id] = seedChecklist(q, state.answers[q.id]);
+    for (const q of QS) if (q.type === 'pick') state.answers[q.id] = window.RelayPick.seed(q, state.answers[q.id]);
   }
   function seedAllocate(q, prior) {
     const m = prior && typeof prior === 'object' && !Array.isArray(prior) ? prior : {};
@@ -82,6 +83,8 @@
         const sum = Object.values(m).reduce((a, n) => a + (Number(n) || 0), 0);
         return sum > 0 ? { ...m } : undefined;
       }
+      case 'pick':
+        return window.RelayPick.value(q, v);
       default: {
         const t = typeof v === 'string' ? v.trim() : '';
         return t || undefined;

@@ -61,6 +61,18 @@
         q.total = Number.isFinite(rq.total) && rq.total > 0 ? Math.floor(rq.total) : 100;
         if (rq.unit !== undefined) q.unit = String(rq.unit);
       }
+      if (type === 'pick') {
+        const tiles = Array.isArray(rq.items) ? rq.items : [];
+        q.items = tiles.map((t) => (t && typeof t === 'object'
+          ? { ...t, id: String(t.id != null ? t.id : t.title || ''), title: String(t.title != null ? t.title : t.id || '') }
+          : { id: String(t), title: String(t) }));
+        q.min = Number.isInteger(rq.min) && rq.min >= 0 ? Math.min(rq.min, q.items.length) : 0;
+        q.max = Number.isInteger(rq.max) && rq.max >= 1 ? Math.min(rq.max, q.items.length) : q.items.length;
+        q.itemNote = rq.itemNote !== false;
+        q.overall = rq.overall !== false;
+        q.note = false;
+        if (q.min > 0) q.required = true;
+      }
       if (type === 'scale') {
         q.min = Number.isFinite(rq.min) ? rq.min : 1;
         q.max = Number.isFinite(rq.max) ? rq.max : Math.max(5, q.min + 1);

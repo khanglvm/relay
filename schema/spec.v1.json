@@ -454,7 +454,8 @@
               "color",
               "rank",
               "checklist",
-              "allocate"
+              "allocate",
+              "pick"
             ],
             "default": "text"
           },
@@ -864,6 +865,57 @@
               ]
             }
           },
+          "items": {
+            "type": "array",
+            "description": "pick only: the tiles to choose among, 1 to 60. Strings, or {id, title, image?, video?, url?, caption?}. \"image\" is an https/data URL or a local file (embedded); \"video\" is an https YouTube/Vimeo link or media URL, shown as a link or a muted preview; \"url\" opens a page. The answer is {picks:[{id, note?}], overall?}: ids in the order picked, a note per tile, one overall note.",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "id"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "Answer key for this tile (default: its title)."
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "caption": {
+                      "type": "string"
+                    },
+                    "image": {
+                      "type": "string",
+                      "description": "https/data URL, or a local image file (embedded)."
+                    },
+                    "video": {
+                      "type": "string",
+                      "description": "https YouTube/Vimeo link or media file URL."
+                    },
+                    "url": {
+                      "type": "string",
+                      "description": "https page the tile links to."
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "itemNote": {
+            "type": "boolean",
+            "default": true,
+            "description": "pick only: a note field on each picked tile. Set false to hide it."
+          },
+          "overall": {
+            "type": "boolean",
+            "default": true,
+            "description": "pick only: one overall note under the tiles. Set false to hide it."
+          },
           "other": {
             "type": "boolean",
             "description": "Add a free-text \"Other\" option (a multi-line textarea); its text is returned verbatim as the value. Defaults ON for \"single\" (radio) questions so the user is never boxed in — set other:false to remove it; \"multi\" stays opt-in (other:true)."
@@ -882,13 +934,13 @@
           "min": {
             "type": "integer",
             "default": 1,
-            "description": "scale only"
+            "description": "scale: lowest value. pick: fewest tiles to pick (default 0; 1 or more makes the question required)."
           },
           "max": {
             "type": "integer",
             "default": 5,
             "maximum": 10,
-            "description": "scale only"
+            "description": "scale: highest value, at most 10. pick: most tiles to pick (default: all of them; 1 makes it a single choice)."
           },
           "minLabel": {
             "type": "string",

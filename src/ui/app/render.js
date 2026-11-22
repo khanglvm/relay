@@ -89,6 +89,7 @@
     else if (q.type === 'rank') control.append(controlRank(q));
     else if (q.type === 'checklist') control.append(controlChecklist(q));
     else if (q.type === 'allocate') control.append(controlAllocate(q));
+    else if (q.type === 'pick') control.append(window.RelayPick.control(q, state, { canEdit: access.canEditAnswers, onChange: () => { clearErr(q.id); scheduleSave(); } }));
     else control.append(controlText(q, q.type === 'textarea'));
     card.append(control);
     if (q.note) {

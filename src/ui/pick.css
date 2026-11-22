@@ -1,0 +1,32 @@
+/* pick question: a grid of media tiles. Used by the web board and the MCP App page. */
+.pk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: 12px; }
+.pk-tile { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px; border: 1px solid var(--border, #ece9e4); border-radius: 12px; background: var(--card, #fff); transition: border-color 0.15s var(--ease, ease), background 0.15s var(--ease, ease); }
+.pk-tile:hover { border-color: var(--accent, #c2674b); }
+.pk-tile.sel { border-color: var(--accent, #c2674b); background: var(--accent-soft, #f5e9e3); }
+.pk-pick { display: flex; flex-direction: column; gap: 6px; width: 100%; padding: 0; border: 0; border-radius: 8px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pk-pick:disabled { cursor: default; }
+.pk-pick:focus-visible, .pk-open:focus-visible { outline: 2px solid var(--accent, #c2674b); outline-offset: 2px; }
+.pk-pick[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; }
+.pk-media { position: relative; display: flex; align-items: center; justify-content: center; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 8px; background: var(--bg-sunken, #f6f4f0); color: var(--muted, #8a8580); }
+.pk-img { width: 100%; height: 100%; object-fit: cover; }
+.pk-nomedia .pk-icon { width: 28px; height: 28px; }
+.pk-badge { position: absolute; right: 8px; bottom: 8px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: rgba(28, 27, 25, 0.62); color: #fff; }
+.pk-badge .pk-icon { width: 14px; height: 14px; }
+.pk-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.pk-title { min-width: 0; font-weight: 500; overflow-wrap: anywhere; }
+.pk-caption { color: var(--muted, #8a8580); font-size: 0.85rem; overflow-wrap: anywhere; }
+.pk-check { position: relative; flex: none; display: grid; place-items: center; width: 22px; height: 22px; border: 1.5px solid var(--border-strong, #e0dcd5); border-radius: 50%; color: transparent; }
+.pk-tile.sel .pk-check { border-color: var(--accent, #c2674b); background: var(--accent, #c2674b); color: var(--accent-fg, #fcfaf7); }
+.pk-check .pk-icon { width: 13px; height: 13px; }
+.pk-order { position: absolute; top: -8px; right: -8px; min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--fg, #1c1b19); color: var(--bg, #fcfbf9); font-size: 0.7rem; line-height: 16px; text-align: center; }
+.pk-order:empty { display: none; }
+.pk-open { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; color: var(--fg-2, #57534e); font-size: 0.82rem; text-decoration: none; }
+.pk-open:hover { color: var(--accent, #c2674b); text-decoration: underline; }
+.pk-open .pk-icon { width: 13px; height: 13px; }
+.pk-notewrap[hidden] { display: none; }
+.pk-note, .pk-overall { width: 100%; box-sizing: border-box; font-size: 0.88rem; resize: vertical; }
+.pk-note { padding: 8px 10px; min-height: 52px; }
+.pk-overall { margin-top: 10px; padding: 8px 12px; min-height: 64px; }
+.pk-status { margin: 10px 0 0; color: var(--muted, #8a8580); font-size: 0.85rem; }
+@media (max-width: 480px) { .pk-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } }
+@media (prefers-reduced-motion: reduce) { .pk-tile { transition: none; } }
