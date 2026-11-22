@@ -10,7 +10,7 @@ import { assertSpecReady, cleanAnswers } from '../spec/index.js';
 import { loadBoard, removeRunning, saveBoard, saveBoardArtifact, savePref, saveRunning } from '../store.js';
 import { SHARE_STATE_VERSION, pruneReviewDrafts, reviewSessionCookie, reviewSessionId, sideReviewState } from './reviews.js';
 import { buildLockedPage, buildPage, shareHost } from './page.js';
-import { isDirectLocalRequest, readBody, sameOrigin, sendFromDir, sendHtml, sendJs, sendJson, wrapFragment } from './http.js';
+import { isDirectLocalRequest, readBody, sameOrigin, sendDataImage, sendFromDir, sendHtml, sendJs, sendJson, wrapFragment } from './http.js';
 import { UI_DIR, VENDOR_DIR } from './paths.js';
 import { findBlock, findHtmlBlock, firstBoardHtml, firstQuestionHtml, sanitizeAnnotations, sanitizeBlockEdits } from './sanitize.js';
 import { ARTIFACT_MAX_BYTES, ARTIFACT_MIMES, artifactBytesMatch, runOnResult } from './result.js';
@@ -289,18 +289,12 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
         // Embedded image bytes (image blocks authored from local files).
         const blockId = decodeURIComponent(pathname.slice('/img/b/'.length));
         const block = findBlock(record.spec, blockId, 'image');
-        const m = block && typeof block.src === 'string' ? block.src.match(/^data:([^;,]+);base64,(.*)$/s) : null;
-        if (!m) return sendJson(res, 404, { error: `no embedded image block "${blockId}"` });
-        res.writeHead(200, { 'content-type': m[1], 'cache-control': 'no-store' });
-        res.end(Buffer.from(m[2], 'base64'));
+        if (!sendDataImage(res, block?.src)) return sendJson(res, 404, { error: `no embedded image block "${blockId}"` });
       } else if (req.method === 'GET' && pathname.startsWith('/img/p/')) {
         // Embedded tile image bytes (pick questions authored from local files).
         const [questionId, itemId] = pathname.slice('/img/p/'.length).split('/').map(decodeURIComponent);
         const tile = record.spec.questions.find((q) => q.id === questionId && q.type === 'pick')?.items.find((t) => t.id === itemId);
-        const m = tile && typeof tile.image === 'string' ? tile.image.match(/^data:([^;,]+);base64,(.*)$/s) : null;
-        if (!m) return sendJson(res, 404, { error: `no embedded tile image "${questionId}/${itemId}"` });
-        res.writeHead(200, { 'content-type': m[1], 'cache-control': 'no-store' });
-        res.end(Buffer.from(m[2], 'base64'));
+        if (!sendDataImage(res, tile?.image)) return sendJson(res, 404, { error: `no embedded tile image "${questionId}/${itemId}"` });
       } else if (req.method === 'POST' && pathname === '/api/artifact') {
         if (record.spec.responseRequired === false) return sendJson(res, 409, { error: 'display-only boards do not collect feedback' });
         if (!sameOrigin(req, actualPort, [advertisedHost], [publicLink?.origin])) return sendJson(res, 403, { error: 'cross-origin artifact upload rejected' });

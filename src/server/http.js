@@ -42,6 +42,25 @@ export function sendHtml(res, body, headers = {}) {
   res.end(body);
 }
 
+const DATA_IMAGE = /^data:(image\/[a-z0-9.+-]+);base64,(.*)$/is;
+
+/**
+ * Serves the bytes of an agent-written `data:image/...;base64` URI. Security: the
+ * MIME is the agent's, so only image types pass, and the sandbox CSP keeps an SVG
+ * opened as its own page from running script on the board's origin.
+ * Returns false (nothing written) when the value is not such a URI.
+ */
+export function sendDataImage(res, dataUri) {
+  const m = typeof dataUri === 'string' ? dataUri.match(DATA_IMAGE) : null;
+  if (!m) return false;
+  res.writeHead(200, {
+    'content-type': m[1], 'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff', 'content-security-policy': "sandbox; default-src 'none'; style-src 'unsafe-inline'",
+  });
+  res.end(Buffer.from(m[2], 'base64'));
+  return true;
+}
+
 export function sendJs(res, body) {
   res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' });
   res.end(body);
