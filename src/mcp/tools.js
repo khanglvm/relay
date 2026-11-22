@@ -47,6 +47,19 @@ export function registerRelay(server, options = {}) {
   return appTools;
 }
 
+// Every app call reads a board and writes it back whole. Two clicks forwarded at once,
+// or a draft racing the submit, would otherwise drop one write. The queue is per
+// process, not per server, because the HTTP transport builds a server per request.
+const boardQueues = new Map();
+function oneAtATime(boardId, task) {
+  const key = String(boardId);
+  const run = (boardQueues.get(key) ?? Promise.resolve()).then(task);
+  const tail = run.catch(() => {});
+  boardQueues.set(key, tail);
+  tail.then(() => { if (boardQueues.get(key) === tail) boardQueues.delete(key); });
+  return run;
+}
+
 const appMeta = (visibility) => ({ ui: { resourceUri: BOARD_URI, visibility } });
 const modelMeta = { ...appMeta(['model', 'app']), 'openai/outputTemplate': BOARD_URI };
 
@@ -111,12 +124,12 @@ function registerAppTools({ server, options, store, key }) {
     return record ? { record } : { error: errorResult('relay: board not found') };
   };
   /** An app tool that acts on one unfinished board. */
-  const onOpenBoard = (act) => async (args) => {
+  const onOpenBoard = (act) => (args) => oneAtATime(args.boardId, async () => {
     const { record, error } = await guard(args);
     if (error) return error;
     if (isFinal(record)) return errorResult('relay: board is finished');
     return act(record, args);
-  };
+  });
 
   appTool(TOOL.view, { description: 'The board spec, for the board iframe.', inputSchema: viewInput }, async (args) => {
     const { record, error } = await guard(args);
@@ -129,15 +142,15 @@ function registerAppTools({ server, options, store, key }) {
     return text('saved');
   }));
   appTool(TOOL.a2uiAction, { description: 'Records a button click from an a2ui block.', inputSchema: actionInput }, onOpenBoard(async (record, args) => {
-    await recordEvent(store, record, args);
-    return text('recorded');
+    const outcome = await recordEvent(store, record, args);
+    return outcome.ok ? text('recorded') : errorResult(`relay: ${outcome.error}`);
   }));
-  appTool(TOOL.submit, { description: 'Stores the final answers.', inputSchema: submitInput }, async (args) => {
+  appTool(TOOL.submit, { description: 'Stores the final answers.', inputSchema: submitInput }, (args) => oneAtATime(args.boardId, async () => {
     const { record, error } = await guard(args);
     if (error) return error;
     const outcome = await submitBoard(store, record, args.payload);
     return outcome.ok ? json({ status: outcome.status }) : errorResult(`relay: ${outcome.error}`);
-  });
+  }));
   appTool(TOOL.asset, { description: 'One chunk of a vendored library, for hosts that refuse resources/read.', inputSchema: assetInput }, ({ name, index }) => {
     const chunk = vendorChunk(name, index);
     return chunk ? json({ name, index, count: chunk.count }, chunk) : errorResult(`relay: no asset "${name}" chunk ${index}`);

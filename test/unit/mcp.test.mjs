@@ -248,3 +248,80 @@ test('the http endpoint demands the bearer token', async () => {
   const foreign = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer right', origin: 'https://evil.test' }, body: '{}' });
   assert.equal(foreign.status, 403);
 });
+
+const A2UI_SPEC = {
+  title: 'Jobs',
+  blocks: [{ type: 'a2ui', express: 'root = Card("CI", [Button("Retry", Event("retry", {job: "build"}))])' }],
+  questions: [{ id: 'ok', type: 'yesno', label: 'Fine?' }],
+};
+
+test('a2ui clicks sent at once all reach relay_result', async () => {
+  const client = await stdioClient({ ui: true });
+  const made = await client.callTool({ name: 'relay_board', arguments: A2UI_SPEC });
+  const { boardId } = made.structuredContent;
+  const token = made._meta.relay.token;
+  const clicks = Array.from({ length: 8 }, (_, i) => client.callTool({ name: 'a2ui_action', arguments: { boardId, token, blockId: 'b1', name: 'retry', context: { n: i } } }));
+  for (const r of await Promise.all(clicks)) assert.ok(!r.isError, r.content[0].text);
+  const out = jsonOf(await client.callTool({ name: 'relay_result', arguments: { boardId } }));
+  assert.deepEqual(out.events.map((e) => e.context.n).sort(), [0, 1, 2, 3, 4, 5, 6, 7]);
+});
+
+test('a2ui_action refuses a click the browser board would not store', async () => {
+  const client = await stdioClient({ ui: true });
+  const made = await client.callTool({ name: 'relay_board', arguments: A2UI_SPEC });
+  const { boardId } = made.structuredContent;
+  const token = made._meta.relay.token;
+  const bad = [
+    { blockId: 'nope', name: 'retry' },
+    { blockId: 'b1', name: 'Not A Name' },
+    { blockId: 'b1', name: 'retry', context: { deep: Array.from({ length: 40 }).reduce((inner) => ({ inner }), {}) } },
+    { blockId: 'b1', name: 'retry', context: { big: 'x'.repeat(5000) } },
+  ];
+  for (const click of bad) {
+    const r = await client.callTool({ name: 'a2ui_action', arguments: { boardId, token, ...click } });
+    assert.ok(r.isError, JSON.stringify(click).slice(0, 80));
+  }
+  assert.equal(jsonOf(await client.callTool({ name: 'relay_result', arguments: { boardId } })).events, undefined);
+});
+
+test('relay_submit writes only region crops that are real images and that the board keeps', async () => {
+  const client = await stdioClient({ ui: true });
+  const made = await client.callTool({
+    name: 'relay_board',
+    arguments: { title: 'Shot', blocks: [{ type: 'image', src: 'https://example.test/a.png' }], questions: [{ id: 'ok', type: 'yesno', label: 'Fine?' }] },
+  });
+  const { boardId } = made.structuredContent;
+  const token = made._meta.relay.token;
+  const png = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), Buffer.alloc(16)]).toString('base64');
+  const region = (text, data, extra = {}) => ({ text, target: { kind: 'image-region', blockId: 'b1', x: 0, y: 0, w: 0.5, h: 0.5, crop: { data, mime: 'image/png', width: 10, height: 10 }, ...extra } });
+  const annotations = [
+    region('real png', png),
+    region('html posing as png', Buffer.from('<script>alert(1)</script>').toString('base64')),
+    region('wrong kind', png, { kind: 'element' }),
+    region('x'.repeat(6000), png),
+  ];
+  const sub = await client.callTool({ name: 'relay_submit', arguments: { boardId, token, payload: { answers: { ok: 'yes' }, annotations } } });
+  assert.ok(!sub.isError, sub.content[0]?.text);
+  const out = jsonOf(await client.callTool({ name: 'relay_result', arguments: { boardId } }));
+  const kept = out.annotations.filter((a) => a.target.crop);
+  assert.deepEqual(kept.map((a) => a.text), ['real png']);
+  assert.equal(fs.readdirSync(path.join(HOME, 'boards', `${boardId}.artifacts`)).length, 1);
+});
+
+test('the iframe forwards a new a2ui click after the block keeps only its newest events', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'src', 'mcp-ui', 'board', 'block-ctx.js'), 'utf8');
+  const sent = [];
+  const context = vm.createContext({
+    BOARD: { id: 'b-x', token: 't' },
+    callServerTool: async (name, args) => { sent.push(args.context.n); return {}; },
+    document: { addEventListener: () => {} },
+  });
+  vm.runInContext(source, context);
+  const ev = (n) => ({ name: 'go', context: { n }, at: `t${n}` });
+  const full = { type: 'a2ui', data: {}, events: Array.from({ length: 50 }, (_, i) => ev(i)) };
+  const shifted = { type: 'a2ui', data: {}, events: [...full.events.slice(1), ev(50)] };
+  context.forwardA2uiEvents('w', full, shifted);
+  context.forwardA2uiEvents('w', shifted, { ...shifted, data: { typed: true } });
+  context.forwardA2uiEvents('w', undefined, { type: 'a2ui', data: {}, events: [ev(99)] });
+  assert.deepEqual(sent, [50, 99]);
+});

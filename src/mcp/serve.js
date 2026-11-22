@@ -84,7 +84,7 @@ function requestListener({ serve, token, allowOrigin, endpoint }) {
   };
 }
 
-const bearerOk = (header = '', token) => header.startsWith('Bearer ') && safeEqual(header.slice(7), token);
+const bearerOk = (header = '', token) => /^bearer /i.test(header) && safeEqual(header.slice(7), token);
 
 /**
  * Serves MCP over Streamable HTTP. Localhost by default; a bearer token and an

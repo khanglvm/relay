@@ -4,6 +4,7 @@ Use Relay to present files, visuals, substantial plans, diffs, and related user
 questions. Choose purpose-built blocks so users can inspect the content and
 leave precise feedback. Keep short answers and progress updates in chat.
 Respect the user’s existing authorization; boards do not add approval gates.
+If your host app has its own way to ask the user or show results (native question cards, forms, pickers), use that for those. Use Relay for what the host can't show: line comments on a diff, Mermaid or Graphviz diagrams, element comments on an HTML prototype, rich multi-block review boards.
 For a concise workflow, read the bundled skill (`rly skill path`). This guide is
 a reference for fields and less common operations. Load one part with
 `rly agent <topic>` (`questions`, `blocks`, `annotate`, `lifecycle`, `sharing`,

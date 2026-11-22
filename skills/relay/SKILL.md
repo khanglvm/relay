@@ -7,6 +7,8 @@ description: "Show the user files, visuals, diffs, plans, charts or a set of rel
 
 Put content in front of the person and read what they decide. Keep short answers and progress updates in chat. A board adds no approval step of its own; follow the authorization the user already gave.
 
+If your host app has its own way to ask the user or show results (native question cards, forms, pickers), use that for those. Use Relay for what the host can't show: line comments on a diff, Mermaid or Graphviz diagrams, element comments on an HTML prototype, rich multi-block review boards.
+
 ## Workflow
 1. Write a spec to a JSON file. Never pass big JSON in a shell argument.
 2. `rly ask --file spec.json --detach` prints `{boardId,url}` at once. When no reply is needed: `rly show --file spec.json --display-only`.

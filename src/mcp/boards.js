@@ -2,12 +2,17 @@
 import { assertSpecReady, normalizeSpec } from '../spec/index.js';
 import { CliError } from '../util.js';
 import { saveBoardArtifact } from '../store.js';
-import { sanitizeAnnotations, sanitizeBlockEdits } from '../server/sanitize.js';
-import { ARTIFACT_MAX_BYTES, ARTIFACT_MIMES } from '../server/result.js';
+import { assertSafeJson } from '../a2ui/compile.js';
+import { findBlock, sanitizeAnnotations, sanitizeBlockEdits } from '../server/sanitize.js';
+import { ARTIFACT_MAX_BYTES, ARTIFACT_MIMES, artifactBytesMatch } from '../server/result.js';
 import { RESULT_BUDGET_BYTES } from './constants.js';
 
 const MAX_TEXT = 20000;
 const MAX_EVENTS = 200;
+const MAX_CROPS = 500;
+const MAX_CROP_BASE64 = Math.ceil(ARTIFACT_MAX_BYTES / 3) * 4;
+const MAX_EVENT_CONTEXT = 4096;
+const EVENT_NAME = /^[a-z][a-z0-9_-]{0,39}$/;
 
 const limit = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
 const asObject = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
@@ -43,11 +48,12 @@ export function questionList(spec, labelMax = 80) {
  * @returns {ToolResult}
  */
 export function boardResult(record, spec, mode) {
+  const title = limit(spec.title, 120);
   const text = mode === 'ask'
-    ? `Board "${spec.title}" (${record.id}) is on screen${spec.questions.length ? ` with ${spec.questions.length} question${spec.questions.length === 1 ? '' : 's'}` : ' for the person to acknowledge'}. They answer there. Read the answers with relay_result {boardId, wait_seconds}. Do not re-ask them in chat.`
-    : `Board "${spec.title}" (${record.id}) is on screen, display-only. Continue without waiting.`;
+    ? `Board "${title}" (${record.id}) is on screen${spec.questions.length ? ` with ${spec.questions.length} question${spec.questions.length === 1 ? '' : 's'}` : ' for the person to acknowledge'}. They answer there. Read the answers with relay_result {boardId, wait_seconds}. Do not re-ask them in chat.`
+    : `Board "${title}" (${record.id}) is on screen, display-only. Continue without waiting.`;
   for (const labelMax of [80, 40, 20, 0]) {
-    const structuredContent = { boardId: record.id, mode, title: spec.title, questions: questionList(spec, labelMax) };
+    const structuredContent = { boardId: record.id, mode, title, questions: questionList(spec, labelMax) };
     const size = Buffer.byteLength(text) + Buffer.byteLength(JSON.stringify(structuredContent));
     if (size <= RESULT_BUDGET_BYTES) return { content: [{ type: 'text', text }], structuredContent };
   }
@@ -80,16 +86,27 @@ export async function saveDraft(store, id, draft) {
   });
 }
 
+/** One base64 region crop written to the board's artifacts, under the same checks as the browser board's upload. */
+function persistCrop(id, crop) {
+  const mime = crop.mime ?? 'image/png';
+  if (crop.data.length > MAX_CROP_BASE64 || !Object.hasOwn(ARTIFACT_MIMES, mime)) return undefined;
+  const bytes = Buffer.from(crop.data, 'base64');
+  if (!bytes.length || bytes.length > ARTIFACT_MAX_BYTES || !artifactBytesMatch(mime, bytes)) return undefined;
+  return { path: saveBoardArtifact(id, bytes, ARTIFACT_MIMES[mime]), mime, width: crop.width, height: crop.height };
+}
+
 // An iframe sends a region crop as base64; the record keeps a file path, like the browser board.
+// Only a crop the sanitizer will keep is written, so a submit cannot fill the disk with dropped files.
 function persistCrops(id, annotations) {
   if (!Array.isArray(annotations)) return annotations;
+  let written = 0;
   return annotations.map((a) => {
     const crop = a && a.target && a.target.crop;
-    if (!crop || typeof crop.data !== 'string' || !ARTIFACT_MIMES[crop.mime || 'image/png']) return a;
-    const bytes = Buffer.from(crop.data, 'base64');
-    if (!bytes.length || bytes.length > ARTIFACT_MAX_BYTES) return { ...a, target: { ...a.target, crop: undefined } };
-    const path = saveBoardArtifact(id, bytes, ARTIFACT_MIMES[crop.mime || 'image/png']);
-    return { ...a, target: { ...a.target, crop: { path, mime: crop.mime || 'image/png', width: crop.width, height: crop.height } } };
+    if (!crop || typeof crop.data !== 'string') return a;
+    const keep = written < MAX_CROPS && a.target.kind === 'image-region' && typeof a.text === 'string' && a.text.length <= 5000;
+    const saved = keep ? persistCrop(id, crop) : undefined;
+    if (saved) written++;
+    return { ...a, target: { ...a.target, crop: saved } };
   });
 }
 
@@ -118,13 +135,26 @@ export async function submitBoard(store, record, body) {
   return { ok: true, status };
 }
 
-/** Appends one a2ui button click for relay_result to report. */
+/**
+ * Appends one a2ui button click for relay_result to report. The click must name
+ * an a2ui block on this board and pass the checks the browser board applies to a2ui state.
+ * @returns {Promise<{ ok: boolean, entry?: object, error?: string }>}
+ */
 export async function recordEvent(store, record, event) {
   const e = asObject(event);
-  const entry = { blockId: limit(e.blockId, 200), name: limit(e.name, 200), context: asObject(e.context), at: new Date().toISOString() };
+  if (typeof e.blockId !== 'string' || !findBlock(record.spec, e.blockId, 'a2ui')) return { ok: false, error: 'no a2ui block with that id' };
+  if (typeof e.name !== 'string' || !EVENT_NAME.test(e.name)) return { ok: false, error: 'invalid a2ui event name' };
+  const context = asObject(e.context);
+  try {
+    assertSafeJson(context, 'a2ui event');
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+  if (JSON.stringify(context).length > MAX_EVENT_CONTEXT) return { ok: false, error: 'a2ui event context is too large' };
+  const entry = { blockId: e.blockId, name: e.name, context, at: new Date().toISOString() };
   const events = [...(record.events || []), entry].slice(-MAX_EVENTS);
   await store.update(record.id, { events });
-  return entry;
+  return { ok: true, entry };
 }
 
 /** What relay_result reports for a board right now. */

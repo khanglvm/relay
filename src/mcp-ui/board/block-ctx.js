@@ -2,10 +2,20 @@
   // Events already in the stored snapshot were sent when they happened.
   function forwardA2uiEvents(blockId, before, after) {
     if (!BOARD.token || !after || after.type !== 'a2ui' || !Array.isArray(after.events)) return;
-    const known = before && Array.isArray(before.events) ? before.events.length : 0;
-    for (const e of after.events.slice(known)) {
+    for (const e of unsentA2uiEvents(before, after.events)) {
       callServerTool('a2ui_action', { boardId: BOARD.id, token: BOARD.token, blockId, name: e.name, context: e.context }).catch(() => {});
     }
+  }
+  // A snapshot keeps only the newest events, so once it is full a click drops the
+  // oldest one and the count stays the same. What was sent is the longest run at
+  // the start of the new list that also ends the old one.
+  function unsentA2uiEvents(before, events) {
+    const prior = before && Array.isArray(before.events) ? before.events.map((e) => JSON.stringify(e)) : [];
+    const next = events.map((e) => JSON.stringify(e));
+    for (let kept = Math.min(prior.length, next.length); kept > 0; kept--) {
+      if (next.slice(0, kept).every((e, i) => e === prior[prior.length - kept + i])) return events.slice(kept);
+    }
+    return events;
   }
 
   function blockCtx(questionId) {

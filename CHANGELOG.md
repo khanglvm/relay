@@ -24,6 +24,7 @@ Added
   a host that refuses `resources/read` still draws them.
 - A button click in an a2ui block reaches the agent as it happens, through `a2ui_action`.
 - `rly mcp --http` is served by the SDK's Streamable HTTP handler.
+- The skill and guide say when to leave a question or result to the host's own UI and when to use Relay.
 - `registerRelay(server, {store, assetUrl, linkUrl})` from `@khanglvm/relay/mcp` adds the tools
   to a server you built, with your own board store.
 
