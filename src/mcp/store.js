@@ -12,7 +12,7 @@ import { createBoard, loadBoard, saveBoard, saveResultFile } from '../store.js';
 
 /**
  * @typedef {object} RelayStore
- * @property {(spec: any) => BoardRecord | Promise<BoardRecord>} create
+ * @property {(spec: any, options?: { fileRoots?: string[] }) => BoardRecord | Promise<BoardRecord>} create
  * @property {(id: string) => BoardRecord | null | Promise<BoardRecord | null>} get
  * @property {(id: string, patch: Partial<BoardRecord>) => BoardRecord | null | Promise<BoardRecord | null>} update
  */
@@ -21,7 +21,7 @@ import { createBoard, loadBoard, saveBoard, saveResultFile } from '../store.js';
 export function fileStore() {
   const get = (id) => (/^b-[a-z0-9]+$/i.test(String(id)) ? loadBoard(id) : null);
   return {
-    create: (spec) => createBoard(spec),
+    create: (spec, options) => createBoard(spec, options),
     get,
     update(id, patch) {
       const record = get(id);

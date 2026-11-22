@@ -5,7 +5,7 @@ import { asStr, clampInt } from '../sources.js';
 import { BLOCK_HEIGHT } from '../constants.js';
 
 // Normalizes one a2ui block. `id` is the already-assigned block id.
-export function normalizeA2uiBlock(rawBlock, id, cwd, where, hasHeight) {
+export function normalizeA2uiBlock(rawBlock, id, files, where, hasHeight) {
   // A live A2UI v1.0 widget: Express text (compiled in assertSpecReady) or
   // ready JSON components, checked against Relay's catalog either way.
   const hasExpress = rawBlock.express !== undefined && rawBlock.express !== null;

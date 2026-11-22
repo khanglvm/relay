@@ -6,7 +6,7 @@ import { assertSpecReady, normalizeSpec } from '../spec/index.js';
 import { createBoard } from '../store.js';
 import { CliError } from '../util.js';
 import { parseArgs } from './args.js';
-import { printJson, runOrDetach } from './io.js';
+import { cliFileRoots, printJson, runOrDetach } from './io.js';
 
 // `rly diff [git args…]` — run `git diff` for the user and open the result as a
 // diff-block board in one step (sugar like `rly view`). Everything that isn't a
@@ -176,8 +176,10 @@ export async function cmdGit(rest) {
     : reviewDiffCount
       ? 'Review commit code hunks on the board. Apply, skip, or hold each hunk; submit returns commit actions plus diff-review hunk choices as JSON.'
       : 'Pick commit actions and order on the board. Submit returns the selected actions and rank order as JSON.');
-  const spec = normalizeSpec({ title, intro, blocks, questions, submitLabel: 'Submit git choices' });
+  // Conflict files named on the command line are the person's own choice.
+  const fileRoots = cliFileRoots(args, args._.map((p) => path.dirname(p)));
+  const spec = normalizeSpec({ title, intro, blocks, questions, submitLabel: 'Submit git choices' }, { fileRoots });
   await assertSpecReady(spec);
-  const record = createBoard(spec);
+  const record = createBoard(spec, { fileRoots });
   return runOrDetach(record, args);
 }

@@ -15,7 +15,7 @@ function httpUrl(raw, where, field) {
   return url;
 }
 
-function normalizeTile(raw, j, where, cwd) {
+function normalizeTile(raw, j, where, files) {
   if (typeof raw === 'string' || typeof raw === 'number') return { id: String(raw), title: String(raw) };
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new CliError(`${where}.items[${j}]: must be a string or {id, title, image?, video?, url?, caption?}.`);
@@ -28,7 +28,7 @@ function normalizeTile(raw, j, where, cwd) {
   const caption = asStr(raw.caption ?? raw.description).trim();
   if (caption) tile.caption = caption;
   const image = raw.image ?? raw.src ?? raw.img;
-  if (image !== undefined && image !== null && image !== '') tile.image = resolveImageSrc(image, cwd, at, '"image"');
+  if (image !== undefined && image !== null && image !== '') tile.image = resolveImageSrc(image, files, at, '"image"');
   if (raw.video !== undefined && raw.video !== null && raw.video !== '') tile.video = httpUrl(raw.video, at, 'video');
   if (raw.url !== undefined && raw.url !== null && raw.url !== '') tile.url = httpUrl(raw.url, at, 'url');
   return tile;
@@ -40,11 +40,11 @@ function normalizeTile(raw, j, where, cwd) {
  * @param {Record<string, any>} q the question being built
  * @param {Record<string, any>} rq what the agent wrote
  */
-export function normalizePick(q, rq, where, cwd) {
+export function normalizePick(q, rq, where, files) {
   const rawItems = Array.isArray(rq.items) ? rq.items : Array.isArray(rq.options) ? rq.options : Array.isArray(rq.choices) ? rq.choices : [];
   if (!rawItems.length) throw new CliError(`${where}: type "pick" needs "items", the tiles to choose among: [{id, title, image?, video?, url?, caption?}].`);
   if (rawItems.length > PICK.maxItems) throw new CliError(`${where}: a pick takes at most ${PICK.maxItems} items.`);
-  q.items = rawItems.map((raw, j) => normalizeTile(raw, j, where, cwd));
+  q.items = rawItems.map((raw, j) => normalizeTile(raw, j, where, files));
   const seen = new Set();
   for (const tile of q.items) {
     if (seen.has(tile.id)) throw new CliError(`${where}: duplicate item id "${tile.id}".`);

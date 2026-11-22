@@ -4,7 +4,7 @@ import { asStr, clampInt } from '../sources.js';
 import { BLOCK_HEIGHT } from '../constants.js';
 
 // Normalizes one mermaid block. `id` is the already-assigned block id.
-export function normalizeMermaidBlock(rawBlock, id, cwd, where, hasHeight) {
+export function normalizeMermaidBlock(rawBlock, id, files, where, hasHeight) {
   const code = asStr(rawBlock.code);
   if (!code.trim()) throw new CliError(`${where}: mermaid block needs a non-empty "code" string.`);
   const block = { id, type: 'mermaid', code };
@@ -14,7 +14,7 @@ export function normalizeMermaidBlock(rawBlock, id, cwd, where, hasHeight) {
 }
 
 // Normalizes one graphviz block. `id` is the already-assigned block id.
-export function normalizeGraphvizBlock(rawBlock, id, cwd, where, hasHeight) {
+export function normalizeGraphvizBlock(rawBlock, id, files, where, hasHeight) {
   const dot = asStr(rawBlock.dot);
   if (!dot.trim()) throw new CliError(`${where}: graphviz block needs a non-empty "dot" string.`);
   const block = { id, type: 'graphviz', dot };
@@ -23,7 +23,7 @@ export function normalizeGraphvizBlock(rawBlock, id, cwd, where, hasHeight) {
 }
 
 // Normalizes one plantuml block. `id` is the already-assigned block id.
-export function normalizePlantumlBlock(rawBlock, id, cwd, where, hasHeight) {
+export function normalizePlantumlBlock(rawBlock, id, files, where, hasHeight) {
   const code = asStr(rawBlock.code);
   if (!code.trim()) throw new CliError(`${where}: plantuml block needs a non-empty "code" string.`);
   const block = { id, type: 'plantuml', code };

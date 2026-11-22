@@ -7,7 +7,7 @@ import { BLOCK_HEIGHT, CHART_KINDS, CHART_KIND_FIELDS, CHART_SERIES_FIELDS } fro
 const firstDefined = (raw, names) => raw[names.find((n) => raw[n] !== undefined)];
 
 // Normalizes one chart block. `id` is the already-assigned block id.
-export function normalizeChartBlock(raw, id, cwd, where, hasHeight) {
+export function normalizeChartBlock(raw, id, files, where, hasHeight) {
   const rawBlock = { ...raw, kind: firstDefined(raw, CHART_KIND_FIELDS), series: firstDefined(raw, CHART_SERIES_FIELDS) };
   const hasConfig = rawBlock.config && typeof rawBlock.config === 'object' && !Array.isArray(rawBlock.config);
   const hasShorthand =

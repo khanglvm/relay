@@ -53,7 +53,7 @@ export function filePreview(target, stat, reference) {
   let kind = /^(md|markdown|mdown)$/.test(ext) ? 'markdown' : /^(html|htm)$/.test(ext) ? 'html' : 'code';
   if (!reference.line && /^(csv|tsv)$/.test(ext)) {
     try {
-      const block = normalizeSpec({ blocks: [{ type: 'table', rowsFile: target, sortable: true, filterable: true }] }).blocks[0];
+      const block = normalizeSpec({ blocks: [{ type: 'table', rowsFile: target, sortable: true, filterable: true }] }, { fileRoots: [target] }).blocks[0];
       return { ...base, kind: 'table', block, text, lang };
     } catch { /* malformed tables remain readable as source */ }
   }

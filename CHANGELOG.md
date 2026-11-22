@@ -1,5 +1,30 @@
 # Changelog
 
+### 0.22.1: a spec can only read files under the file roots
+
+Security
+- A spec could name any local path (`codeFile`, `mdFile`, `htmlFile`, `diffFile`, `rowsFile`, image and
+  pick tile `image`, `pdf`, `video`, git-conflict `file`) and Relay read it with no check. Over
+  `rly mcp --http`, or in a server that mounts `registerRelay` over HTTP, any client with the token could put
+  `~/.ssh/id_ed25519` in a spec and read it back through `relay_view` or the board page. Every read now goes
+  through one resolver (`src/file-access.js`). It follows symlinks with realpath, and a path is read only when
+  it lands inside a configured root. Directories and device files are refused. A refused path fails with
+  "path outside allowed roots" and says how to fix it. The live board server applies the same roots to the
+  files its page opens, previews and streams.
+- Default roots: `rly ask` and `rly show` allow the working directory and the spec file's folder;
+  `rly mcp` over stdio allows the working directory; `rly mcp --http` and `registerRelay` allow nothing.
+
+Added
+- `--root PATH` (repeatable) and `RLY_FILE_ROOTS` (paths separated by `:`) add roots to `rly ask`, `rly show`,
+  `rly view`, `rly update` and `rly mcp`. `registerRelay(server, { fileRoots })` and `normalizeSpec(spec, { fileRoots })`
+  take a list. `rly view` and `rly git conflict` also allow the folders of the files you name.
+
+Migration
+- If you run `rly mcp --http`, or mount `registerRelay` over HTTP, and your clients relied on local files
+  (`codeFile`, local images and so on), pass roots now: `rly mcp --http --root /srv/shared` or
+  `registerRelay(server, { fileRoots: ['/srv/shared'] })`. Without roots those specs fail with a spec error.
+- Boards saved by an earlier version open files under their authoring folder only.
+
 ### 0.22.0 — the pick question and the A2UI board catalog
 
 Added

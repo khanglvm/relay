@@ -7,11 +7,11 @@ import { loadServerKey } from './token.js';
 const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 /** Serves MCP over this process's stdin and stdout until the host closes stdin. */
-export async function runMcp() {
+export async function runMcp({ fileRoots = [] } = {}) {
   const { serveStdio } = await import('@modelcontextprotocol/server/stdio');
   const { createRelayServer } = await import('./server.js');
   const tokenKey = loadServerKey();
-  const handle = serveStdio(() => createRelayServer({ tokenKey }), { onerror: (e) => process.stderr.write(`relay mcp: ${e.message}\n`) });
+  const handle = serveStdio(() => createRelayServer({ tokenKey, fileRoots }), { onerror: (e) => process.stderr.write(`relay mcp: ${e.message}\n`) });
   // Resolves only once the host disconnects, so the CLI's exit timer never fires.
   return new Promise((resolve) => {
     const finish = () => handle.close().finally(() => resolve(0));
@@ -90,12 +90,12 @@ const bearerOk = (header = '', token) => /^bearer /i.test(header) && safeEqual(h
  * Serves MCP over Streamable HTTP. Localhost by default; a bearer token and an
  * allowed Origin are the controls for anything wider.
  */
-export async function runMcpHttp({ port = DEFAULT_HTTP_PORT, host = '127.0.0.1', token = '', allowOrigin = '' } = {}) {
+export async function runMcpHttp({ port = DEFAULT_HTTP_PORT, host = '127.0.0.1', token = '', allowOrigin = '', fileRoots = [] } = {}) {
   const { createMcpHandler } = await import('@modelcontextprotocol/server');
   const { toNodeHandler } = await import('@modelcontextprotocol/node');
   const { createRelayServer } = await import('./server.js');
   const tokenKey = loadServerKey();
-  const handler = createMcpHandler(() => createRelayServer({ tokenKey }), { onerror: (e) => process.stderr.write(`relay mcp: ${e.message}\n`) });
+  const handler = createMcpHandler(() => createRelayServer({ tokenKey, fileRoots }), { onerror: (e) => process.stderr.write(`relay mcp: ${e.message}\n`) });
   const serve = toNodeHandler(handler, { onerror: (e) => process.stderr.write(`relay mcp: ${e.message}\n`) });
 
   const server = http.createServer(requestListener({ serve, token, allowOrigin, endpoint: `http://${host === '0.0.0.0' ? 'localhost' : host}:${port}${HTTP_PATH}` }));

@@ -1,6 +1,6 @@
 // The video block: embed detection for YouTube and Vimeo, local and direct media.
-import fs from 'node:fs';
 import path from 'node:path';
+import { resolveReadable } from '../../file-access.js';
 import { CliError } from '../../util.js';
 import { asStr, clampInt } from '../sources.js';
 import { BLOCK_HEIGHT, VIDEO_MAX_BYTES, VIDEO_MIMES } from '../constants.js';
@@ -24,7 +24,7 @@ function parseVideoEmbed(src) {
 }
 
 // Normalizes one video block. `id` is the already-assigned block id.
-export function normalizeVideoBlock(rawBlock, id, cwd, where, hasHeight) {
+export function normalizeVideoBlock(rawBlock, id, files, where, hasHeight) {
   const src = asStr(rawBlock.src ?? rawBlock.file ?? rawBlock.url).trim();
   if (!src) throw new CliError(`${where}: video block needs a "src" (YouTube/Vimeo URL, http(s) media URL, or local file path).`);
   const block = { id, type: 'video' };
@@ -46,18 +46,12 @@ export function normalizeVideoBlock(rawBlock, id, cwd, where, hasHeight) {
   }
   // local file — kept as an absolute path the server streams (never embedded
   // in the payload). The client only learns a flag + mime via /video/b/<id>.
-  const p = path.resolve(cwd, src);
-  const ext = path.extname(p).slice(1).toLowerCase();
+  const ext = path.extname(src).slice(1).toLowerCase();
   const mime = VIDEO_MIMES[ext];
   if (!mime) {
     throw new CliError(`${where}: unsupported video extension ".${ext}" — use ${Object.keys(VIDEO_MIMES).join('/')}, a YouTube/Vimeo URL, or an http(s) media URL.`);
   }
-  let stat;
-  try {
-    stat = fs.statSync(p);
-  } catch {
-    throw new CliError(`${where}: cannot read video "${src}" (resolved: ${p})`);
-  }
+  const { file: p, stat } = resolveReadable(files, src, where, 'video');
   if (stat.size > VIDEO_MAX_BYTES) {
     throw new CliError(`${where}: video "${src}" is ${(stat.size / 1024 / 1024).toFixed(0)}MB — max ${VIDEO_MAX_BYTES / 1024 / 1024}MB.`);
   }

@@ -80,8 +80,8 @@ function parseGitConflictContent(content, where) {
 }
 
 // Normalizes one git-conflict block. `id` is the already-assigned block id.
-export function normalizeGitConflictBlock(rawBlock, id, cwd, where, hasHeight) {
-  const src = readAnyTextSource(rawBlock, ['content', 'text'], ['file', 'path', 'src'], cwd, where, 'git conflict file');
+export function normalizeGitConflictBlock(rawBlock, id, files, where, hasHeight) {
+  const src = readAnyTextSource(rawBlock, ['content', 'text'], ['file', 'path', 'src'], files, where, 'git conflict file');
   if (!src.text.trim()) {
     throw new CliError(`${where}: git-conflict block needs inline "content"/"text" or a readable local "file"/"path".`);
   }

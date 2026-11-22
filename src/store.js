@@ -36,7 +36,11 @@ export function saveBoardArtifact(id, bytes, ext = 'png') {
   return target;
 }
 
-export function createBoard(spec) {
+/**
+ * @param {any} spec a normalized spec
+ * @param {{ fileRoots?: string[] }} [options] the roots the spec was read under; the live server opens only files inside them
+ */
+export function createBoard(spec, { fileRoots } = {}) {
   ensureDirs();
   const record = {
     id: newId(),
@@ -46,6 +50,7 @@ export function createBoard(spec) {
     // writes into the spec (markdown links, ~/… paths) resolve against this, so
     // the live server can open them in the user's default app (POST /api/open).
     cwd: process.cwd(),
+    fileRoots: fileRoots ?? [process.cwd()],
     spec,
     draft: null,
     result: null,

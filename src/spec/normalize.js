@@ -1,5 +1,6 @@
 // Turns an agent-written spec into the normalized shape that boards,
 // the server and the MCP App read.
+import { createFileAccess } from '../file-access.js';
 import { CliError } from '../util.js';
 import { asStr, clampInt, readBlockHtml, readHtml } from './sources.js';
 import { ALIASES, BLOCK_ALIASES, BLOCK_HEIGHT, BLOCK_TYPES, CHART_KINDS, HTML_HEIGHT, TYPES } from './constants.js';
@@ -8,7 +9,7 @@ import { normalizePick } from './pick.js';
 
 // Normalizes one block object. `id` is the already-assigned block id.
 // Returns the normalized block (with a guaranteed string `type` + `id`).
-function normalizeBlock(rawBlock, id, cwd, where) {
+function normalizeBlock(rawBlock, id, files, where) {
   if (rawBlock === null || typeof rawBlock !== 'object' || Array.isArray(rawBlock)) {
     throw new CliError(`${where}: must be an object with a "type".`);
   }
@@ -59,9 +60,9 @@ function normalizeBlock(rawBlock, id, cwd, where) {
 
   // type === 'html'
   const normalizer = BLOCK_NORMALIZERS[type];
-  if (normalizer) return normalizer(rawBlock, id, cwd, where, hasHeight);
+  if (normalizer) return normalizer(rawBlock, id, files, where, hasHeight);
 
-  const html = readBlockHtml(rawBlock, cwd, where);
+  const html = readBlockHtml(rawBlock, files, where);
   if (!html) {
     throw new CliError(`${where}: html block needs an "html" string or readable "htmlFile".`);
   }
@@ -76,13 +77,13 @@ function normalizeBlock(rawBlock, id, cwd, where) {
 // Builds the normalized block list for a scope (board or question).
 // Legacy html/htmlFile become a PREPENDED html block; ids are assigned in
 // final order with `prefix` ('' for board → b1,b2…; '<qid>-' for questions).
-function buildBlocks(rawObj, cwd, where, prefix) {
+function buildBlocks(rawObj, files, where, prefix) {
   const blocks = [];
   let n = 0;
   const nextId = () => `${prefix}b${++n}`;
 
   // Legacy html/htmlFile → a single prepended html block. htmlHeight applies.
-  const legacyHtml = readHtml(rawObj, cwd, where);
+  const legacyHtml = readHtml(rawObj, files, where);
   if (legacyHtml) {
     const def = prefix ? HTML_HEIGHT.questionDefault : HTML_HEIGHT.boardDefault;
     blocks.push({
@@ -96,7 +97,7 @@ function buildBlocks(rawObj, cwd, where, prefix) {
   if (rawObj.blocks !== undefined && rawObj.blocks !== null) {
     if (!Array.isArray(rawObj.blocks)) throw new CliError(`${where}.blocks: must be an array.`);
     rawObj.blocks.forEach((b, i) => {
-      const nb = normalizeBlock(b, nextId(), cwd, `${where}.blocks[${i}]`);
+      const nb = normalizeBlock(b, nextId(), files, `${where}.blocks[${i}]`);
       // Cross-block fields handled uniformly so every block type supports them:
       // `ref` = a stable name a markdown reference link can open in a modal;
       // `pins` = enable coordinate pin-comments on an image.
@@ -110,14 +111,20 @@ function buildBlocks(rawObj, cwd, where, prefix) {
   return blocks;
 }
 
-export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
+/**
+ * @param {Record<string, any>} raw
+ * @param {{ cwd?: string, fileRoots?: string[] }} [options] `fileRoots` limits which local files the spec may read
+ *   (default: `cwd` only); `[]` allows none, for a spec that came from a remote client.
+ */
+export function normalizeSpec(raw, { cwd = process.cwd(), fileRoots = [cwd] } = {}) {
+  const files = createFileAccess({ cwd, roots: fileRoots });
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new CliError('Spec must be a JSON object. Run `rly agent` for the schema and examples.');
   }
   const spec = {
     title: asStr(raw.title).trim() || 'Relay',
     intro: asStr(raw.intro),
-    blocks: buildBlocks(raw, cwd, 'board', ''),
+    blocks: buildBlocks(raw, files, 'board', ''),
     allowPartial: raw.allowPartial !== false,
     note: raw.note !== false,
     autoClose: raw.autoClose !== false,
@@ -160,7 +167,7 @@ export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
       note: rq.note === undefined
         ? (type === 'single' || type === 'rank' || type === 'checklist' || type === 'allocate')
         : rq.note === true,
-      blocks: buildBlocks(rq, cwd, where, `${id}-`),
+      blocks: buildBlocks(rq, files, where, `${id}-`),
       placeholder: asStr(rq.placeholder),
     };
 
@@ -179,7 +186,7 @@ export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
           // Per-option visuals: any block type, rendered inside the option card
           // (ids <qid>-o<n>-b<m>). Lets a choice show its example instead of
           // making the user read-and-guess.
-          const oblocks = buildBlocks(o, cwd, `${where}.options[${j}]`, `${id}-o${j + 1}-`);
+          const oblocks = buildBlocks(o, files, `${where}.options[${j}]`, `${id}-o${j + 1}-`);
           if (oblocks.length) out.blocks = oblocks;
           return out;
         }
@@ -198,7 +205,7 @@ export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
       }
     }
 
-    if (type === 'pick') normalizePick(q, rq, where, cwd);
+    if (type === 'pick') normalizePick(q, rq, where, files);
 
     if (type === 'checklist') {
       // Per-item status control. Default Pass / Fail / N/A; override with

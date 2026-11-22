@@ -16,6 +16,7 @@ agent <- rly wait / rly result / MCP relay_result <- store
 - `src/cli/`: one file per command (`ask`, `wait`, `share`, `git`, `boards`, `skill`, `install`, `upgrade`, `mcp`, `config`) and `index.js`, the router. `bin/rly.js` calls it. `agent-topics.js` cuts `docs/AGENT.md` into the topics `rly agent <topic>` prints.
 - `src/server/`: `board.js` serves a board on a local port and handles `/api/*` (board, draft, submit, update, artifact, file open, file preview, share) with the access rules; `page.js` builds the page; `sanitize.js` cleans posted data; `files.js` opens and streams local files; `http.js`, `reviews.js`, `result.js` and `paths.js` hold the helpers.
 - `src/mcp/`: the MCP server, built on the official SDK. `tools.js` has `registerRelay`, which adds `relay_board`, `relay_help`, `relay_result`, the app-only tools the iframe calls (`relay_view`, `relay_draft`, `relay_submit`, `relay_asset`, `a2ui_action`) and the `ui://relay/board` resource to any server. `boards.js` holds what each tool does to a board, `store.js` the pluggable store (files under `RLY_HOME` by default), `token.js` the per-board HMAC token, `page.js` the board page and vendor chunks, `serve.js` stdio and Streamable HTTP. The SDK loads when a server starts, so the plain CLI stays light.
+- `src/file-access.js`: the one resolver for every local file a spec names. It takes realpath, requires the result to sit inside the configured roots and refuses directories and devices. Roots come from the entry point: the CLI uses the working directory, the spec file's folder, `--root` and `RLY_FILE_ROOTS`; `rly mcp` over stdio uses the working directory; HTTP and `registerRelay` use none unless `fileRoots` is given. A board record keeps its `fileRoots` for the live server.
 - `src/store.js`: boards, results, running-server records and preferences under `RLY_HOME`.
 - `src/link.js`: picks how a board gets a private https URL.
 - `src/a2ui/`: the widget catalog, the compiler that checks widgets against it, and the vendored agent SDK. The board catalog (`board-catalog.json`, `board-constants.js`) is a separate catalog that describes a whole board as one A2UI surface: `to-a2ui.js` builds the messages, `from-a2ui.js` turns the surface's data model back into the answers a web board would store, and `negotiate.js` decides from declared capabilities whether a caller gets A2UI or the iframe. Only `extensions` survives in the MCP SDK's client capabilities, so a host declares it there or per call in `_meta`.
@@ -30,7 +31,7 @@ agent <- rly wait / rly result / MCP relay_result <- store
 ## Boundaries
 - Filesystem: `RLY_HOME` (default `~/.relay`) holds boards, results, running records and image artifacts.
 - Network: the board server listens on all interfaces. Host checks and the owner and share rules in `server/board.js` decide who may use it. A public URL template or a link-provider command (`link.js`) gives a private link; `devlink` is one provider.
-- Spec input is untrusted: sizes and key names are checked in `spec/` and `a2ui/compile.js` before a board opens.
+- Spec input is untrusted, and so is every path in it: local reads go through `file-access.js`. Sizes and key names are checked in `spec/` and `a2ui/compile.js` before a board opens.
 - npm: published by `.github/workflows/npm-publish.yml` with trusted publishing.
 
 ## Decisions

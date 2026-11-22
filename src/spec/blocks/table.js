@@ -1,6 +1,7 @@
 // The table block: CSV, TSV and JSON row files, and normalization.
 import fs from 'node:fs';
 import path from 'node:path';
+import { resolveReadable } from '../../file-access.js';
 import { CliError } from '../../util.js';
 import { BLOCK_HEIGHT, TEXT_FILE_MAX_BYTES } from '../constants.js';
 import { asStr, clampInt } from '../sources.js';
@@ -38,8 +39,8 @@ function parseDelimited(text, delim) {
 // Load table {columns, rows} from a local .csv/.tsv/.json file (rowsFile).
 // CSV/TSV: first row = header → column keys. JSON: an array of objects (columns
 // from the union of keys) or arrays (needs explicit "columns").
-function loadRowsFile(file, cwd, where) {
-  const p = path.resolve(cwd, file);
+function loadRowsFile(file, files, where) {
+  const { file: p } = resolveReadable(files, file, where, 'rowsFile');
   let buf;
   try { buf = fs.readFileSync(p); } catch { throw new CliError(`${where}: cannot read rowsFile "${file}" (resolved: ${p})`); }
   if (buf.length > TEXT_FILE_MAX_BYTES) {
@@ -71,12 +72,12 @@ function loadRowsFile(file, cwd, where) {
 }
 
 // Normalizes one table block. `id` is the already-assigned block id.
-export function normalizeTableBlock(rawBlock, id, cwd, where, hasHeight) {
+export function normalizeTableBlock(rawBlock, id, files, where, hasHeight) {
   // Rows/columns may come from a local .csv/.tsv/.json file instead of inline.
   let rawColumns = rawBlock.columns;
   let rawRows = rawBlock.rows;
   if (typeof rawBlock.rowsFile === 'string' && rawBlock.rowsFile.trim() && !Array.isArray(rawRows)) {
-    const loaded = loadRowsFile(rawBlock.rowsFile, cwd, where);
+    const loaded = loadRowsFile(rawBlock.rowsFile, files, where);
     rawRows = loaded.rows;
     if (!Array.isArray(rawColumns) || !rawColumns.length) rawColumns = loaded.columns;
   }

@@ -4,7 +4,7 @@ import { openUrl } from '../open.js';
 import { assertSpecReady, normalizeSpec, questionFromInline } from '../spec/index.js';
 import { HOME, controlUrl, createBoard, deleteBoard, isAlive, listBoards, listRunning, loadBoard, loadRunning, removeRunning, saveBoard } from '../store.js';
 import { CliError, pollFor } from '../util.js';
-import { mustLoad, parseJson, printJson, readFileOrThrow, readStdin, runOrDetach } from './io.js';
+import { cliFileRoots, mustLoad, parseJson, printJson, readFileOrThrow, readStdin, runOrDetach } from './io.js';
 
 // `rly view <file.md> [more.md …]` — quick read-only board that renders files
 // with purpose-built blocks (markdown, data tables, PDF). With 2+ files a small
@@ -25,9 +25,11 @@ export async function cmdView(args) {
   const raw = { blocks };
   raw.title = args.title || (multi ? `${files.length} files` : path.basename(files[0]));
   raw.submitLabel = args.submitLabel || 'Done';
-  const spec = normalizeSpec(raw); // reads + validates each file, clear error if unreadable
+  // The files were named on the command line, so their folders are allowed.
+  const fileRoots = cliFileRoots(args, files.map((f) => path.dirname(f)));
+  const spec = normalizeSpec(raw, { fileRoots }); // reads + validates each file, clear error if unreadable
   await assertSpecReady(spec);
-  const record = createBoard(spec);
+  const record = createBoard(spec, { fileRoots });
   return runOrDetach(record, args);
 }
 
@@ -137,7 +139,7 @@ export async function cmdReuse(args) {
     console.log(JSON.stringify(src.spec, null, 2));
     return 0;
   }
-  const record = createBoard(src.spec);
+  const record = createBoard(src.spec, { fileRoots: src.fileRoots });
   return runOrDetach(record, args);
 }
 
@@ -154,13 +156,14 @@ export async function cmdUpdate(args) {
     throw new CliError(`board "${id}" is not running — \`rly reopen ${id}\` to serve it, then update.`, 5);
   }
 
+  const fileRoots = [...new Set([...(record.fileRoots ?? [record.cwd]), ...cliFileRoots(args)])];
   let spec;
   if (args.file) {
     const raw =
       args.file === '-'
         ? parseJson(await readStdin(), 'stdin')
         : parseJson(readFileOrThrow(args.file), args.file);
-    spec = normalizeSpec(raw);
+    spec = normalizeSpec(raw, { fileRoots });
   } else if (args.title || args.intro || args.q.length) {
     // Patch the CURRENT spec, then re-normalize so it's a clean normalized spec.
     const raw = { ...record.spec };
@@ -169,7 +172,7 @@ export async function cmdUpdate(args) {
     if (args.q.length) {
       raw.questions = [...(raw.questions || []), ...args.q.map((s, i) => questionFromInline(s, i))];
     }
-    spec = normalizeSpec(raw);
+    spec = normalizeSpec(raw, { fileRoots });
   } else {
     throw new CliError('update needs --file <spec.json>, --title, --intro, or -q "...".', 4);
   }
@@ -180,7 +183,7 @@ export async function cmdUpdate(args) {
     res = await fetch(new URL('/api/update', controlUrl(running)), {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-relay-token': running.token || '' },
-      body: JSON.stringify({ spec }),
+      body: JSON.stringify({ spec, fileRoots }),
     });
   } catch (err) {
     throw new CliError(`could not reach board "${id}" at ${running.url}: ${String((err && err.message) || err)}`, 5);

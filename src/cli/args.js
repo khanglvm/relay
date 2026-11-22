@@ -5,7 +5,7 @@ const VALUED_FLAGS = new Set([
   'file', 'html', 'html-file', 'title', 'intro', 'timeout', 'port',
   'submit-label', 'height', 'limit', 'target', 'id', 'replies',
   'on-result', 'notify-cmd', 'idle-grace', 'scope', 'range',
-  'host', 'token', 'token-file', 'allow-origin', 'role', 'public-url', 'link', 'link-command',
+  'host', 'token', 'token-file', 'root', 'allow-origin', 'role', 'public-url', 'link', 'link-command',
 ]);
 
 function camel(key) {
@@ -13,7 +13,7 @@ function camel(key) {
 }
 
 export function parseArgs(argv) {
-  const args = { _: [], q: [] };
+  const args = { _: [], q: [], root: [] };
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i];
     if (t === '-q' || t === '--question') {
@@ -35,6 +35,8 @@ export function parseArgs(argv) {
       }
       if (key === 'no-open') {
         args.open = false;
+      } else if (key === 'root') {
+        args.root.push(val);
       } else {
         args[camel(key)] = val;
       }

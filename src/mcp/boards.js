@@ -27,15 +27,16 @@ export const modeOf = (spec) => (spec.responseRequired === false ? 'show' : 'ask
  * CliError so the tool can answer with an isError result the model can fix.
  * @param {import('./store.js').RelayStore} store
  * @param {Record<string, any>} args
- * @param {{ displayOnly?: boolean }} [options]
+ * @param {{ displayOnly?: boolean, fileRoots?: string[] }} [options] `fileRoots` are the only places a spec may read local files from; none by default
  */
 export async function createMcpBoard(store, args, options = {}) {
+  const fileRoots = options.fileRoots ?? [];
   const raw = { ...args };
   const hasQuestions = Array.isArray(raw.questions) && raw.questions.length > 0;
   if (options.displayOnly || (!hasQuestions && raw.responseRequired === undefined)) raw.responseRequired = false;
-  const spec = normalizeSpec(raw);
+  const spec = normalizeSpec(raw, { fileRoots });
   await assertSpecReady(spec);
-  const record = await store.create(spec);
+  const record = await store.create(spec, { fileRoots });
   return { record, spec, mode: modeOf(spec) };
 }
 

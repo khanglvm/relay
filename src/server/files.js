@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createFileAccess } from '../file-access.js';
 import { splitFileReference } from '../file-preview.js';
 import { sendJson } from './http.js';
 
@@ -33,6 +34,15 @@ function looksLikeLocalPath(s) {
     return /\/[^/]+\/[^/]/.test(t) || /\.[A-Za-z0-9]{1,8}$/.test(t);
   }
   return false;
+}
+
+/**
+ * The file roots a stored board was created under. Boards saved before roots
+ * existed fall back to their authoring directory.
+ */
+export function recordFileAccess(record) {
+  const cwd = record.cwd || process.cwd();
+  return createFileAccess({ cwd, roots: Array.isArray(record.fileRoots) ? record.fileRoots : [cwd] });
 }
 
 // Expands ~ / file:// and resolves a (possibly relative) path to an absolute,

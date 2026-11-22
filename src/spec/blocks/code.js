@@ -5,8 +5,8 @@ import { asStr, clampInt, readTextSource } from '../sources.js';
 import { BLOCK_HEIGHT } from '../constants.js';
 
 // Normalizes one code block. `id` is the already-assigned block id.
-export function normalizeCodeBlock(rawBlock, id, cwd, where, hasHeight) {
-  const code = readTextSource(rawBlock, 'code', 'codeFile', cwd, where);
+export function normalizeCodeBlock(rawBlock, id, files, where, hasHeight) {
+  const code = readTextSource(rawBlock, 'code', 'codeFile', files, where);
   if (!code) throw new CliError(`${where}: code block needs a "code" string or a readable "codeFile".`);
   const block = { id, type: 'code', code };
   if (rawBlock.lang !== undefined) block.lang = asStr(rawBlock.lang);
@@ -21,8 +21,8 @@ export function normalizeCodeBlock(rawBlock, id, cwd, where, hasHeight) {
 }
 
 // Normalizes one diff block. `id` is the already-assigned block id.
-export function normalizeDiffBlock(rawBlock, id, cwd, where, hasHeight) {
-  const diff = readTextSource(rawBlock, 'diff', 'diffFile', cwd, where);
+export function normalizeDiffBlock(rawBlock, id, files, where, hasHeight) {
+  const diff = readTextSource(rawBlock, 'diff', 'diffFile', files, where);
   if (!diff.trim()) throw new CliError(`${where}: diff block needs a non-empty "diff" string (unified diff) or a readable "diffFile".`);
   const block = { id, type: 'diff', diff };
   if (rawBlock.lang !== undefined) block.lang = asStr(rawBlock.lang);

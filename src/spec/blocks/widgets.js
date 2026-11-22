@@ -5,7 +5,7 @@ import { resolveImageSrc } from './image.js';
 import { BLOCK_HEIGHT } from '../constants.js';
 
 // Normalizes one kpi block. `id` is the already-assigned block id.
-export function normalizeKpiBlock(rawBlock, id, cwd, where, hasHeight) {
+export function normalizeKpiBlock(rawBlock, id, files, where, hasHeight) {
   // Stat cards: a row of big-number metrics, each with an optional delta
   // (up/down tinted) and sublabel. For "revenue ↑12%" at a glance, no chart.
   const rawItems = Array.isArray(rawBlock.items) ? rawBlock.items : [];
@@ -25,7 +25,7 @@ export function normalizeKpiBlock(rawBlock, id, cwd, where, hasHeight) {
 }
 
 // Normalizes one typography block. `id` is the already-assigned block id.
-export function normalizeTypographyBlock(rawBlock, id, cwd, where, hasHeight) {
+export function normalizeTypographyBlock(rawBlock, id, files, where, hasHeight) {
   // Type specimens: render sample text at given size/weight/font so a designer
   // can react to type choices the way they react to a palette.
   const raw = Array.isArray(rawBlock.specimens) ? rawBlock.specimens : (Array.isArray(rawBlock.samples) ? rawBlock.samples : []);
@@ -50,14 +50,14 @@ export function normalizeTypographyBlock(rawBlock, id, cwd, where, hasHeight) {
 }
 
 // Normalizes one compare block. `id` is the already-assigned block id.
-export function normalizeCompareBlock(rawBlock, id, cwd, where, hasHeight) {
+export function normalizeCompareBlock(rawBlock, id, files, where, hasHeight) {
   // Before/after: two images with a draggable divider to compare a redesign.
   const beforeRaw = rawBlock.before && typeof rawBlock.before === 'object' ? rawBlock.before.src : (rawBlock.before ?? rawBlock.beforeSrc);
   const afterRaw = rawBlock.after && typeof rawBlock.after === 'object' ? rawBlock.after.src : (rawBlock.after ?? rawBlock.afterSrc);
   const block = {
     id, type: 'compare',
-    before: resolveImageSrc(beforeRaw, cwd, where, '"before"'),
-    after: resolveImageSrc(afterRaw, cwd, where, '"after"'),
+    before: resolveImageSrc(beforeRaw, files, where, '"before"'),
+    after: resolveImageSrc(afterRaw, files, where, '"after"'),
   };
   block.beforeLabel = asStr(rawBlock.beforeLabel ?? (rawBlock.before && rawBlock.before.label) ?? 'Before') || 'Before';
   block.afterLabel = asStr(rawBlock.afterLabel ?? (rawBlock.after && rawBlock.after.label) ?? 'After') || 'After';
@@ -66,7 +66,7 @@ export function normalizeCompareBlock(rawBlock, id, cwd, where, hasHeight) {
 }
 
 // Normalizes one palette block. `id` is the already-assigned block id.
-export function normalizePaletteBlock(rawBlock, id, cwd, where, hasHeight) {
+export function normalizePaletteBlock(rawBlock, id, files, where, hasHeight) {
   // Accept either { palettes: [{name, colors:[…]}, …] } or a single-palette
   // shorthand { name?, colors:[…] }. Each palette needs a non-empty colors
   // array of CSS color strings (#rrggbb, rgb(), hsl(), named — kept as given).

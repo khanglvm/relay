@@ -1,12 +1,12 @@
 // The pdf block.
-import fs from 'node:fs';
 import path from 'node:path';
+import { resolveReadable } from '../../file-access.js';
 import { CliError } from '../../util.js';
 import { asStr, clampInt } from '../sources.js';
 import { BLOCK_HEIGHT, PDF_MAX_BYTES, PDF_MIME } from '../constants.js';
 
 // Normalizes one pdf block. `id` is the already-assigned block id.
-export function normalizePdfBlock(rawBlock, id, cwd, where, hasHeight) {
+export function normalizePdfBlock(rawBlock, id, files, where, hasHeight) {
   const src = asStr(rawBlock.src ?? rawBlock.file ?? rawBlock.url).trim();
   if (!src) throw new CliError(`${where}: pdf block needs a "src" (http(s) PDF URL or local .pdf file path).`);
   const block = { id, type: 'pdf' };
@@ -19,15 +19,9 @@ export function normalizePdfBlock(rawBlock, id, cwd, where, hasHeight) {
     if (!block.title) block.title = path.basename(src.split(/[?#]/)[0]) || 'PDF';
     return block;
   }
-  const p = path.resolve(cwd, src);
-  const ext = path.extname(p).slice(1).toLowerCase();
+  const ext = path.extname(src).slice(1).toLowerCase();
   if (ext !== 'pdf') throw new CliError(`${where}: unsupported pdf extension ".${ext}" — use a local .pdf file or an http(s) PDF URL.`);
-  let stat;
-  try {
-    stat = fs.statSync(p);
-  } catch {
-    throw new CliError(`${where}: cannot read pdf "${src}" (resolved: ${p})`);
-  }
+  const { file: p, stat } = resolveReadable(files, src, where, 'pdf');
   if (stat.size > PDF_MAX_BYTES) {
     throw new CliError(`${where}: pdf "${src}" is ${(stat.size / 1024 / 1024).toFixed(0)}MB — max ${PDF_MAX_BYTES / 1024 / 1024}MB.`);
   }

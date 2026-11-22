@@ -36,6 +36,7 @@ const json = (value, structured) => ({ content: [{ type: 'text', text: JSON.stri
  * @param {any} server an McpServer
  * @param {object} [options]
  * @param {import('./store.js').RelayStore} [options.store] where boards live; defaults to the relay home on disk
+ * @param {string[]} [options.fileRoots] folders a spec may read local files from (`codeFile`, images, `rowsFile`...); none by default, so a remote client cannot read the server's disk
  * @param {string | Buffer} [options.tokenKey] the secret behind board tokens; defaults to a key file in the relay home
  * @param {(name: string) => string} [options.assetUrl] URL of a vendor file, for hosts that can fetch it
  * @param {(boardId: string) => string} [options.linkUrl] a URL where a person can open the board outside the host
@@ -70,7 +71,7 @@ function registerBoardTools({ server, options, store, key }) {
   const openBoard = (displayOnly) => async (args) => {
     let made;
     try {
-      made = await createMcpBoard(store, args, { displayOnly });
+      made = await createMcpBoard(store, args, { displayOnly, fileRoots: options.fileRoots });
     } catch (err) {
       return specError(err);
     }

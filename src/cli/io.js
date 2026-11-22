@@ -2,12 +2,33 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { envFileRoots, expandHome } from '../file-access.js';
 import { linkSetting, loadConfig, serializeLink } from '../link.js';
 import { runBoard } from '../server/index.js';
 import { assertSpecReady, questionFromInline } from '../spec/index.js';
 import { HOME, loadBoard, loadRunning, saveBoard, saveResultFile } from '../store.js';
 import { CliError, pollFor } from '../util.js';
 import { BIN, DEFAULT_BOARD_TIMEOUT_SEC } from './context.js';
+
+/**
+ * The directories a CLI-built spec may read local files from: where the person
+ * ran the command, the spec file's directory, the `--html-file` directory, every
+ * `--root`, `$RLY_FILE_ROOTS`, and `extra` for paths the command itself was given.
+ * @param {Record<string, any>} args parsed flags
+ * @param {string[]} [extra]
+ * @returns {string[]} absolute paths
+ */
+export function cliFileRoots(args, extra = []) {
+  const given = [
+    process.cwd(),
+    args.file && args.file !== '-' ? path.dirname(args.file) : '',
+    typeof args.htmlFile === 'string' ? path.dirname(args.htmlFile) : '',
+    ...(Array.isArray(args.root) ? args.root : []),
+    ...envFileRoots(),
+    ...extra,
+  ];
+  return given.filter(Boolean).map((p) => path.resolve(expandHome(p)));
+}
 
 export function printJson(obj) {
   process.stdout.write(JSON.stringify(obj, null, 2) + '\n');
