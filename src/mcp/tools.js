@@ -2,11 +2,14 @@
 import { registerAppResource, registerAppTool } from '@modelcontextprotocol/ext-apps/server';
 import fs from 'node:fs';
 import path from 'node:path';
+import { A2UI_MIME, BOARD_CATALOG_ID } from '../a2ui/board-constants.js';
+import { wantsA2ui } from '../a2ui/negotiate.js';
+import { toA2ui } from '../a2ui/to-a2ui.js';
 import { renderAgentTopic, topicIndex } from '../cli/agent-topics.js';
 import { lookupSchema } from '../spec/index.js';
 import { sleep } from '../util.js';
 import {
-  boardResult, createMcpBoard, errorResult, isFinal, recordEvent, resultOf, saveDraft, specError, submitBoard,
+  boardResult, createMcpBoard, errorResult, handleSurfaceAction, isFinal, resultOf, saveDraft, specError, submitBoard,
 } from './boards.js';
 import { BOARD_URI, MAX_WAIT_SECONDS, TOOL, UI_MIME, VENDOR_URI_PREFIX } from './constants.js';
 import { BOARD_RESOURCE_META, boardPage, DOCS_DIR, vendorChunk, vendorText, VENDOR_FILES } from './page.js';
@@ -73,7 +76,7 @@ function registerBoardTools({ server, options, store, key }) {
     }
     const result = boardResult(made.record, made.spec, made.mode);
     if (options.linkUrl) result.structuredContent = { .../** @type {object} */ (result.structuredContent), url: options.linkUrl(made.record.id) };
-    result._meta = { ...appMeta(['model', 'app']), relay: { token: boardToken(key, made.record.id) } };
+    result._meta = { ...appMeta(['model', 'app']), relay: { token: boardToken(key, made.record.id) }, 'relay/a2ui': { catalogIds: [BOARD_CATALOG_ID] } };
     return result;
   };
   registerAppTool(server, TOOL.board, { title: 'Relay board', description: BOARD_DESCRIPTION, inputSchema: boardInput, _meta: modelMeta }, openBoard(false));
@@ -131,9 +134,14 @@ function registerAppTools({ server, options, store, key }) {
     return act(record, args);
   });
 
-  appTool(TOOL.view, { description: 'The board spec, for the board iframe.', inputSchema: viewInput }, async (args) => {
+  appTool(TOOL.view, { description: 'The board, for the board iframe; for a host that declared the board catalog, A2UI messages.', inputSchema: viewInput }, async (args, ctx) => {
     const { record, error } = await guard(args);
     if (error) return error;
+    const caller = { capabilities: server.server.getClientCapabilities(), meta: ctx?.mcpReq?._meta };
+    if (wantsA2ui(caller)) {
+      const messages = toA2ui(record.spec, { surfaceId: `relay-${record.id}`, draft: record.draft });
+      return { content: [{ type: 'resource', resource: { uri: `a2ui://relay/board/${record.id}`, mimeType: A2UI_MIME, text: JSON.stringify(messages) } }] };
+    }
     const vendorUrls = options.assetUrl ? Object.fromEntries(VENDOR_FILES.map((f) => [f, options.assetUrl(f)])) : undefined;
     return json({ boardId: record.id }, { boardId: record.id, spec: record.spec, draft: record.draft ?? null, finished: Boolean(record.result), vendorUrls });
   });
@@ -141,8 +149,8 @@ function registerAppTools({ server, options, store, key }) {
     await saveDraft(store, record.id, args.draft, record.spec);
     return text('saved');
   }));
-  appTool(TOOL.a2uiAction, { description: 'Records a button click from an a2ui block.', inputSchema: actionInput }, onOpenBoard(async (record, args) => {
-    const outcome = await recordEvent(store, record, args);
+  appTool(TOOL.a2uiAction, { description: 'A renderer event: a button click from an a2ui block, or relay.submit and relay.draft from an A2UI board surface.', inputSchema: actionInput }, onOpenBoard(async (record, args) => {
+    const outcome = await handleSurfaceAction(store, record, args);
     return outcome.ok ? text('recorded') : errorResult(`relay: ${outcome.error}`);
   }));
   appTool(TOOL.submit, { description: 'Stores the final answers.', inputSchema: submitInput }, (args) => oneAtATime(args.boardId, async () => {

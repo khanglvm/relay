@@ -1,12 +1,13 @@
 // Builds an McpServer with the relay tools registered.
 import { McpServer } from '@modelcontextprotocol/server';
+import { capabilitiesDeclareBoardCatalog } from '../a2ui/negotiate.js';
 import { UI_EXT, UI_MIME } from './constants.js';
 import { PKG } from './page.js';
 import { registerRelay } from './tools.js';
 
 const INSTRUCTIONS = 'Relay shows boards inline. Call relay_board with a spec; the person answers in the board, then read it with relay_result. relay_help gives exact field shapes.';
 
-const clientRendersBoards = (capabilities) => Boolean(capabilities?.extensions?.[UI_EXT]);
+const clientRendersBoards = (capabilities) => Boolean(capabilities?.extensions?.[UI_EXT]) || capabilitiesDeclareBoardCatalog(capabilities);
 
 /** @param {Parameters<typeof registerRelay>[1]} [options] */
 export function createRelayServer(options = {}) {

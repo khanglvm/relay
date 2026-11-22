@@ -2,7 +2,9 @@
 import { assertSpecReady, cleanAnswers, normalizeSpec } from '../spec/index.js';
 import { CliError } from '../util.js';
 import { saveBoardArtifact } from '../store.js';
+import { ACTION_DRAFT, ACTION_SUBMIT } from '../a2ui/board-constants.js';
 import { assertSafeJson } from '../a2ui/compile.js';
+import { fromA2ui } from '../a2ui/from-a2ui.js';
 import { findBlock, sanitizeAnnotations, sanitizeBlockEdits } from '../server/sanitize.js';
 import { ARTIFACT_MAX_BYTES, ARTIFACT_MIMES, artifactBytesMatch } from '../server/result.js';
 import { RESULT_BUDGET_BYTES } from './constants.js';
@@ -155,6 +157,26 @@ export async function recordEvent(store, record, event) {
   const events = [...(record.events || []), entry].slice(-MAX_EVENTS);
   await store.update(record.id, { events });
   return { ok: true, entry };
+}
+
+/**
+ * A renderer event from an A2UI surface. `relay.submit` and `relay.draft` carry the surface's
+ * data model and store it as a submit or a draft; any other name is a widget button click.
+ * @returns {Promise<{ ok: boolean, status?: string, error?: string }>}
+ */
+export async function handleSurfaceAction(store, record, args) {
+  const action = asObject(args.action);
+  const name = typeof action.name === 'string' ? action.name : args.name;
+  if (name !== ACTION_SUBMIT && name !== ACTION_DRAFT) {
+    const blockId = args.blockId;
+    return recordEvent(store, record, { blockId, name, context: args.context ?? action.context });
+  }
+  const dataModel = args.dataModel ?? asObject(action.context).dataModel ?? action.dataModel;
+  if (!dataModel || typeof dataModel !== 'object') return { ok: false, error: 'the event carries no data model' };
+  const payload = fromA2ui(dataModel, record.spec);
+  if (name === ACTION_SUBMIT) return submitBoard(store, record, payload);
+  await saveDraft(store, record.id, payload, record.spec);
+  return { ok: true };
 }
 
 /** What relay_result reports for a board right now. */
