@@ -147,7 +147,7 @@ Tools:
 
 The flow: call `relay_board`, tell the person the board is on screen, and carry on or wait. When they submit, the host posts a one-line message naming the board. Read the answers with `relay_result`. Do not ask the same questions again in chat.
 
-`rly mcp` speaks stdio to a local desktop host. `rly mcp --http [--port N] [--token SECRET] [--allow-origin ORIGIN]` serves Streamable HTTP at `/mcp` for hosts that connect over a network; `RLY_MCP_TOKEN` sets the bearer token. Boards are stored in the relay home of the machine that runs the server, so `codeFile` and local images resolve there and nowhere else. To add the tools to a server you already run, call `registerRelay(server, {store, assetUrl, linkUrl})` from `@khanglvm/relay/mcp`.
+`rly mcp` speaks stdio to a local desktop host. `rly mcp --http [--port N] [--token-file PATH] [--allow-origin ORIGIN]` serves Streamable HTTP at `/mcp` for hosts that connect over a network. The bearer token comes from `--token-file`, `RLY_MCP_TOKEN` or `--token`; the flag shows in `ps`, so prefer the file or the variable. Boards are stored in the relay home of the machine that runs the server, so `codeFile` and local images resolve there and nowhere else. To add the tools to a server you already run, call `registerRelay(server, {store, assetUrl, linkUrl})` from `@khanglvm/relay/mcp`.
 
 If the host streams the tool call as you write it, the board renders valid blocks and questions as they arrive and finishes when your call completes.
 

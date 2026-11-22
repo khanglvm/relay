@@ -6,18 +6,43 @@ import { HOME } from '../store.js';
 
 const KEY_FILE = path.join(HOME, 'mcp-key');
 
-/** The server's HMAC key: a random value kept in the relay home, created on first use. */
-export function loadServerKey(file = KEY_FILE) {
+const readKey = (file) => {
   try {
-    const existing = fs.readFileSync(file, 'utf8').trim();
-    if (existing) return existing;
+    return fs.readFileSync(file, 'utf8').trim();
   } catch {
-    // first run: create it below
+    return '';
   }
-  const key = crypto.randomBytes(32).toString('hex');
+};
+
+/**
+ * The server's HMAC key: a random value kept in the relay home, created on first use.
+ * Two servers starting together both try to create it; the exclusive create lets one
+ * win and the other read what the winner wrote, so they never hold different keys.
+ */
+export function loadServerKey(file = KEY_FILE) {
+  const existing = readKey(file);
+  if (existing) return existing;
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, key + '\n', { mode: 0o600 });
-  return key;
+  const key = crypto.randomBytes(32).toString('hex');
+  const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}`;
+  fs.writeFileSync(tmp, `${key}\n`, { mode: 0o600 });
+  try {
+    // link() fails when the key already exists and never exposes a half-written file.
+    fs.linkSync(tmp, file);
+    return key;
+  } catch (e) {
+    if (e.code === 'EEXIST') return readKey(file) || key;
+    // A filesystem without hard links: fall back to an exclusive create.
+    try {
+      fs.writeFileSync(file, `${key}\n`, { mode: 0o600, flag: 'wx' });
+      return key;
+    } catch (again) {
+      if (again.code !== 'EEXIST') throw again;
+      return readKey(file) || key;
+    }
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
 }
 
 export const boardToken = (key, boardId) => crypto.createHmac('sha256', key).update(String(boardId)).digest('hex');
