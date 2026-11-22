@@ -1,5 +1,30 @@
 # Changelog
 
+### 0.20.3 — shapes in the skill, lookups on demand
+
+Changed
+- The skill, `docs/AGENT.md` and `rly skill rules` list the JSON shape of every
+  common block and question type, with a trigger line for `a2ui` (buttons and live
+  status) and `checklist` (per-area sign-off). In a measured run with Sonnet this cut
+  input tokens by 29% and left no failed first board. Their link advice names no host:
+  `--public-url` and `--link-command` cover it.
+- The error for `responseRequired:false` with questions says which of the two to remove.
+  Chart errors say which field is missing and point to `rly schema chart`.
+
+Added
+- `rly schema <type>` prints the fields of one block or question type.
+- `rly agent <topic>` prints one part of the guide: `questions`, `blocks`, `annotate`,
+  `lifecycle`, `sharing`, `mcp` or `a2ui`. `rly agent` alone still prints all of it.
+- A chart takes its kind from `chartType`, `chart_type` or the block type itself
+  (`{"type":"bar", ...}`), and its series from Chart.js's `datasets`. A block type may
+  be `md`, `img`, `diagram`, `flowchart`, `metrics`, `stats`, `widget`, `patch` or
+  `swatches`, and a question may list `choices` for `options`.
+
+Fixed
+- A mermaid check that fails inside its own sandbox now reports an internal error and says the
+  diagram was not checked. Before, it said "invalid mermaid syntax".
+- `package-lock.json` carries the package version again (it said 0.20.0).
+
 ### 0.20.2 — mermaid diagrams pass the check again
 
 - Valid mermaid diagrams open again in `rly ask`, `relay_ask` and `relay_show`.

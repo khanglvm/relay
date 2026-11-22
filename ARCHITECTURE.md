@@ -11,9 +11,9 @@ agent <- rly wait / rly result <- store
 ```
 
 ## Modules
-- `src/spec/`: `normalize.js` turns a spec into its normalized form; `blocks/` has one file per block type; `sources.js` reads `mdFile` and `rowsFile` text; `schema.js` holds `SPEC_SCHEMA`; `ready.js` has `assertSpecReady`, the checks that need async work (mermaid syntax, A2UI Express). `index.js` is the barrel.
+- `src/spec/`: `normalize.js` turns a spec into its normalized form; `blocks/` has one file per block type; `sources.js` reads `mdFile` and `rowsFile` text; `schema.js` holds `SPEC_SCHEMA`; `lookup.js` cuts one block or question type out of it for `rly schema <type>`; `ready.js` has `assertSpecReady`, the checks that need async work (mermaid syntax, A2UI Express). `index.js` is the barrel.
 - `src/index.js`: the public library entry. It wraps `spec/`, `store.js` and `a2ui/compile.js`.
-- `src/cli/`: one file per command (`ask`, `wait`, `share`, `git`, `boards`, `skill`, `install`, `upgrade`, `mcp`, `config`) and `index.js`, the router. `bin/rly.js` calls it.
+- `src/cli/`: one file per command (`ask`, `wait`, `share`, `git`, `boards`, `skill`, `install`, `upgrade`, `mcp`, `config`) and `index.js`, the router. `bin/rly.js` calls it. `agent-topics.js` cuts `docs/AGENT.md` into the topics `rly agent <topic>` prints.
 - `src/server/`: `board.js` serves a board on a local port and handles `/api/*` (board, draft, submit, update, artifact, file open, file preview, share) with the access rules; `page.js` builds the page; `sanitize.js` cleans posted data; `files.js` opens and streams local files; `http.js`, `reviews.js`, `result.js` and `paths.js` hold the helpers.
 - `src/mcp.js`: JSON-RPC over stdio or Streamable HTTP. Declares the `ui://relay/board` resource and the `relay_ask` and `relay_show` tools.
 - `src/store.js`: boards, results, running-server records and preferences under `RLY_HOME`.

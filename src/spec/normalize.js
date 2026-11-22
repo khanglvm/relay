@@ -2,7 +2,7 @@
 // the server and the MCP App read.
 import { CliError } from '../util.js';
 import { asStr, clampInt, readBlockHtml, readHtml } from './sources.js';
-import { ALIASES, BLOCK_HEIGHT, BLOCK_TYPES, HTML_HEIGHT, TYPES } from './constants.js';
+import { ALIASES, BLOCK_ALIASES, BLOCK_HEIGHT, BLOCK_TYPES, CHART_KINDS, HTML_HEIGHT, TYPES } from './constants.js';
 import { BLOCK_NORMALIZERS } from './blocks/index.js';
 
 // Normalizes one block object. `id` is the already-assigned block id.
@@ -13,8 +13,13 @@ function normalizeBlock(rawBlock, id, cwd, where) {
   }
   let type = asStr(rawBlock.type).trim().toLowerCase();
   if (!type) throw new CliError(`${where}: missing "type". Valid: ${BLOCK_TYPES.join(', ')}.`);
+  if (CHART_KINDS.includes(type)) {
+    rawBlock = { ...rawBlock, kind: rawBlock.kind ?? type };
+    type = 'chart';
+  }
+  type = BLOCK_ALIASES[type] || type;
   if (!BLOCK_TYPES.includes(type)) {
-    throw new CliError(`${where}: unknown block type "${rawBlock.type}". Valid: ${BLOCK_TYPES.join(', ')}.`);
+    throw new CliError(`${where}: unknown block type "${rawBlock.type}". Use one of: ${BLOCK_TYPES.join(', ')}. \`rly schema <type>\` shows its fields.`);
   }
 
   const hasHeight = rawBlock.height !== undefined && rawBlock.height !== null && rawBlock.height !== '';
@@ -159,7 +164,7 @@ export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
     };
 
     if (type === 'single' || type === 'multi' || type === 'rank' || type === 'checklist' || type === 'allocate') {
-      const opts = Array.isArray(rq.options) ? rq.options : [];
+      const opts = Array.isArray(rq.options) ? rq.options : Array.isArray(rq.choices) ? rq.choices : [];
       q.options = opts.map((o, j) => {
         if (typeof o === 'string' || typeof o === 'number') {
           return { value: String(o), label: String(o) };
@@ -261,7 +266,7 @@ export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
     throw new CliError('Spec needs "questions" and/or "blocks"/"html" — nothing to show.');
   }
   if (!spec.responseRequired && spec.questions.length) {
-    throw new CliError('responseRequired:false is display-only and cannot contain questions. Use responseRequired:true when answers are needed.');
+    throw new CliError('responseRequired:false makes a display-only board, which cannot hold questions. Remove "responseRequired" to collect answers, or remove "questions" to keep the board display-only.');
   }
   spec.submitLabel = asStr(raw.submitLabel).trim() || (spec.questions.length ? 'Submit' : 'Acknowledge');
   return spec;

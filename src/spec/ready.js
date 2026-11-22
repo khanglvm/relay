@@ -81,13 +81,27 @@ async function mermaidValidator() {
   return mermaidValidatorPromise;
 }
 
+// Names of the errors JavaScript itself throws. The parser throws these when
+// its sandbox lacks something (`X is not defined`, `Y is not a function`); a
+// diagram with bad syntax makes it throw a plain Error carrying a parse message.
+// The sandbox is another realm, so `instanceof` cannot tell them apart.
+const ENVIRONMENT_ERROR_NAMES = new Set(['TypeError', 'ReferenceError', 'RangeError', 'EvalError']);
+
+/** True when the error comes from the checker's own environment and says nothing about the diagram. */
+export function isCheckerFailure(err) {
+  return Boolean(err) && ENVIRONMENT_ERROR_NAMES.has(err.name);
+}
+
 async function assertMermaidSyntax(code, where) {
   const mermaid = await mermaidValidator();
   try {
     const parsed = mermaid.parse(code);
     if (parsed && typeof parsed.then === 'function') await parsed;
   } catch (err) {
-    throw new CliError(`${where}: invalid mermaid syntax — ${compactError(err)}`);
+    if (isCheckerFailure(err)) {
+      throw new CliError(`${where}: internal error, the mermaid checker failed and did not check this diagram (${compactError(err)}). The diagram may be fine. Report this to the relay maintainers, or show the diagram as an image or a markdown code block meanwhile.`, 1);
+    }
+    throw new CliError(`${where}: invalid mermaid syntax. Fix the diagram source: ${compactError(err)}`);
   }
 }
 

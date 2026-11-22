@@ -33,6 +33,25 @@ export const ALIASES = {
   points: 'allocate',
 };
 
+// Block type names agents reach for that mean one of ours. A chart kind used as
+// the block type ({"type":"bar", labels, series}) is handled in normalizeBlock.
+export const BLOCK_ALIASES = {
+  md: 'markdown',
+  img: 'image',
+  picture: 'image',
+  flowchart: 'mermaid',
+  diagram: 'mermaid',
+  stats: 'kpi',
+  metrics: 'kpi',
+  widget: 'a2ui',
+  patch: 'diff',
+  swatches: 'palette',
+};
+
+// Chart field spellings that mean `kind` and `series` (Chart.js calls the second one `datasets`).
+export const CHART_KIND_FIELDS = ['kind', 'chartType', 'chart_type'];
+export const CHART_SERIES_FIELDS = ['series', 'datasets'];
+
 export const HTML_HEIGHT = { min: 100, max: 2400, boardDefault: 400, questionDefault: 360 };
 
 // Block heights clamp to the same window; defaults vary per block type.
