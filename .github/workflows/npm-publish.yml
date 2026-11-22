@@ -90,10 +90,16 @@ jobs:
             throw new Error(`Registry lookup failed: ${response?.error?.code || result.status}`);
           }
           NODE
+      - name: Install dependencies
+        if: steps.release.outputs.publish == 'true' || inputs.dry_run
+        run: npm ci
       - name: Run release checks
         if: steps.release.outputs.publish == 'true' || inputs.dry_run
         run: |
+          npm run check
+          npm run lint
           npm test
+          npm run smoke:pack
       - name: Inspect package contents
         if: steps.release.outputs.publish == 'true' || inputs.dry_run
         run: npm pack --dry-run

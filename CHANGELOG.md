@@ -1,5 +1,21 @@
 # Changelog
 
+### 0.19.0 — a standard package
+
+- Import Relay as a library: `createBoard`, `normalizeSpec`, `validateSpec`
+  (returns `{ ok, errors }` instead of throwing) and `compileA2ui`, with
+  TypeScript declarations. Subpath imports: `@khanglvm/relay/spec`, `/a2ui`,
+  `/mcp`, and `/schema.json`.
+- `schema/spec.v1.json` is the JSON Schema for a board spec. A spec can now
+  carry `version: 1` and `$schema`; both are optional, and a spec without them
+  is read as version 1. They also appear in `rly schema` and in the MCP tool
+  input schema.
+- `package.json` now has an `exports` map, so imports of files under `src/`
+  such as `@khanglvm/relay/src/spec.js` stop working. Use the subpaths above.
+- CI runs the type check, lint, tests, `npm pack --dry-run` and an install
+  smoke test from a temp project. Node 24 joins the test matrix.
+- No change to the CLI, the web board or the MCP output.
+
 ### 0.18.0 — private links and A2UI widgets
 
 - Open a board on a phone or another computer: `--devlink` publishes it through

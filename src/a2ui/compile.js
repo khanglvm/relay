@@ -210,6 +210,8 @@ function assertTree(byId, where) {
 /**
  * Validates a flat surface against Relay's catalog and returns it as plain data.
  * Throws a CliError worded for the agent that wrote it.
+ * @param {{ components: any, dataModel?: any }} surface
+ * @param {string} [where]
  */
 export function validateSurface({ components, dataModel }, where = 'a2ui') {
   const catalog = loadCatalog().components;

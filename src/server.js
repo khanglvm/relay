@@ -316,8 +316,7 @@ function sanitizeAnnotationTarget(value, boardId) {
   if (clean.x + clean.w > 1) clean.w = 1 - clean.x;
   if (clean.y + clean.h > 1) clean.h = 1 - clean.y;
   clean.label = limitString(clean.label, 200);
-  if (clean.side === 'before' || clean.side === 'after') clean.side = clean.side;
-  else delete clean.side;
+  if (clean.side !== 'before' && clean.side !== 'after') delete clean.side;
   const crop = sanitizeAnnotationCrop(clean.crop, boardId);
   if (crop) clean.crop = crop;
   else delete clean.crop;
@@ -1279,7 +1278,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
   // listening socket through a short close grace, so a stop-then-reopen on the
   // same port can briefly hit EADDRINUSE — retry for ~2s to ride that out before
   // giving up. Only then fall back to a random free port rather than failing.
-  await new Promise((resolve, reject) => {
+  await new Promise((/** @type {(value?: unknown) => void} */ resolve, reject) => {
     const RETRY_MS = 200;
     const MAX_RETRIES = 10; // ~2s — covers a prior server's ~600ms close grace
     let retries = 0;
@@ -1303,7 +1302,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
     };
     bind(port, true);
   });
-  actualPort = server.address().port;
+  actualPort = /** @type {import('node:net').AddressInfo} */ (server.address()).port;
   const localUrl = `http://127.0.0.1:${actualPort}/`;
   url = localUrl;
   try {

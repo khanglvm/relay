@@ -1145,6 +1145,8 @@ export const SPEC_SCHEMA = {
   description:
     'A relay board. Renders an optional intro, board-level blocks, then questions (each with optional per-question blocks), then a submit button. The result JSON contains "answers", "comment", per-question "notes", "annotations" (element-level comments the user attached to any block — see the annotation shape below), and "blockEdits" (a map blockId→edited source for any editable mermaid block the user changed, null when none).',
   properties: {
+    version: { const: 1, description: 'Spec version. Optional: a spec without it is read as version 1.' },
+    $schema: { type: 'string', description: 'Optional URL of this schema, for editor completion. Relay ignores it.' },
     title: { type: 'string', description: 'Board title (default "Relay")' },
     intro: { type: 'string', description: 'Intro text shown under the title. Newlines preserved.' },
     blocks: BLOCK_SCHEMA,

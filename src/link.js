@@ -35,6 +35,7 @@ export function parseLinkValue(raw, where = 'link') {
 /**
  * Picks the link setting. Highest first: --no-devlink, --devlink, --public-url,
  * RLY_PUBLIC_URL, RLY_LINK, the saved config, then off.
+ * @param {{ args?: Record<string, any>, env?: Record<string, string | undefined>, config?: Record<string, any> }} [input]
  */
 export function linkSetting({ args = {}, env = process.env, config = {} } = {}) {
   if (args.noDevlink === true) return { mode: 'off' };

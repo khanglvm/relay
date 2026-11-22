@@ -1,7 +1,7 @@
 {
   "name": "@khanglvm/relay",
-  "version": "0.18.0",
-  "description": "Question boards with rich blocks (markdown, charts, mermaid, tables, code, diffs, video, sandboxed HTML), clickable local file-links, and element-level annotations for AI coding agents (Claude Code, Codex, …): ask users structured questions, present interactive visuals, collect inline comments, read answers as JSON — in a local browser board OR rendered INLINE inside the Claude & Codex apps as an MCP App (SEP-1865).",
+  "version": "0.19.0",
+  "description": "Question boards with rich blocks (markdown, charts, mermaid, tables, code, diffs, video, sandboxed HTML), clickable local file-links, and element-level annotations for AI coding agents (Claude Code, Codex, \u2026): ask users structured questions, present interactive visuals, collect inline comments, read answers as JSON \u2014 in a local browser board OR rendered INLINE inside the Claude & Codex apps as an MCP App (SEP-1865).",
   "keywords": [
     "ai-agents",
     "claude-code",
@@ -39,6 +39,8 @@
     "skills",
     "docs",
     "!docs/assets",
+    "schema",
+    "types",
     "README.md",
     "LICENSE"
   ],
@@ -46,6 +48,39 @@
     "node": ">=18.3"
   },
   "scripts": {
-    "test": "node test/smoke.mjs && node --test test/link.test.mjs test/a2ui.test.mjs"
-  }
+    "check": "tsc -p tsconfig.json",
+    "lint": "biome ci --diagnostic-level=error .",
+    "gen:schema": "node scripts/gen-schema.mjs --write",
+    "build:types": "tsc -p tsconfig.build.json",
+    "test": "node test/smoke.mjs && node --test test/link.test.mjs test/a2ui.test.mjs test/unit/*.test.mjs",
+    "smoke:pack": "node scripts/smoke-pack.mjs",
+    "prepack": "npm run build:types"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.8",
+    "@types/node": "^20.19.43",
+    "typescript": "^7.0.2"
+  },
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./spec": {
+      "types": "./types/spec.d.ts",
+      "default": "./src/spec.js"
+    },
+    "./a2ui": {
+      "types": "./types/a2ui/compile.d.ts",
+      "default": "./src/a2ui/compile.js"
+    },
+    "./mcp": {
+      "types": "./types/mcp.d.ts",
+      "default": "./src/mcp.js"
+    },
+    "./schema.json": "./schema/spec.v1.json",
+    "./package.json": "./package.json"
+  },
+  "main": "./src/index.js",
+  "types": "./types/index.d.ts"
 }

@@ -1526,6 +1526,7 @@ function cmdMcpConfig(args, sub) {
 
   if (target === 'claude' || target === 'claude-desktop') {
     const file = claudeDesktopConfigPath();
+    /** @type {Record<string, any>} */
     let existing = {};
     try { existing = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { existing = {}; }
     if (existing === null || typeof existing !== 'object' || Array.isArray(existing)) existing = {};
