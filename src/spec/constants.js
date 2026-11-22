@@ -1,6 +1,6 @@
 // Limits, allowed values and aliases that the spec readers share.
 
-export const TYPES = ['single', 'multi', 'yesno', 'text', 'textarea', 'scale', 'color', 'rank', 'checklist', 'allocate'];
+export const TYPES = ['single', 'multi', 'yesno', 'text', 'textarea', 'scale', 'color', 'rank', 'checklist', 'allocate', 'pick'];
 
 export const ALIASES = {
   radio: 'single',
@@ -31,6 +31,9 @@ export const ALIASES = {
   budget: 'allocate',
   distribute: 'allocate',
   points: 'allocate',
+  tiles: 'pick',
+  gallery: 'pick',
+  shortlist: 'pick',
 };
 
 // Block type names agents reach for that mean one of ours. A chart kind used as
@@ -82,3 +85,12 @@ export const IMAGE_MIMES = {
   webp: 'image/webp', svg: 'image/svg+xml', avif: 'image/avif', bmp: 'image/bmp',
 };
 export const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+
+// pick questions: media tiles the person chooses among. Local images are embedded
+// as data URIs like image blocks, so the total is capped, not just each file.
+export const PICK = {
+  maxItems: 60,
+  maxImageBytes: 24 * 1024 * 1024,
+  maxNoteChars: 2000,
+  maxOverallChars: 5000,
+};

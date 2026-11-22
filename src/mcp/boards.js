@@ -1,5 +1,5 @@
 // What each relay tool does to a board, apart from MCP framing: build, view, draft, submit, read.
-import { assertSpecReady, normalizeSpec } from '../spec/index.js';
+import { assertSpecReady, cleanAnswers, normalizeSpec } from '../spec/index.js';
 import { CliError } from '../util.js';
 import { saveBoardArtifact } from '../store.js';
 import { assertSafeJson } from '../a2ui/compile.js';
@@ -73,11 +73,11 @@ export function specError(err) {
 }
 
 /** Saves the person's answers so far, so relay_result can show them before the final submit. */
-export async function saveDraft(store, id, draft) {
+export async function saveDraft(store, id, draft, spec) {
   const d = asObject(draft);
   return store.update(id, {
     draft: {
-      answers: asObject(d.answers),
+      answers: spec ? cleanAnswers(spec, asObject(d.answers)) : asObject(d.answers),
       comment: limit(d.comment, MAX_TEXT),
       notes: asObject(d.notes),
       annotations: sanitizeAnnotations(d.annotations, id),
@@ -119,7 +119,7 @@ export async function submitBoard(store, record, body) {
   if (record.spec.responseRequired === false) return { ok: false, error: 'this board is display-only' };
   if (record.result) return { ok: false, error: 'this board was already submitted' };
   const b = asObject(body);
-  const answers = asObject(b.answers);
+  const answers = cleanAnswers(record.spec, asObject(b.answers));
   const status = record.spec.questions.length ? 'submitted' : 'acknowledged';
   const result = {
     status,

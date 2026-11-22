@@ -4,3 +4,4 @@ export { assertSpecReady } from './ready.js';
 export { normalizeSpec, questionFromInline } from './normalize.js';
 export { SPEC_SCHEMA } from './schema.js';
 export { lookupSchema } from './lookup.js';
+export { cleanAnswers, cleanPick } from './pick.js';

@@ -57,6 +57,7 @@
     "prepack": "npm run build:types"
   },
   "devDependencies": {
+    "@a2ui/web_core": "^0.15.0",
     "@biomejs/biome": "^2.6.8",
     "@modelcontextprotocol/client": "^2.4.0",
     "@types/node": "^20.19.43",

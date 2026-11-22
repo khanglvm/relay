@@ -4,6 +4,7 @@ import { CliError } from '../util.js';
 import { asStr, clampInt, readBlockHtml, readHtml } from './sources.js';
 import { ALIASES, BLOCK_ALIASES, BLOCK_HEIGHT, BLOCK_TYPES, CHART_KINDS, HTML_HEIGHT, TYPES } from './constants.js';
 import { BLOCK_NORMALIZERS } from './blocks/index.js';
+import { normalizePick } from './pick.js';
 
 // Normalizes one block object. `id` is the already-assigned block id.
 // Returns the normalized block (with a guaranteed string `type` + `id`).
@@ -196,6 +197,8 @@ export function normalizeSpec(raw, { cwd = process.cwd() } = {}) {
         q.other = type === 'single' ? rq.other !== false : rq.other === true;
       }
     }
+
+    if (type === 'pick') normalizePick(q, rq, where, cwd);
 
     if (type === 'checklist') {
       // Per-item status control. Default Pass / Fail / N/A; override with

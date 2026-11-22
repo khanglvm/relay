@@ -138,7 +138,7 @@ function registerAppTools({ server, options, store, key }) {
     return json({ boardId: record.id }, { boardId: record.id, spec: record.spec, draft: record.draft ?? null, finished: Boolean(record.result), vendorUrls });
   });
   appTool(TOOL.draft, { description: 'Saves the answers so far.', inputSchema: draftInput }, onOpenBoard(async (record, args) => {
-    await saveDraft(store, record.id, args.draft);
+    await saveDraft(store, record.id, args.draft, record.spec);
     return text('saved');
   }));
   appTool(TOOL.a2uiAction, { description: 'Records a button click from an a2ui block.', inputSchema: actionInput }, onOpenBoard(async (record, args) => {
