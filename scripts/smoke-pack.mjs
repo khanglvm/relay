@@ -25,7 +25,7 @@ import { createRequire } from 'node:module';
 import { compileA2ui, createBoard, normalizeSpec, validateSpec } from '@khanglvm/relay';
 import { SPEC_SCHEMA } from '@khanglvm/relay/spec';
 import { compileExpress } from '@khanglvm/relay/a2ui';
-import { runMcp } from '@khanglvm/relay/mcp';
+import { registerRelay, runMcp } from '@khanglvm/relay/mcp';
 const require = createRequire(import.meta.url);
 const pkgDir = new URL('./node_modules/@khanglvm/relay/', import.meta.url);
 const schema = JSON.parse(readFileSync(require.resolve('@khanglvm/relay/schema.json'), 'utf8'));
@@ -36,7 +36,7 @@ for (const f of files) {
   const verdict = validateSpec(JSON.parse(readFileSync(new URL(f, examples), 'utf8')), { cwd: examples.pathname });
   if (!verdict.ok) throw new Error(f + ': ' + verdict.errors.join('; '));
 }
-for (const fn of [compileA2ui, createBoard, normalizeSpec, compileExpress, runMcp]) if (typeof fn !== 'function') throw new Error('missing export');
+for (const fn of [compileA2ui, createBoard, normalizeSpec, compileExpress, runMcp, registerRelay]) if (typeof fn !== 'function') throw new Error('missing export');
 if (schema.title !== SPEC_SCHEMA.title) throw new Error('schema.json differs from SPEC_SCHEMA');
 if (!existsSync(new URL('types/index.d.ts', pkgDir))) throw new Error('types/index.d.ts is not packed');
 console.log('import smoke ok: ' + files.length + ' examples validated');

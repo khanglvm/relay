@@ -13,7 +13,7 @@ It works with agents such as Claude Code and Codex.
 
 ## Install and try it
 
-Requires Node.js 18.3 or newer.
+Requires Node.js 20 or newer.
 
 ```sh
 npm i -g @khanglvm/relay

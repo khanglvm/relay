@@ -1,5 +1,5 @@
 // The browser files of each page, in the order they run. The web board
-// (src/server/page.js) and the MCP App page (src/mcp.js) both assemble their
+// (src/server/page.js) and the MCP App page (src/mcp/page.js) both assemble their
 // scripts and styles from this list, so a file added here reaches both pages.
 //
 // Browser scripts share one scope per page. A bundle part holds files that read

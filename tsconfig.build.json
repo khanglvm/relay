@@ -7,5 +7,5 @@
     "rootDir": "src",
     "outDir": "types"
   },
-  "include": ["src/index.js", "src/spec/index.js", "src/a2ui/compile.js", "src/mcp.js"]
+  "include": ["src/index.js", "src/spec/index.js", "src/a2ui/compile.js", "src/mcp/index.js"]
 }

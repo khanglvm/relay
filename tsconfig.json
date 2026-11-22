@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src/index.js", "src/cli/index.js", "src/mcp.js", "src/server/index.js", "bin/*.js", "scripts/*.mjs"]
+  "include": ["src/index.js", "src/cli/index.js", "src/mcp/index.js", "src/server/index.js", "bin/*.js", "scripts/*.mjs"]
 }

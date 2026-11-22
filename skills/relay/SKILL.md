@@ -7,13 +7,15 @@ description: "Show the user files, visuals, diffs, plans, charts or a set of rel
 
 Put content in front of the person and read what they decide. Keep short answers and progress updates in chat. A board adds no approval step of its own; follow the authorization the user already gave.
 
+If your host app has its own way to ask the user or show results (native question cards, forms, pickers), use that for those. Use Relay for what the host can't show: line comments on a diff, Mermaid or Graphviz diagrams, element comments on an HTML prototype, rich multi-block review boards.
+
 ## Workflow
 1. Write a spec to a JSON file. Never pass big JSON in a shell argument.
 2. `rly ask --file spec.json --detach` prints `{boardId,url}` at once. When no reply is needed: `rly show --file spec.json --display-only`.
 3. Give the person the url. To get the result: `rly wait <boardId> --timeout 1800 --while-active --idle-grace 300` (blocks until submit) or `rly result <boardId>` (now). A timeout is not an answer: run `rly result` before you decide.
 4. Read `answers`, `notes`, `comment`, `annotations` and `blockEdits` together; any of them can qualify an answer. When stdout is cut short, read the `resultFile` it names.
 
-If Relay MCP tools are connected, `relay_ask` (answers wanted) and `relay_show` (display only) take the same spec and the board renders inline. Embed file content with `mdFile`, `codeFile` or an image block, because inline boards cannot open local file links.
+If Relay MCP tools are connected, call `relay_board` with the same spec (questions make it collect answers, none make it display-only) and the board renders inline. Read the answers with `relay_result {boardId, wait_seconds}`; `relay_help` gives exact fields. Embed file content with `mdFile`, `codeFile` or an image block, because inline boards cannot open local file links.
 
 ## Spec in one screen
 ```json

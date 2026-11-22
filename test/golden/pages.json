@@ -33,13 +33,13 @@
     ]
   },
   "mcp": {
-    "bytes": 349392,
-    "sha256": "b3d8935170d5d54523f12315813ba35d99b2c8b0321e2e45e4351c2705ec1c99",
+    "bytes": 353689,
+    "sha256": "dd7bc0a78c375b07c679419d51bb6fa3c0b26c6d19c007e745186bfee321429d",
     "scripts": [
       {
-        "bytes": 48,
-        "sha256": "14c11e2951db8c7e984f6c129052f9e8b62e8ddf7665cdb336c26c53121e5827",
-        "head": "{\"version\":\"(version)\",\"boardId\":\"mcp-(varies)\"}"
+        "bytes": 23,
+        "sha256": "880067cdf3983e0ead50910c5a8305e478793bbf1c0ea4e15e95cd7a3bb3a070",
+        "head": "{\"version\":\"(version)\"}"
       },
       {
         "bytes": 165603,
@@ -52,8 +52,8 @@
         "head": "/* relay annotate — element-level comments (window.RelayAnno"
       },
       {
-        "bytes": 54993,
-        "sha256": "0a98f3212fa5e3d3a11308dd649911d5baccbc013638d8a0e6cc2a104cf28e2a",
+        "bytes": 59315,
+        "sha256": "f608bb8fabc33f6cbf02740ae79240bb80c18c22abe0577a77c939dfd0a58eaf",
         "head": "// board.js — the relay board as an MCP App (SEP-1865 \"io.mo"
       }
     ],
@@ -64,8 +64,8 @@
         "head": "/* quest-board theme — editorial minimalism in the spirit of"
       },
       {
-        "bytes": 128161,
-        "sha256": "c4cfb253a79e2801d12fa4d8c01ed37c10c99129b321e1c48feb9cc6b0434b1a",
+        "bytes": 130610,
+        "sha256": "f130fcab462e75651bc7f0fd01b366b03604b529997bea6943d859c7c2da1669",
         "head": ", on* handlers, non-fragment href/xlink:href\n  // (<use>/<im"
       }
     ]

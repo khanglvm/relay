@@ -4,6 +4,7 @@ Use Relay to present files, visuals, substantial plans, diffs, and related user
 questions. Choose purpose-built blocks so users can inspect the content and
 leave precise feedback. Keep short answers and progress updates in chat.
 Respect the user’s existing authorization; boards do not add approval gates.
+If your host app has its own way to ask the user or show results (native question cards, forms, pickers), use that for those. Use Relay for what the host can't show: line comments on a diff, Mermaid or Graphviz diagrams, element comments on an HTML prototype, rich multi-block review boards.
 For a concise workflow, read the bundled skill (`rly skill path`). This guide is
 a reference for fields and less common operations. Load one part with
 `rly agent <topic>` (`questions`, `blocks`, `annotate`, `lifecycle`, `sharing`,
@@ -134,62 +135,23 @@ Report the printed URL to the user and never a `localhost`, `127.0.0.1` or
 in the URL and the network behind the link are the access control. Use
 `rly share <id> --revoke --all` to cut access.
 
-## Inline mode — relay as an MCP App (Claude & Codex apps)
+## Inline mode: relay as an MCP App (Claude and Codex apps)
 
-Everything above is the **CLI** surface (you run `rly` in a terminal and read
-JSON from stdout). relay is **also** an MCP App (SEP-1865): when a host registers
-`rly mcp` (see `rly mcp config` / `rly mcp install --target claude|codex`), you
-get two tools that render the board **inline in the conversation** instead of a
-browser tab. `rly mcp` speaks the MCP **stdio** transport, so it pairs with a
-**local desktop** host — Claude Desktop and Codex today.
+Everything outside this section is the CLI surface: you run `rly` and read JSON from stdout. Relay is also an MCP App server (SEP-1865). A host that registers `rly mcp` (see `rly mcp config` and `rly mcp install --target claude|codex`) renders the board inline in the conversation instead of a browser tab.
 
-- **`relay_ask`** — collect decisions/feedback with real form controls.
-- **`relay_show`** — present a plan, diagram, diff, table, or prototype.
+Tools:
+- `relay_board`: takes the spec this guide describes. A spec with `questions` collects answers; one without is display-only. The result is a short summary with the `boardId`, never the spec.
+- `relay_result {boardId, wait_seconds}`: the answers, notes, comment, annotations and blockEdits, or the draft while the person is still filling the board in. `wait_seconds` blocks until they submit, up to 600. A timeout is not an answer: call it again.
+- `relay_help {topic}` or `relay_help {schema}`: a part of this guide, or the exact fields of one block or question type.
+- `relay_ask` and `relay_show`: the old names, kept as aliases for one more minor version. Use `relay_board`.
 
-**Web / mobile / remote hosts** can't reach a stdio subprocess, so for those run
-the **Streamable HTTP** transport: `rly mcp --http [--port N]` serves the same
-tools at `/mcp`. relay needs **only its own CLI** for this, with no extra
-infrastructure. Because relay is **stateless** (answers go iframe→host→model, never
-back to the server), **one deployed instance serves everyone**, so deploy it once
-on any address the app can reach and register that URL as a custom connector:
+The flow: call `relay_board`, tell the person the board is on screen, and carry on or wait. When they submit, the host posts a one-line message naming the board. Read the answers with `relay_result`. Do not ask the same questions again in chat.
 
-- **Free MCP hosts** — the repo's `Dockerfile` runs relay with zero config on
-  **mcpdeploy.dev**, **mcphosting.io**, **Render / Railway / Fly**, or **Glama**;
-  the platform's `$PORT` is honored automatically. Set `RLY_MCP_TOKEN` for a
-  bearer-protected endpoint.
-- **Smithery** (largest MCP marketplace) — publish the deployed URL with
-  `smithery mcp publish <url> -n @you/relay` for discovery + an OAuth gateway, or
-  distribute relay as a stdio bundle clients run locally.
+`rly mcp` speaks stdio to a local desktop host. `rly mcp --http [--port N] [--token SECRET] [--allow-origin ORIGIN]` serves Streamable HTTP at `/mcp` for hosts that connect over a network; `RLY_MCP_TOKEN` sets the bearer token. Boards are stored in the relay home of the machine that runs the server, so `codeFile` and local images resolve there and nowhere else. To add the tools to a server you already run, call `registerRelay(server, {store, assetUrl, linkUrl})` from `@khanglvm/relay/mcp`.
 
-A hosted instance can't see your local files (so `codeFile`/local-image blocks
-won't resolve there — pass URLs or inline content); run it on your own machine if
-you need local-file access.
+If the host streams the tool call as you write it, the board renders valid blocks and questions as they arrive and finishes when your call completes.
 
-Progressive rendering: if the host streams the tool call as you write it, the
-board renders valid blocks/questions incrementally (a "Composing…" preview) and
-finalizes when your call completes — so the user sees it build, not a blank wait.
-
-Both take **the exact same board spec** documented below (the tool `inputSchema`
-*is* this spec). Call the tool with your spec; the host shows the board, the user
-fills it in, and their answers come back to you (answers, per-question notes,
-comment) as a user-message turn, with structured context synced when the host
-supports it — read them just as you would the CLI's result JSON. There is **no
-`--detach`/`rly wait` dance, no stdout parsing, and no timeout** in this mode.
-`relay_ask` stays live until the user submits and the host delivers the result;
-`relay_show` is display-only by default and the agent continues immediately.
-
-**Near-full parity with the browser board.** Local `codeFile` / `htmlFile` /
-`diffFile` and local **image** files work inline too — the server inlines them
-(images as data URIs) while normalizing your spec, so the sandboxed board needs
-no file access. **Element-level annotations work inline** — the user can comment
-on chart points, diagram nodes, table cells, images and text selections, returned
-in `annotations` just like the CLI. The board also adopts the host's **theme,
-fonts and colors** and uses the host's **full-screen** control. The only
-inline-mode gaps vs. the browser board: **local video files** (use a
-YouTube/Vimeo/`https` URL instead — those play) and commenting on elements
-*inside* a custom-HTML mockup (every other annotation target works). Everything
-else — questions plus markdown/code/diff/table/chart/mermaid/graphviz/plantuml/
-image/palette/html — renders identically.
+Inline boards match the browser board. The server inlines `codeFile`, `htmlFile`, `diffFile` and local images (as data URIs) while it normalizes the spec, so the sandboxed board needs no file access. Element comments work on chart points, diagram nodes, table cells, images and text selections, and come back in `annotations`. The board adopts the host's theme, fonts, colors and full-screen control. Two gaps remain: local video files (use a YouTube, Vimeo or https URL) and comments on elements inside a custom HTML mockup.
 
 ## Creating boards
 
@@ -216,9 +178,8 @@ rly show --file spec.json --display-only
 ```
 
 `--display-only` automatically detaches the browser board. In MCP App mode,
-`relay_show` is display-only by default; set `responseRequired:true` only when
-the user really needs to acknowledge or leave feedback. `relay_ask` remains the
-response-bearing tool.
+`relay_board` with no `questions` is display-only; set `responseRequired:true` only
+when the user really needs to acknowledge or leave feedback.
 
 Read a markdown file (no questions; library-free renderer; submit reads "Done"):
 
@@ -783,8 +744,8 @@ file write alone starts a new model turn.
 
 | Client/surface | Recommended Relay return path |
 |---|---|
-| MCP App (`relay_ask`) | No CLI wait. The inline board stays live and sends `ui/message` on submit, which starts the user-return turn. |
-| MCP App (`relay_show`) | Display-only by default. Present it and continue immediately; no acknowledgement is requested. |
+| MCP App (`relay_board` with questions) | No CLI wait. The board stays live; on submit the host posts a one-line message and `relay_result` returns the answers. |
+| MCP App (`relay_board`, display-only) | Present it and continue immediately; no acknowledgement is requested. |
 | Claude Code | Run `rly wait <id> --timeout 0` as a [background Bash task](https://docs.anthropic.com/en/docs/claude-code/interactive-mode#background-bash-commands); retain its task id/output rather than opening a second board. |
 | Gemini CLI | Run the waiter in the background and set [`tools.shell.backgroundCompletionBehavior` to `"inject"`](https://geminicli.com/docs/reference/configuration/) so completion is returned to the agent; `"notify"` only informs the chat UI. |
 | Codex | Keep one foreground waiter. Codex background terminals use explicit `write_stdin` polling (the [poll window defaults to five minutes](https://developers.openai.com/codex/config-reference)); the process can outlive each poll, but no portable browser-submit API wakes a stopped turn. |

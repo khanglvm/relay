@@ -1,5 +1,37 @@
 # Changelog
 
+### 0.21.0 — MCP server rebuilt on the official SDK
+
+Breaking
+- Node 20 or newer. The MCP server runs on `@modelcontextprotocol/server`, which needs it.
+- One model-visible tool, `relay_board`, replaces `relay_ask` and `relay_show`. A spec with
+  `questions` collects answers; one without is display-only. `relay_ask` and `relay_show` stay
+  as aliases for one more minor version and are removed in 0.22.
+- A tool result is a summary plus `structuredContent {boardId, mode, title, questions}` under
+  2 KB. It no longer carries the spec. Read answers with `relay_result {boardId, wait_seconds}`.
+- The board no longer sends its full answers to the chat as a message. It stores them with
+  `relay_submit` and posts one line naming the board; the agent reads them with `relay_result`.
+  A host that refuses app tool calls still gets the full transcript as the message.
+- The tool list shrank from a 36 KB schema to under 4 KB: the input schema names the spec's
+  top-level fields, and `relay_help {topic}` or `relay_help {schema}` returns exact shapes.
+
+Added
+- `relay_result` returns the answers, or the draft while the person is still filling the board in.
+- App-only tools for the board iframe: `relay_view`, `relay_draft`, `relay_submit`, `relay_asset`
+  and `a2ui_action`. They are listed only to a client that declares the MCP Apps extension.
+  Each takes the board's token, an HMAC of the board id under a key kept in the relay home.
+- `relay_asset` serves the chart, mermaid and graphviz libraries in chunks of at most 768 KiB, so
+  a host that refuses `resources/read` still draws them.
+- A button click in an a2ui block reaches the agent as it happens, through `a2ui_action`.
+- `rly mcp --http` is served by the SDK's Streamable HTTP handler.
+- The skill and guide say when to leave a question or result to the host's own UI and when to use Relay.
+- `registerRelay(server, {store, assetUrl, linkUrl})` from `@khanglvm/relay/mcp` adds the tools
+  to a server you built, with your own board store.
+
+Migrating
+- Call `relay_board` where you called `relay_ask` or `relay_show`.
+- Run `rly mcp` under Node 20 or newer, and `npm i -g @khanglvm/relay` again to pick up the dependencies.
+
 ### 0.20.3 — shapes in the skill, lookups on demand
 
 Changed
