@@ -1,0 +1,73 @@
+{
+  "web": {
+    "bytes": 368005,
+    "sha256": "ee404789d99cc95cd4de1150c5aff446077681950078bedc1250e5ea52788270",
+    "scripts": [
+      {
+        "bytes": 2004,
+        "sha256": "90de7304ebcc040c1deaa7161965773d068d65aa9f1707a2ce52cd2ec885aa27",
+        "head": "{\"boardId\":\"(varies)\",\"spec\":{\"title\":\"Auth feature — decisi"
+      },
+      {
+        "bytes": 165603,
+        "sha256": "68515bb0887c9b94bef6fd74faa934ea548b185b2485fcd0d40c8aaaad63774c",
+        "head": "// a2ui-state.js — window.RelayA2uiState: the data model and"
+      },
+      {
+        "bytes": 43670,
+        "sha256": "b292d69bba0ecf69d2cb9d5028c393367ee47901531779c1616ac0000f7bce20",
+        "head": "/* relay annotate — element-level comments (window.RelayAnno"
+      },
+      {
+        "bytes": 72899,
+        "sha256": "c6ecd5d8a26aa9e303e27d15e04f8e251ad920c76922083341982af421f329c6",
+        "head": "(() => {\n  'use strict';\n\n  const boot = JSON.parse(document"
+      }
+    ],
+    "styles": [
+      {
+        "bytes": 83024,
+        "sha256": "47df91f6619d6d3fdae8ddbcca4a349f9e37bd254678f369d6bdabc7ddfcb1c3",
+        "head": "/* quest-board theme — editorial minimalism in the spirit of"
+      }
+    ]
+  },
+  "mcp": {
+    "bytes": 349389,
+    "sha256": "213858c5ec2425ad263b35095d3108ea85ec82b564310b34ce6c1a2b2132badf",
+    "scripts": [
+      {
+        "bytes": 45,
+        "sha256": "6c7dccd2c970cfa79b7cb25baa6ef8d0a48e4a481f31d008fa8dd68d0cbad68b",
+        "head": "{\"version\":\"0.19.0\",\"boardId\":\"mcp-(varies)\"}"
+      },
+      {
+        "bytes": 165603,
+        "sha256": "68515bb0887c9b94bef6fd74faa934ea548b185b2485fcd0d40c8aaaad63774c",
+        "head": "// a2ui-state.js — window.RelayA2uiState: the data model and"
+      },
+      {
+        "bytes": 43670,
+        "sha256": "b292d69bba0ecf69d2cb9d5028c393367ee47901531779c1616ac0000f7bce20",
+        "head": "/* relay annotate — element-level comments (window.RelayAnno"
+      },
+      {
+        "bytes": 54993,
+        "sha256": "0a98f3212fa5e3d3a11308dd649911d5baccbc013638d8a0e6cc2a104cf28e2a",
+        "head": "// board.js — the relay board as an MCP App (SEP-1865 \"io.mo"
+      }
+    ],
+    "styles": [
+      {
+        "bytes": 84618,
+        "sha256": "8360d1ffb0bc9ce0726ef59561887339b5106ebf2a0ab3990366be6b90e0e9c8",
+        "head": "/* quest-board theme — editorial minimalism in the spirit of"
+      },
+      {
+        "bytes": 128161,
+        "sha256": "c4cfb253a79e2801d12fa4d8c01ed37c10c99129b321e1c48feb9cc6b0434b1a",
+        "head": ", on* handlers, non-fragment href/xlink:href\n  // (<use>/<im"
+      }
+    ]
+  }
+}

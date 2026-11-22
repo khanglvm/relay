@@ -1,0 +1,998 @@
+{
+  "spec.json": {
+    "title": "Fix check",
+    "intro": "",
+    "blocks": [
+      {
+        "id": "b1",
+        "type": "table",
+        "columns": [
+          {
+            "key": "Name",
+            "label": "Name"
+          },
+          {
+            "key": "Score",
+            "label": "Score"
+          }
+        ],
+        "rows": [
+          {
+            "Name": "Alpha",
+            "Score": 92
+          },
+          {
+            "Name": "Beta",
+            "Score": 71
+          }
+        ],
+        "sortable": true
+      },
+      {
+        "id": "b2",
+        "type": "code",
+        "code": "// greet the user\nfunction greet(name) {\n  const msg = `hello ${name}`; // template\n  return msg + ' #42';\n}",
+        "lang": "js"
+      },
+      {
+        "id": "b3",
+        "type": "mermaid",
+        "code": "graph TD; A[Plan]-->B[Build]; B-->C[Ship]"
+      },
+      {
+        "id": "b4",
+        "type": "chart",
+        "height": 320,
+        "kind": "bar",
+        "labels": [
+          "Jan",
+          "Feb"
+        ],
+        "series": [
+          {
+            "label": "Rev",
+            "data": [
+              3,
+              7
+            ]
+          }
+        ]
+      }
+    ],
+    "allowPartial": true,
+    "note": true,
+    "autoClose": true,
+    "responseRequired": true,
+    "questions": [
+      {
+        "id": "ok",
+        "type": "yesno",
+        "label": "Looks right?",
+        "description": "",
+        "required": false,
+        "note": false,
+        "blocks": [],
+        "placeholder": ""
+      }
+    ],
+    "submitLabel": "Submit"
+  },
+  "examples/demo-board.json": {
+    "title": "Relay Demo — \"Project Atlas\" Q3 Launch Review",
+    "intro": "A full showcase board. It exercises every QUESTION type (single, multi, yes/no, scale, text, textarea) and every BLOCK type (markdown, chart, table, mermaid, graphviz, plantuml, code, html, image).\n\n**Every chart & diagram has a hover toolbar** (top-right): 💬 comment on the whole block · − / + zoom · ⤢ full-screen.\n\n**Ways to comment:** hover a chart point, a diagram node, a PlantUML label, or a table cell · select text in prose **or in the code block** · or use the 💬 button for a whole-block note. Click **Edit** on the architecture diagram to revise it yourself.\n\n**Zoom & pan:** ⌘/Ctrl-scroll (or the −/+ buttons) to zoom a diagram, then **drag to pan** — the cursor becomes a grab hand once a visual overflows its framed card. Answers autosave as you go.",
+    "blocks": [
+      {
+        "id": "b1",
+        "type": "markdown",
+        "md": "## 📊 Where we stand\nAtlas hit **GA-readiness** last sprint. Below is the launch dashboard the steering group will review. Everything on this page is annotatable — *select this sentence* to leave a margin note."
+      },
+      {
+        "id": "b2",
+        "type": "chart",
+        "height": 320,
+        "kind": "line",
+        "labels": [
+          "W1",
+          "W2",
+          "W3",
+          "W4",
+          "W5",
+          "W6",
+          "W7",
+          "W8"
+        ],
+        "series": [
+          {
+            "label": "Activated",
+            "data": [
+              120,
+              240,
+              410,
+              560,
+              690,
+              910,
+              1180,
+              1520
+            ]
+          },
+          {
+            "label": "Retained (W+1)",
+            "data": [
+              110,
+              205,
+              360,
+              470,
+              560,
+              720,
+              905,
+              1180
+            ]
+          }
+        ],
+        "title": "Weekly active users — beta cohort"
+      },
+      {
+        "id": "b3",
+        "type": "chart",
+        "height": 260,
+        "kind": "doughnut",
+        "labels": [
+          "us-east",
+          "eu-west",
+          "ap-south",
+          "other"
+        ],
+        "series": [
+          {
+            "label": "share",
+            "data": [
+              52,
+              28,
+              14,
+              6
+            ]
+          }
+        ],
+        "title": "Beta traffic by region"
+      },
+      {
+        "id": "b4",
+        "type": "table",
+        "columns": [
+          {
+            "key": "Metric",
+            "label": "Metric"
+          },
+          {
+            "key": "Target",
+            "label": "Target"
+          },
+          {
+            "key": "Current",
+            "label": "Current"
+          },
+          {
+            "key": "Status",
+            "label": "Status"
+          }
+        ],
+        "rows": [
+          {
+            "Metric": "Activation rate",
+            "Target": "60%",
+            "Current": "67%",
+            "Status": "✅ ahead"
+          },
+          {
+            "Metric": "W1 retention",
+            "Target": "45%",
+            "Current": "41%",
+            "Status": "⚠️ behind"
+          },
+          {
+            "Metric": "p95 latency (ms)",
+            "Target": "300",
+            "Current": "248",
+            "Status": "✅ ahead"
+          },
+          {
+            "Metric": "Crash-free sessions",
+            "Target": "99.5%",
+            "Current": "99.2%",
+            "Status": "⚠️ behind"
+          },
+          {
+            "Metric": "Support tickets / 1k",
+            "Target": "5.0",
+            "Current": "3.1",
+            "Status": "✅ ahead"
+          }
+        ],
+        "sortable": true
+      },
+      {
+        "id": "b5",
+        "type": "mermaid",
+        "code": "graph TD\n  U[Client apps] --> GW[API Gateway]\n  GW --> AUTH[Auth service]\n  GW --> ATLAS[Atlas core]\n  ATLAS --> DB[(Primary DB)]\n  ATLAS --> CACHE[(Redis cache)]\n  ATLAS --> Q[Event queue]\n  Q --> WORK[Async workers]\n  WORK --> DB\n  ATLAS --> SEARCH[(Search index)]",
+        "editable": true,
+        "height": 380
+      },
+      {
+        "id": "b6",
+        "type": "graphviz",
+        "dot": "digraph deps { rankdir=LR; node [shape=box,style=rounded]; \"web\" -> \"gateway\"; \"mobile\" -> \"gateway\"; \"gateway\" -> \"atlas-core\"; \"gateway\" -> \"auth\"; \"atlas-core\" -> \"billing\"; \"atlas-core\" -> \"notifications\"; \"billing\" -> \"stripe\" [style=dashed]; \"notifications\" -> \"sendgrid\" [style=dashed]; }",
+        "height": 300
+      },
+      {
+        "id": "b7",
+        "type": "code",
+        "code": "# atlas launch flags\nlaunch:\n  strategy: phased        # big_bang | phased | soft\n  rollout_percent: 5      # canary start (was 10 — per review)\n  regions: [us-east, eu-west]\n  killswitch: enabled\n  canary_minutes: 30",
+        "lang": "yaml"
+      },
+      {
+        "id": "b8",
+        "type": "html",
+        "html": "<div style=\"display:flex;gap:12px;font-family:system-ui\">\n  <div data-relay-annotate=\"Budget burn\" style=\"flex:1;padding:14px;border-radius:10px;background:#0f172a;color:#e2e8f0\"><div style=\"font-size:12px;opacity:.7\">Budget burn</div><div style=\"font-size:26px;font-weight:700\">$184k</div><div style=\"font-size:12px;color:#4ade80\">of $250k · 74%</div></div>\n  <div data-relay-annotate=\"Days to GA\" style=\"flex:1;padding:14px;border-radius:10px;background:#0f172a;color:#e2e8f0\"><div style=\"font-size:12px;opacity:.7\">Days to GA</div><div style=\"font-size:26px;font-weight:700\">11</div><div style=\"font-size:12px;color:#facc15\">2 blockers open</div></div>\n  <div data-relay-annotate=\"NPS\" style=\"flex:1;padding:14px;border-radius:10px;background:#0f172a;color:#e2e8f0\"><div style=\"font-size:12px;opacity:.7\">Beta NPS</div><div style=\"font-size:26px;font-weight:700\">+52</div><div style=\"font-size:12px;color:#4ade80\">n=430</div></div>\n</div>",
+        "height": 140
+      },
+      {
+        "id": "b9",
+        "type": "image",
+        "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NDAiIGhlaWdodD0iMjIwIiB2aWV3Qm94PSIwIDAgNjQwIDIyMCIgZm9udC1mYW1pbHk9InN5c3RlbS11aSxzYW5zLXNlcmlmIj4KICA8cmVjdCB3aWR0aD0iNjQwIiBoZWlnaHQ9IjIyMCIgZmlsbD0iI2ZhZjlmNyIvPgogIDx0ZXh0IHg9IjI0IiB5PSIzNCIgZm9udC1zaXplPSIxNiIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0iIzFjMWIxOSI+UmVnaW9uYWwgcm9sbG91dCB0aW1lbGluZTwvdGV4dD4KICA8ZyBmb250LXNpemU9IjEyIiBmaWxsPSIjOGE4NTgwIj48dGV4dCB4PSIxMjAiIHk9IjY0Ij5XMTwvdGV4dD48dGV4dCB4PSIyNDAiIHk9IjY0Ij5XMjwvdGV4dD48dGV4dCB4PSIzNjAiIHk9IjY0Ij5XMzwvdGV4dD48dGV4dCB4PSI0ODAiIHk9IjY0Ij5XNDwvdGV4dD48L2c+CiAgPHRleHQgeD0iMjQiIHk9IjEwMCIgZm9udC1zaXplPSIxMyIgZmlsbD0iIzFjMWIxOSI+dXMtZWFzdDwvdGV4dD4KICA8cmVjdCB4PSIxMTAiIHk9Ijg4IiB3aWR0aD0iNDcwIiBoZWlnaHQ9IjE2IiByeD0iOCIgZmlsbD0iI2UzZjBlYyIvPjxyZWN0IHg9IjExMCIgeT0iODgiIHdpZHRoPSI0NzAiIGhlaWdodD0iMTYiIHJ4PSI4IiBmaWxsPSIjMmY4ZjZmIi8+CiAgPHRleHQgeD0iMjQiIHk9IjE0MCIgZm9udC1zaXplPSIxMyIgZmlsbD0iIzFjMWIxOSI+ZXUtd2VzdDwvdGV4dD4KICA8cmVjdCB4PSIxMTAiIHk9IjEyOCIgd2lkdGg9IjQ3MCIgaGVpZ2h0PSIxNiIgcng9IjgiIGZpbGw9IiNlM2YwZWMiLz48cmVjdCB4PSIxMTAiIHk9IjEyOCIgd2lkdGg9IjMyMCIgaGVpZ2h0PSIxNiIgcng9IjgiIGZpbGw9IiMzYTlmN2MiLz4KICA8dGV4dCB4PSIyNCIgeT0iMTgwIiBmb250LXNpemU9IjEzIiBmaWxsPSIjMWMxYjE5Ij5hcC1zb3V0aDwvdGV4dD4KICA8cmVjdCB4PSIxMTAiIHk9IjE2OCIgd2lkdGg9IjQ3MCIgaGVpZ2h0PSIxNiIgcng9IjgiIGZpbGw9IiNlM2YwZWMiLz48cmVjdCB4PSIxMTAiIHk9IjE2OCIgd2lkdGg9IjE1MCIgaGVpZ2h0PSIxNiIgcng9IjgiIGZpbGw9IiNjZGJmYWUiLz4KICA8dGV4dCB4PSIxMTAiIHk9IjIwNiIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzhhODU4MCI+c29saWQgPSBsaXZlLCBmYWRlZCA9IHBsYW5uZWQ8L3RleHQ+Cjwvc3ZnPg==",
+        "alt": "Regional rollout timeline",
+        "height": 240
+      }
+    ],
+    "allowPartial": true,
+    "note": true,
+    "autoClose": true,
+    "responseRequired": true,
+    "questions": [
+      {
+        "id": "strategy",
+        "type": "single",
+        "label": "Which launch strategy should we commit to?",
+        "description": "",
+        "required": true,
+        "note": true,
+        "blocks": [],
+        "placeholder": "",
+        "options": [
+          {
+            "value": "big_bang",
+            "label": "Big Bang",
+            "description": "Ship to 100% on launch day. Maximum momentum, maximum risk.",
+            "blocks": [
+              {
+                "id": "strategy-o1-b1",
+                "type": "html",
+                "html": "<div style=\"font-family:system-ui;padding:12px;border-radius:8px;background:#1e1b4b;color:#e0e7ff\"><div style=\"height:10px;background:#6366f1;border-radius:6px;width:100%\"></div><div style=\"margin-top:8px;font-size:13px\">Day 0 → <b>100%</b> of users</div><div style=\"margin-top:6px;font-size:12px;opacity:.8\">⚡ Fastest · 🔥 Highest blast radius</div></div>",
+                "height": 150
+              }
+            ]
+          },
+          {
+            "value": "phased",
+            "label": "Phased Rollout",
+            "description": "10% → 50% → 100% over 3 weeks with canary gates. Balanced.",
+            "blocks": [
+              {
+                "id": "strategy-o2-b1",
+                "type": "html",
+                "html": "<div style=\"font-family:system-ui;padding:12px;border-radius:8px;background:#052e2b;color:#ccfbf1\"><div style=\"display:flex;gap:4px\"><div style=\"height:10px;background:#14b8a6;border-radius:6px;width:10%\"></div><div style=\"height:10px;background:#14b8a6;opacity:.6;border-radius:6px;width:40%\"></div><div style=\"height:10px;background:#14b8a6;opacity:.3;border-radius:6px;width:50%\"></div></div><div style=\"margin-top:8px;font-size:13px\">W1 <b>10%</b> · W2 <b>50%</b> · W3 <b>100%</b></div><div style=\"margin-top:6px;font-size:12px;opacity:.8\">🛡️ Safe · ⏱️ Slower</div></div>",
+                "height": 150
+              }
+            ]
+          },
+          {
+            "value": "soft",
+            "label": "Soft Launch",
+            "description": "Quiet release to opt-in users + 2 regions, no marketing push.",
+            "blocks": [
+              {
+                "id": "strategy-o3-b1",
+                "type": "html",
+                "html": "<div style=\"font-family:system-ui;padding:12px;border-radius:8px;background:#3b1f0e;color:#fed7aa\"><div style=\"height:10px;background:#f97316;border-radius:6px;width:25%\"></div><div style=\"margin-top:8px;font-size:13px\">Opt-in only · <b>2 regions</b></div><div style=\"margin-top:6px;font-size:12px;opacity:.8\">🤫 Low risk · 📉 Low reach</div></div>",
+                "height": 150
+              }
+            ]
+          }
+        ],
+        "other": true
+      },
+      {
+        "id": "channels",
+        "type": "multi",
+        "label": "Which launch channels should be in scope for week 1?",
+        "description": "",
+        "required": false,
+        "note": true,
+        "blocks": [],
+        "placeholder": "",
+        "options": [
+          {
+            "value": "email",
+            "label": "Email to beta list"
+          },
+          {
+            "value": "blog",
+            "label": "Engineering blog post"
+          },
+          {
+            "value": "social",
+            "label": "Social / launch thread"
+          },
+          {
+            "value": "ph",
+            "label": "Product Hunt"
+          },
+          {
+            "value": "press",
+            "label": "Press / analyst briefing"
+          }
+        ],
+        "other": false
+      },
+      {
+        "id": "sequence",
+        "type": "single",
+        "label": "Does this canary promotion sequence look right?",
+        "description": "",
+        "required": false,
+        "note": true,
+        "blocks": [
+          {
+            "id": "sequence-b1",
+            "type": "plantuml",
+            "code": "@startuml\nactor Operator\nparticipant \"Deploy bot\" as Bot\nparticipant \"Canary 5%\" as Canary\nparticipant \"Fleet 100%\" as Fleet\nOperator -> Bot: promote()\nBot -> Canary: route 5% traffic\nCanary --> Bot: metrics OK (30m)\nBot -> Fleet: ramp to 100%\nFleet --> Operator: launch complete\n@enduml",
+            "height": 320
+          }
+        ],
+        "placeholder": "",
+        "options": [
+          {
+            "value": "yes_ok",
+            "label": "Yes — ship it as drawn"
+          },
+          {
+            "value": "longer_canary",
+            "label": "Yes, but extend the canary window"
+          },
+          {
+            "value": "needs_rework",
+            "label": "No — needs rework (note below)"
+          }
+        ],
+        "other": true
+      },
+      {
+        "id": "approve",
+        "type": "yesno",
+        "label": "Approve the Atlas Q3 launch plan as presented?",
+        "description": "",
+        "required": true,
+        "note": false,
+        "blocks": [],
+        "placeholder": ""
+      },
+      {
+        "id": "confidence",
+        "type": "scale",
+        "label": "How confident are you in the current GA timeline?",
+        "description": "",
+        "required": false,
+        "note": false,
+        "blocks": [],
+        "placeholder": "",
+        "min": 1,
+        "max": 5,
+        "minLabel": "Not at all",
+        "maxLabel": "Very confident"
+      },
+      {
+        "id": "ga_date",
+        "type": "text",
+        "label": "Target GA date (your call)",
+        "description": "",
+        "required": false,
+        "note": false,
+        "blocks": [],
+        "placeholder": ""
+      },
+      {
+        "id": "risks",
+        "type": "textarea",
+        "label": "Top risks or blockers we should resolve before launch?",
+        "description": "",
+        "required": false,
+        "note": false,
+        "blocks": [],
+        "placeholder": ""
+      }
+    ],
+    "submitLabel": "Submit"
+  },
+  "skills/relay/examples/blocks-showcase.json": {
+    "title": "Q2 engineering review",
+    "intro": "Below you'll find the sprint metrics, architecture overview, and a data table. Hover chart bars, click diagram nodes, or click table cells to leave inline comments — they come back with your answers. Select any text in a markdown section to annotate it too.",
+    "blocks": [
+      {
+        "id": "b1",
+        "type": "markdown",
+        "md": "## Sprint velocity\nThe chart below shows shipped vs planned story points for each sprint this quarter. Click any bar to comment on a specific sprint."
+      },
+      {
+        "id": "b2",
+        "type": "chart",
+        "height": 320,
+        "kind": "bar",
+        "labels": [
+          "S1",
+          "S2",
+          "S3",
+          "S4",
+          "S5",
+          "S6"
+        ],
+        "series": [
+          {
+            "label": "Shipped",
+            "data": [
+              34,
+              41,
+              29,
+              47,
+              38,
+              52
+            ],
+            "color": "#4d8a66"
+          },
+          {
+            "label": "Planned",
+            "data": [
+              40,
+              40,
+              40,
+              40,
+              40,
+              40
+            ],
+            "color": "#c2674b"
+          }
+        ],
+        "title": "Q2 velocity — shipped vs planned"
+      },
+      {
+        "id": "b3",
+        "type": "markdown",
+        "md": "## System architecture\nThe diagram below shows the current service topology. Click any node to comment on it."
+      },
+      {
+        "id": "b4",
+        "type": "mermaid",
+        "code": "graph LR\n  Client-->|HTTPS|Gateway\n  Gateway-->AuthService\n  Gateway-->APIService\n  APIService-->DB[(Postgres)]\n  APIService-->Cache[(Redis)]\n  APIService-->Queue[[Job queue]]\n  Queue-->Worker\n  Worker-->DB",
+        "height": 300
+      },
+      {
+        "id": "b5",
+        "type": "markdown",
+        "md": "## Service dependency graph\nThe Graphviz diagram below shows precise call-time dependencies between services. Click any node or edge to leave a comment."
+      },
+      {
+        "id": "b6",
+        "type": "graphviz",
+        "dot": "digraph services {\n  rankdir=LR\n  node [shape=box style=filled fontname=Helvetica fontsize=11]\n  Gateway    [fillcolor=\"#c8e6c9\"]\n  APIService [fillcolor=\"#fff9c4\"]\n  AuthService[fillcolor=\"#c8e6c9\"]\n  DB         [shape=cylinder fillcolor=\"#bbdefb\"]\n  Cache      [shape=cylinder fillcolor=\"#bbdefb\"]\n  Worker     [fillcolor=\"#fff9c4\"]\n  Gateway    -> APIService\n  Gateway    -> AuthService\n  APIService -> DB\n  APIService -> Cache\n  APIService -> Worker [style=dashed label=\"async\"]\n  Worker     -> DB\n}",
+        "height": 260
+      },
+      {
+        "id": "b7",
+        "type": "markdown",
+        "md": "## Service health snapshot\nCurrent status as of the last deployment. Click any cell to comment."
+      },
+      {
+        "id": "b8",
+        "type": "table",
+        "columns": [
+          {
+            "key": "service",
+            "label": "Service"
+          },
+          {
+            "key": "status",
+            "label": "Status",
+            "align": "center"
+          },
+          {
+            "key": "p99ms",
+            "label": "p99 (ms)",
+            "align": "right"
+          },
+          {
+            "key": "errRate",
+            "label": "Error rate",
+            "align": "right"
+          },
+          {
+            "key": "owner",
+            "label": "Owner"
+          }
+        ],
+        "rows": [
+          {
+            "service": "Gateway",
+            "status": "healthy",
+            "p99ms": 42,
+            "errRate": "0.1%",
+            "owner": "platform"
+          },
+          {
+            "service": "AuthService",
+            "status": "healthy",
+            "p99ms": 98,
+            "errRate": "0.0%",
+            "owner": "identity"
+          },
+          {
+            "service": "APIService",
+            "status": "degraded",
+            "p99ms": 620,
+            "errRate": "2.4%",
+            "owner": "core"
+          },
+          {
+            "service": "Worker",
+            "status": "healthy",
+            "p99ms": 310,
+            "errRate": "0.3%",
+            "owner": "core"
+          }
+        ],
+        "sortable": true
+      },
+      {
+        "id": "b9",
+        "type": "markdown",
+        "md": "## Config reference\nDeployment config in use this quarter:"
+      },
+      {
+        "id": "b10",
+        "type": "code",
+        "code": "api_service:\n  replicas: 4\n  memory_limit: 512Mi\n  cpu_limit: 500m\n  db_pool_size: 20\n  cache_ttl_s: 300",
+        "lang": "yaml"
+      }
+    ],
+    "allowPartial": false,
+    "note": true,
+    "autoClose": true,
+    "responseRequired": true,
+    "questions": [
+      {
+        "id": "biggest_concern",
+        "type": "single",
+        "label": "Which area needs the most attention next quarter?",
+        "description": "",
+        "required": true,
+        "note": true,
+        "blocks": [],
+        "placeholder": "",
+        "options": [
+          {
+            "value": "api_perf",
+            "label": "API Service performance",
+            "description": "p99 and error rate are high"
+          },
+          {
+            "value": "velocity",
+            "label": "Sprint predictability",
+            "description": "variance between sprints"
+          },
+          {
+            "value": "arch",
+            "label": "Architecture complexity",
+            "description": "service sprawl, dependency depth"
+          },
+          {
+            "value": "on_call",
+            "label": "On-call burden",
+            "description": "toil from degraded services"
+          }
+        ],
+        "other": true
+      },
+      {
+        "id": "api_degraded_cause",
+        "type": "single",
+        "label": "What is most likely causing the APIService degradation?",
+        "description": "",
+        "required": false,
+        "note": true,
+        "blocks": [],
+        "placeholder": "",
+        "options": [
+          {
+            "value": "db_pool",
+            "label": "DB connection pool exhaustion"
+          },
+          {
+            "value": "cache_miss",
+            "label": "Cache miss storm"
+          },
+          {
+            "value": "upstream",
+            "label": "Upstream traffic spike"
+          },
+          {
+            "value": "unknown",
+            "label": "Unknown — needs investigation"
+          }
+        ],
+        "other": true
+      },
+      {
+        "id": "ship_reliability_work",
+        "type": "yesno",
+        "label": "Should we dedicate at least one sprint to reliability before adding features?",
+        "description": "",
+        "required": false,
+        "note": false,
+        "blocks": [],
+        "placeholder": ""
+      },
+      {
+        "id": "velocity_target",
+        "type": "scale",
+        "label": "How ambitious should Q3's velocity target be?",
+        "description": "",
+        "required": false,
+        "note": false,
+        "blocks": [
+          {
+            "id": "velocity_target-b1",
+            "type": "markdown",
+            "md": "Current average: **40 pts/sprint**. Improving reliability tooling could raise the ceiling, but also costs sprint capacity up front."
+          }
+        ],
+        "placeholder": "",
+        "min": 1,
+        "max": 5,
+        "minLabel": "conservative (≤40 pts)",
+        "maxLabel": "aggressive (60+ pts)"
+      },
+      {
+        "id": "other_notes",
+        "type": "textarea",
+        "label": "Anything else I should factor in for Q3 planning?",
+        "description": "",
+        "required": false,
+        "note": false,
+        "blocks": [],
+        "placeholder": "team changes, external deadlines, tech debt priorities…"
+      }
+    ],
+    "submitLabel": "Submit review"
+  },
+  "skills/relay/examples/diagram-coedit.json": {
+    "title": "Architecture review — redraw it if I got it wrong",
+    "intro": "Below is my proposed architecture. If it doesn't match your mental model, click 'Edit diagram' and change it directly — I'll read your version.",
+    "blocks": [
+      {
+        "id": "b1",
+        "type": "mermaid",
+        "code": "graph TD; client[Web Client] --> api[API Gateway]; api --> auth[Auth Service]; api --> core[Core Service]; core --> db[(Postgres)]; core --> queue[[Job Queue]]",
+        "editable": true
+      }
+    ],
+    "allowPartial": true,
+    "note": true,
+    "autoClose": true,
+    "responseRequired": true,
+    "questions": [
+      {
+        "id": "match",
+        "type": "yesno",
+        "label": "Does this match your mental model (after your edits, if any)?",
+        "description": "",
+        "required": true,
+        "note": false,
+        "blocks": [],
+        "placeholder": ""
+      },
+      {
+        "id": "notes",
+        "type": "textarea",
+        "label": "Anything the diagram can't express?",
+        "description": "",
+        "required": false,
+        "note": false,
+        "blocks": [],
+        "placeholder": "constraints, scaling concerns, naming…"
+      }
+    ],
+    "submitLabel": "Submit"
+  },
+  "skills/relay/examples/feature-feedback.json": {
+    "title": "Auth feature — decisions needed",
+    "intro": "I'm about to implement authentication. Three decisions before I start. Hover chart points or select text to leave comments.",
+    "blocks": [],
+    "allowPartial": true,
+    "note": true,
+    "autoClose": true,
+    "responseRequired": true,
+    "questions": [
+      {
+        "id": "provider",
+        "type": "single",
+        "label": "Which auth approach?",
+        "description": "",
+        "required": true,
+        "note": true,
+        "blocks": [],
+        "placeholder": "",
+        "options": [
+          {
+            "value": "oauth",
+            "label": "OAuth (GitHub + Google)",
+            "description": "no password storage, needs provider setup"
+          },
+          {
+            "value": "magic-link",
+            "label": "Magic links",
+            "description": "email-based, no passwords"
+          },
+          {
+            "value": "password",
+            "label": "Classic email + password",
+            "description": "full control, more security surface"
+          }
+        ],
+        "other": true
+      },
+      {
+        "id": "scope",
+        "type": "multi",
+        "label": "Which surfaces need auth in this iteration?",
+        "description": "",
+        "required": false,
+        "note": false,
+        "blocks": [],
+        "placeholder": "",
+        "options": [
+          {
+            "value": "web app",
+            "label": "web app"
+          },
+          {
+            "value": "REST API",
+            "label": "REST API"
+          },
+          {
+            "value": "admin panel",
+            "label": "admin panel"
+          },
+          {
+            "value": "CLI",
+            "label": "CLI"
+          }
+        ],
+        "other": false
+      },
+      {
+        "id": "mfa",
+        "type": "yesno",
+        "label": "Include 2FA now (vs. a later iteration)?",
+        "description": "",
+        "required": false,
+        "note": false,
+        "blocks": [],
+        "placeholder": ""
+      },
+      {
+        "id": "priority",
+        "type": "scale",
+        "label": "How urgent is this feature?",
+        "description": "",
+        "required": false,
+        "note": false,
+        "blocks": [],
+        "placeholder": "",
+        "min": 1,
+        "max": 5,
+        "minLabel": "whenever",
+        "maxLabel": "blocking"
+      },
+      {
+        "id": "constraints",
+        "type": "textarea",
+        "label": "Any constraints I should know about?",
+        "description": "",
+        "required": false,
+        "note": false,
+        "blocks": [],
+        "placeholder": "compliance, existing user table, …"
+      }
+    ],
+    "submitLabel": "Submit"
+  },
+  "skills/relay/examples/palette-and-color.json": {
+    "title": "Brand color direction",
+    "intro": "Pick a direction from the curated palettes, then choose the exact accent.",
+    "blocks": [
+      {
+        "id": "b1",
+        "type": "palette",
+        "palettes": [
+          {
+            "colors": [
+              "#3B8EA5",
+              "#6DBAD1",
+              "#1E6278",
+              "#A8DDE9",
+              "#D6EEF5"
+            ],
+            "name": "Coastal Calm",
+            "sub": "ocean, serene",
+            "tag": "Cool",
+            "tagTone": "cool",
+            "featured": true
+          },
+          {
+            "colors": [
+              "#F2A07B",
+              "#E8795A",
+              "#C4543C",
+              "#FBCFB8"
+            ],
+            "name": "Peach Fuzz",
+            "sub": "warm, optimistic",
+            "tag": "Warm",
+            "tagTone": "warm"
+          },
+          {
+            "colors": [
+              "#8DB87E",
+              "#5D9252",
+              "#3A6B34",
+              "#BDD9B3"
+            ],
+            "name": "Muted Sage",
+            "sub": "earthy, wellness",
+            "tag": "Nature",
+            "tagTone": "nature"
+          }
+        ],
+        "title": "Candidate palettes — hover a swatch for its hex, click to copy"
+      },
+      {
+        "id": "b2",
+        "type": "palette",
+        "palettes": [
+          {
+            "colors": [
+              "#c2674b",
+              "#1c1b19",
+              "#fcfbf9"
+            ],
+            "name": "Current brand"
+          }
+        ]
+      }
+    ],
+    "allowPartial": true,
+    "note": true,
+    "autoClose": true,
+    "responseRequired": true,
+    "questions": [
+      {
+        "id": "direction",
+        "type": "single",
+        "label": "Which palette direction?",
+        "description": "",
+        "required": true,
+        "note": true,
+        "blocks": [],
+        "placeholder": "",
+        "options": [
+          {
+            "value": "coastal",
+            "label": "Coastal Calm"
+          },
+          {
+            "value": "peach",
+            "label": "Peach Fuzz"
+          },
+          {
+            "value": "sage",
+            "label": "Muted Sage"
+          },
+          {
+            "value": "keep",
+            "label": "Keep current brand"
+          }
+        ],
+        "other": true
+      },
+      {
+        "id": "accent",
+        "type": "color",
+        "label": "Exact accent color",
+        "description": "Use the picker or paste a hex; presets are the featured palette.",
+        "required": false,
+        "note": false,
+        "blocks": [],
+        "placeholder": "",
+        "presets": [
+          "#3B8EA5",
+          "#E8795A",
+          "#5D9252",
+          "#c2674b"
+        ],
+        "default": "#3B8EA5"
+      }
+    ],
+    "submitLabel": "Lock the palette"
+  },
+  "skills/relay/examples/prototype-review.json": {
+    "title": "Dashboard layout — pick a direction",
+    "intro": "Two interactive mockups below. Click around, then answer. Select any text to leave inline comments.",
+    "blocks": [],
+    "allowPartial": true,
+    "note": true,
+    "autoClose": true,
+    "responseRequired": true,
+    "questions": [
+      {
+        "id": "layout",
+        "type": "single",
+        "label": "Which layout direction?",
+        "description": "",
+        "required": true,
+        "note": true,
+        "blocks": [
+          {
+            "id": "layout-b1",
+            "type": "html",
+            "html": "<!doctype html><html><body style=\"margin:0;font-family:system-ui;display:flex;gap:12px;padding:12px;background:#fff\"><div style=\"flex:1;border:2px solid #3b6ef6;border-radius:10px;padding:10px\"><b>A · sidebar</b><div style=\"display:flex;gap:6px;margin-top:8px\"><div style=\"width:60px;height:120px;background:#dbe4ff;border-radius:6px\"></div><div style=\"flex:1;height:120px;background:#f1f3f9;border-radius:6px\"></div></div></div><div style=\"flex:1;border:2px solid #999;border-radius:10px;padding:10px\"><b>B · topbar</b><div style=\"margin-top:8px\"><div style=\"height:24px;background:#dbe4ff;border-radius:6px\"></div><div style=\"height:90px;background:#f1f3f9;border-radius:6px;margin-top:6px\"></div></div></div></body></html>",
+            "height": 220
+          }
+        ],
+        "placeholder": "",
+        "options": [
+          {
+            "value": "sidebar",
+            "label": "A — sidebar navigation"
+          },
+          {
+            "value": "topbar",
+            "label": "B — topbar navigation"
+          }
+        ],
+        "other": true
+      },
+      {
+        "id": "density",
+        "type": "scale",
+        "label": "Information density?",
+        "description": "",
+        "required": false,
+        "note": false,
+        "blocks": [],
+        "placeholder": "",
+        "min": 1,
+        "max": 5,
+        "minLabel": "airy",
+        "maxLabel": "dense"
+      },
+      {
+        "id": "missing",
+        "type": "textarea",
+        "label": "Anything missing from both?",
+        "description": "",
+        "required": false,
+        "note": false,
+        "blocks": [],
+        "placeholder": ""
+      }
+    ],
+    "submitLabel": "Submit"
+  }
+}
