@@ -1,0 +1,217 @@
+{
+ "Status list: things with a state, one row each. The tone carries the state, `trailing` the short word, `url` opens the thing. Rows that need the person come first; the Button reports the decision.": [
+  {
+   "version": "1.0",
+   "createSurface": {
+    "surfaceId": "example",
+    "catalogId": "https://github.com/khanglvm/relay/a2ui/catalog/v1",
+    "components": [
+     {
+      "id": "root",
+      "component": "Card",
+      "title": "Release checks",
+      "children": [
+       "root_children_0",
+       "root_children_1"
+      ]
+     },
+     {
+      "id": "root_children_0",
+      "component": "List",
+      "items": {
+       "@path": "/runs"
+      },
+      "max": 5
+     },
+     {
+      "id": "root_children_1",
+      "component": "Stack",
+      "direction": "row",
+      "children": [
+       "root_children_1_children_0",
+       "root_children_1_children_1"
+      ]
+     },
+     {
+      "id": "root_children_1_children_0",
+      "component": "Button",
+      "label": "Approve",
+      "action": {
+       "event": {
+        "name": "approve"
+       }
+      },
+      "style": "primary"
+     },
+     {
+      "id": "root_children_1_children_1",
+      "component": "Button",
+      "label": "Hold",
+      "action": {
+       "event": {
+        "name": "hold"
+       }
+      }
+     }
+    ],
+    "dataModel": {
+     "runs": [
+      {
+       "title": "Deploy staging",
+       "subtitle": "waiting on your approval",
+       "tone": "needs"
+      },
+      {
+       "title": "Build 412",
+       "subtitle": "main, 2 minutes ago",
+       "trailing": "Passed",
+       "tone": "ok",
+       "url": "https://ci.example.com/runs/412"
+      },
+      {
+       "title": "Lint",
+       "trailing": "3 warnings",
+       "tone": "warn"
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "Numbers and progress: two headline numbers side by side, then one bar against a goal.": [
+  {
+   "version": "1.0",
+   "createSurface": {
+    "surfaceId": "example",
+    "catalogId": "https://github.com/khanglvm/relay/a2ui/catalog/v1",
+    "components": [
+     {
+      "id": "root",
+      "component": "Card",
+      "title": "Orders this week",
+      "children": [
+       "root_children_0",
+       "root_children_1"
+      ]
+     },
+     {
+      "id": "root_children_0",
+      "component": "Grid",
+      "columns": 2,
+      "children": [
+       "root_children_0_children_0",
+       "root_children_0_children_1"
+      ]
+     },
+     {
+      "id": "root_children_0_children_0",
+      "component": "Metric",
+      "label": "Shipped",
+      "value": "31"
+     },
+     {
+      "id": "root_children_0_children_1",
+      "component": "Metric",
+      "label": "Late",
+      "value": "4",
+      "note": "was 1"
+     },
+     {
+      "id": "root_children_1",
+      "component": "Progress",
+      "label": "Shipped",
+      "value": {
+       "@path": "/shipped"
+      },
+      "total": {
+       "@path": "/target"
+      },
+      "note": "8 packing"
+     }
+    ],
+    "dataModel": {
+     "shipped": 31,
+     "target": 50
+    }
+   }
+  }
+ ],
+ "Small form: inputs bound to the data model; the Button sends their values back with the event.": [
+  {
+   "version": "1.0",
+   "createSurface": {
+    "surfaceId": "example",
+    "catalogId": "https://github.com/khanglvm/relay/a2ui/catalog/v1",
+    "components": [
+     {
+      "id": "root",
+      "component": "Card",
+      "title": "Deploy",
+      "children": [
+       "root_children_0",
+       "root_children_1",
+       "root_children_2",
+       "root_children_3"
+      ]
+     },
+     {
+      "id": "root_children_0",
+      "component": "Select",
+      "label": "Environment",
+      "path": "/env",
+      "options": [
+       {
+        "key": "staging",
+        "label": "Staging"
+       },
+       {
+        "key": "prod",
+        "label": "Production"
+       }
+      ]
+     },
+     {
+      "id": "root_children_1",
+      "component": "Toggle",
+      "label": "Dry run",
+      "path": "/dry"
+     },
+     {
+      "id": "root_children_2",
+      "component": "TextField",
+      "label": "Note",
+      "path": "/note",
+      "multiline": true
+     },
+     {
+      "id": "root_children_3",
+      "component": "Button",
+      "label": "Deploy",
+      "action": {
+       "event": {
+        "name": "deploy",
+        "context": {
+         "env": {
+          "@path": "/env"
+         },
+         "dry": {
+          "@path": "/dry"
+         },
+         "note": {
+          "@path": "/note"
+         }
+        }
+       }
+      },
+      "style": "primary"
+     }
+    ],
+    "dataModel": {
+     "env": "staging",
+     "note": "",
+     "dry": true
+    }
+   }
+  }
+ ]
+}

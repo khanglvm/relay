@@ -17,6 +17,8 @@ import {
 } from './store.js';
 import { openUrl } from './open.js';
 import { assertSpecReady } from './spec.js';
+import { assertSafeJson } from './a2ui/compile.js';
+import { resolveLink } from './link.js';
 import { splitFileReference, filePreview, mediaType } from './file-preview.js';
 
 const UI_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'ui');
@@ -154,9 +156,9 @@ function shareHost() {
 function buildPage(record, rev, { access = null, draftRev = 0 } = {}) {
   const html = fs.readFileSync(path.join(UI_DIR, 'index.html'), 'utf8');
   const css = readUi('style.css');
-  const blocksCss = readUi('blocks.css');
+  const blocksCss = readUi('blocks.css') + '\n' + readUi('a2ui.css');
   const annotateCss = readUi('annotate.css');
-  const blocksJs = readUi('blocks.js');
+  const blocksJs = readUi('a2ui-state.js') + '\n' + readUi('a2ui.js') + '\n' + readUi('blocks.js');
   const annotateJs = readUi('annotate.js');
   const appJs = readUi('app.js');
   const spec = record.spec;
@@ -406,6 +408,29 @@ function sanitizeDiffReview(value) {
   return Object.keys(out.hunks).length ? out : null;
 }
 
+// An a2ui block's state: the widget's data model (inputs the user changed) and
+// the button events they fired, in order. Bounded like every other edit.
+const A2UI_STATE_MAX_BYTES = 64 * 1024;
+const A2UI_EVENTS_MAX = 50;
+function sanitizeA2uiState(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || value.type !== 'a2ui') return null;
+  try {
+    assertSafeJson(value.data ?? {}, 'a2ui state');
+    const events = (Array.isArray(value.events) ? value.events : []).slice(-A2UI_EVENTS_MAX).flatMap((e) => {
+      if (!e || typeof e !== 'object' || typeof e.name !== 'string' || !/^[a-z][a-z0-9_-]{0,39}$/.test(e.name)) return [];
+      const context = e.context && typeof e.context === 'object' && !Array.isArray(e.context) ? e.context : {};
+      assertSafeJson(context, 'a2ui event');
+      if (JSON.stringify(context).length > 4096) return [];
+      return [{ name: e.name, context, at: limitString(e.at, 40) }];
+    });
+    const data = value.data && typeof value.data === 'object' && !Array.isArray(value.data) ? value.data : {};
+    if (JSON.stringify(data).length > A2UI_STATE_MAX_BYTES) return null;
+    return { type: 'a2ui', data, events };
+  } catch {
+    return null;
+  }
+}
+
 // Validates + sanitizes an incoming blockEdits map (from draft/submit).
 // String values are editable Mermaid source. Structured git-conflict-resolution
 // and diff-review values carry bounded per-hunk choices. Caps prevent a draft
@@ -422,7 +447,7 @@ function sanitizeBlockEdits(value) {
       if (v.length > 20000) continue;
       out[key] = v;
     } else {
-      const edit = sanitizeConflictResolution(v) || sanitizeDiffReview(v);
+      const edit = sanitizeConflictResolution(v) || sanitizeDiffReview(v) || sanitizeA2uiState(v);
       if (!edit) continue;
       out[key] = edit;
     }
@@ -547,12 +572,13 @@ function buildOpenAllowlist(spec, baseCwd) {
 // True when an Origin header (if present) belongs to this board's own server.
 // Same-origin fetches send no Origin or our own; a foreign Origin is a
 // cross-site POST and must not be allowed to open a local file.
-function sameOrigin(req, port, extraHosts = []) {
+function sameOrigin(req, port, extraHosts = [], extraOrigins = []) {
   if (req.headers['sec-fetch-site'] === 'cross-site') return false;
   const origin = req.headers.origin;
   if (!origin) return true;
   try {
     const u = new URL(origin);
+    if (extraOrigins.includes(u.origin)) return true;
     if (u.port !== String(port)) return false;
     return new Set(['127.0.0.1', 'localhost', ...extraHosts.filter(Boolean)]).has(u.hostname);
   } catch {
@@ -746,7 +772,7 @@ function runOnResult(cmd, result, { quiet = false } = {}) {
 // (submitted / acknowledged / timeout / cancelled). The result is also
 // persisted into the board record so `rly wait` / `rly result` can read it
 // from another process.
-export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, quiet = false, keepAliveOnTimeout = false }) {
+export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, quiet = false, keepAliveOnTimeout = false, link = { mode: 'off' } }) {
   const record = loadBoard(id);
   if (!record) throw new Error(`board ${id} not found`);
   const spec = record.spec;
@@ -813,6 +839,8 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
   const presenceByRole = { owner: null, collab: null, review: null, read: null };
   let actualPort = 0;
   let url = '';
+  // The cross-device origin from a link setting (devlink or a URL template), once resolved.
+  let publicLink = null;
   const advertisedHost = shareHost();
   const accessFor = (req, reqUrl = null) => {
     const host = String(req.headers.host || '').split(':')[0];
@@ -885,7 +913,10 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
       canFinalize: false,
     };
   };
-  const shareUrlFor = (role) => advertisedHost ? `http://${advertisedHost}:${actualPort}/?share=${role}&token=${shareTokens[role]}` : null;
+  const shareUrlFor = (role) => {
+    const base = publicLink ? publicLink.origin : advertisedHost ? `http://${advertisedHost}:${actualPort}` : null;
+    return base ? `${base}/?share=${role}&token=${shareTokens[role]}` : null;
+  };
   const persistShareState = () => {
     record.share = {
       version: SHARE_STATE_VERSION,
@@ -1017,7 +1048,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
         res.end(Buffer.from(m[2], 'base64'));
       } else if (req.method === 'POST' && pathname === '/api/artifact') {
         if (record.spec.responseRequired === false) return sendJson(res, 409, { error: 'display-only boards do not collect feedback' });
-        if (!sameOrigin(req, actualPort, [advertisedHost])) return sendJson(res, 403, { error: 'cross-origin artifact upload rejected' });
+        if (!sameOrigin(req, actualPort, [advertisedHost], [publicLink?.origin])) return sendJson(res, 403, { error: 'cross-origin artifact upload rejected' });
         const access = accessFor(req, reqUrl);
         if (!access.canComment) return sendJson(res, 403, { error: 'this share cannot add comments' });
         const body = JSON.parse((await readBody(req, 6 * 1024 * 1024)) || '{}');
@@ -1076,7 +1107,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
                  (['GET', 'HEAD'].includes(req.method) && pathname === '/api/file-content')) {
         // Preview, stream, or open only a board-referenced local file. All three
         // paths share the same origin, role, and reference allowlist checks.
-        if (!sameOrigin(req, actualPort, [advertisedHost])) return sendJson(res, 403, { error: 'cross-origin requests cannot open files' });
+        if (!sameOrigin(req, actualPort, [advertisedHost], [publicLink?.origin])) return sendJson(res, 403, { error: 'cross-origin requests cannot open files' });
         const access = accessFor(req, reqUrl);
         if (access.role !== 'owner' && access.role !== 'collab') return sendJson(res, 403, { error: 'this share cannot open local files' });
         const body = req.method === 'POST' ? JSON.parse((await readBody(req)) || '{}') : { path: reqUrl.searchParams.get('path') };
@@ -1262,7 +1293,21 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
     bind(port, true);
   });
   actualPort = server.address().port;
-  url = `http://127.0.0.1:${actualPort}/`;
+  const localUrl = `http://127.0.0.1:${actualPort}/`;
+  url = localUrl;
+  try {
+    publicLink = await resolveLink(link, actualPort);
+  } catch (err) {
+    server.close();
+    throw err;
+  }
+  if (publicLink) {
+    // Requests through the link carry a non-loopback Host, so they are not the
+    // owner. The collaborator token in the URL is what lets the owner's phone
+    // answer and submit; it is held in memory and never saved on the board.
+    activeShares.collab = true;
+    url = shareUrlFor('collab');
+  }
   // Remember the port this board last bound, so `rly rescue <id>` can re-serve
   // on the SAME port — letting a still-open (but disconnected) browser tab
   // reconnect to its relative /api/* URLs without the user touching anything.
@@ -1275,6 +1320,8 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
     pid: process.pid,
     port: actualPort,
     url,
+    localUrl,
+    link: publicLink ? publicLink.kind : null,
     title: spec.title,
     token,
     startedAt: new Date().toISOString(),
@@ -1336,6 +1383,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
   // and auto-closes first). The result is assumed already persisted.
   function closeServer(result) {
     removeRunning(record.id);
+    if (publicLink) publicLink.release();
     if (timer) clearTimeout(timer);
     process.removeListener('SIGINT', onSignal);
     process.removeListener('SIGTERM', onSignal);
@@ -1372,7 +1420,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
     runOnResult(record.onResult, result, { quiet });
   }
 
-  if (open) openUrl(url);
+  if (open && !publicLink) openUrl(url);
   if (!quiet) {
     process.stderr.write(
       `[relay] ${record.id} open: ${url} (waiting for submit; timeout: ${timeoutSec > 0 ? `${timeoutSec}s` : 'none'})\n`

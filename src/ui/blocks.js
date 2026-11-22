@@ -3042,6 +3042,10 @@
         inner = renderCompare(block, ctx, blockId);
         wrapper.append(inner);
         break;
+      case 'a2ui':
+        inner = window.RelayA2ui ? window.RelayA2ui.render(block, ctx, blockId) : el('div', { class: 'blk-error' }, 'A2UI renderer is not loaded.');
+        wrapper.append(inner);
+        break;
       default:
         wrapper.append(el('div', { class: 'blk-error' }, 'Unknown block type: ' + esc(String(block.type))));
     }

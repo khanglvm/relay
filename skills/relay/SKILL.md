@@ -66,6 +66,7 @@ Use `required:true` only for answers necessary to continue.
 | Mockups / before-after | `image`, `compare` |
 | Media / reports | `video`, `pdf` |
 | Design choices | `palette`, `typography` |
+| Live status, quick actions, small forms | `a2ui` (grammar: `rly a2ui`) |
 | Custom interactive content | sandboxed `html` |
 
 | Answer shape | Question type |
@@ -80,6 +81,24 @@ from another part of the board. `mermaid` with `editable:true` returns user edit
 in `blockEdits`. For image feedback, primary drag selects a region/crop;
 Space-drag or middle-drag pans. A compare divider moves only by its handle.
 `pins:true` adds image point comments.
+
+## Open a board on the user's other devices
+
+When the user reads on a phone or another Mac, and `devlink` is installed, add
+`--devlink` to `rly ask|show|view|diff` (or set it once with
+`rly config link devlink`). The command prints a private https URL; give the user
+that URL and never a localhost one. Without `devlink`, `--public-url
+'https://host:{port}'` takes any https URL that reaches the board. Answers still
+come back through `rly wait` and `rly result`.
+
+## A2UI widgets
+
+An `a2ui` block is a small live widget for state and quick actions: a status list,
+numbers, a progress bar, buttons, a short form. Write it as A2UI Express in the
+`express` field; run `rly a2ui` for the grammar and every component. Clicks and
+input values return in `result.blockEdits[blockId]` as `{type:"a2ui", data,
+events:[{name, context, at}]}`. A widget is never a substitute for a question you
+need answered; use `single`, `yesno` or `text` for that.
 
 ## File references that open in a modal
 

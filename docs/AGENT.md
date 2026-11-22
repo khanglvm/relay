@@ -87,6 +87,39 @@ links, or submit. Collaborators retain owner-authorized edit/comment/final-submi
 permission. Active links keep the same token across a same-port
 `rly reopen`/`rly rescue` until revoked.
 
+## A private URL for other devices
+
+A board listens on this machine. To open it from a phone or another computer
+without Wi-Fi sharing, give it a link setting. `rly ask`, `rly show`, `rly view`
+and `rly diff` accept:
+
+```sh
+rly ask --file spec.json --detach --devlink        # publish through devlink
+rly ask --file spec.json --detach --public-url 'https://boards.example.com:{port}'
+rly config link devlink                            # make it the default (also: auto, off, or a URL)
+```
+
+- `--devlink` runs `devlink --json internal PORT`, requires a private https URL
+  back, and prints it as the board `url` (with a collaborator token). It stops
+  with an error if `devlink` is missing or fails. Relay finds it through
+  `RLY_DEVLINK_BIN`, then `PATH`, then `~/.local/bin/devlink`.
+- `auto` does the same when `devlink` is installed and keeps the board local when
+  it is not. `off` (the default) never publishes.
+- `--public-url` takes any https URL that reaches the board's port, such as a
+  reverse proxy or tunnel you run. `{port}` becomes the board port. Loopback
+  hosts are refused. `RLY_PUBLIC_URL` and `RLY_LINK` set the same from the
+  environment; `--no-devlink` turns it off for one run.
+- Precedence: `--no-devlink`, `--devlink`, `--public-url`, `RLY_PUBLIC_URL`,
+  `RLY_LINK`, `rly config link`, then off.
+- Answers return as usual: `rly wait <id>` and `rly result <id>`.
+- When the board closes, Relay removes the devlink route again.
+
+Report the printed URL to the user and never a `localhost`, `127.0.0.1` or
+`0.0.0.0` address. A published board is reachable by whoever can reach the
+link, and devlink's gateway makes every request look local to the board, so the
+token in the URL and the network behind the link (Tailscale for devlink) are the
+access control. Use `rly share <id> --revoke --all` to cut access.
+
 ## Inline mode — relay as an MCP App (Claude & Codex apps)
 
 Everything above is the **CLI** surface (you run `rly` in a terminal and read
@@ -543,6 +576,7 @@ the question-types section above.
 | `kpi` | big-number metric cards (`items:[{label,value,delta?,dir?,sub?}]`) with up/down/flat-tinted deltas — at-a-glance numbers without a chart |
 | `typography` | type specimens (`specimens:[{label?,size?,weight?,font?,text?}]`) — react to type choices like a palette |
 | `compare` | before/after images with a draggable divider (`before`/`after` = url/path/`{src,label}`); area comments preserve which side was selected |
+| `a2ui` | a small live widget: status list, numbers, progress, quick-action buttons, a short form. Written in A2UI Express; the clicks and input values come back in `result.blockEdits[blockId]`. Full grammar and examples: `rly a2ui` (docs/A2UI.md) |
 | `html` | anything else — pixel-perfect mockups, custom widgets, embeds |
 
 Two cross-block fields work on **any** block: `"ref":"name"` makes it openable in
