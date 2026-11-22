@@ -80,7 +80,7 @@ default. The details are in the [agent guide](docs/AGENT.md).
 
 - [Setup and MCP Apps](docs/SETUP.md): agent configuration, in-chat boards, sharing, and updates.
 - [A2UI widgets](docs/A2UI.md): the `a2ui` block, also available as `rly a2ui`.
-- [Agent guide](docs/AGENT.md): board examples, block types, and JSON schemas; also available as `rly agent`.
+- [Agent guide](docs/AGENT.md): board examples, block types, and JSON schemas; also available as `rly agent`, with `rly agent <topic>` for one part and `rly schema <type>` for one block or question type.
 - `rly help` lists commands. `rly upgrade` updates the CLI and skill.
 - [Changelog](CHANGELOG.md) · [MIT license](LICENSE)
 

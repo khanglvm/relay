@@ -5,7 +5,9 @@ questions. Choose purpose-built blocks so users can inspect the content and
 leave precise feedback. Keep short answers and progress updates in chat.
 Respect the user’s existing authorization; boards do not add approval gates.
 For a concise workflow, read the bundled skill (`rly skill path`). This guide is
-a reference for fields and less common operations.
+a reference for fields and less common operations. Load one part with
+`rly agent <topic>` (`questions`, `blocks`, `annotate`, `lifecycle`, `sharing`,
+`mcp`, `a2ui`), and one block or question type with `rly schema <type>`.
 
 Use `rly show --file spec.json --display-only` when no response is needed. Use
 `rly ask --file spec.json --detach` and a waiter for answers or comments.
@@ -36,6 +38,23 @@ contradict an `answers` value — reconcile them before generating output.
 Everything machine-relevant is on **stdout as JSON**; human-facing logs go to
 stderr. Exit codes: `0` submitted/acknowledged · `2` timeout · `3` cancelled ·
 `4` usage error · `5` not found.
+
+## Block and question shapes (copy, then adapt)
+```jsonc
+{"type":"chart","kind":"bar","title":"Deploys vs incidents","labels":["W1","W2"],"series":[{"label":"Deploys","data":[12,19]},{"label":"Incidents","data":[1,0]}]}   // kind: bar|line|pie|doughnut|radar|scatter
+{"type":"kpi","items":[{"label":"Deploys","value":"67","delta":"+12%","dir":"up"}]}
+{"type":"table","columns":[{"key":"name","label":"Name"}],"rows":[{"name":"x"}],"sortable":true}
+{"type":"image","src":"/abs/a.png","alt":"A","pins":true}             // users can also drag a region to comment
+{"type":"compare","before":"/abs/a.png","after":"/abs/b.png"}          // draggable divider
+{"type":"diff","diffFile":"/abs/change.diff"}   {"type":"code","codeFile":"/abs/app.js"}   {"type":"markdown","mdFile":"/abs/PLAN.md"}
+{"type":"mermaid","code":"graph TD; A-->B","editable":true}              // edits come back in blockEdits
+{"type":"a2ui","title":"Checks","express":"$/runs = [{title: \"Build\", trailing: \"ok\", tone: \"ok\"}]\nroot = Card(\"Checks\", [List($/runs), Button(\"Retry\", action=Event(\"retry\", {}))])"}   // buttons and live status: use a2ui, not html
+{"id":"signoff","type":"checklist","label":"Sign off each area","options":["login","billing"]}   // pass/fail/N-A per item: one checklist, not many yes/no
+{"id":"rank","type":"rank","label":"Priorities","options":["speed","a11y"]}   {"id":"split","type":"allocate","label":"Budget","total":100,"options":["type","space"]}
+{"id":"c","type":"single","label":"Scheme?","options":[{"value":"warm","label":"Warm","blocks":[{"type":"html","html":"<div style='height:100%;background:#c2674b'></div>","height":140}]}]}   // a visual per option
+{"id":"s","type":"scale","label":"Rate","min":1,"max":5}   {"id":"col","type":"color","label":"Brand color"}   {"id":"ship","type":"yesno","label":"Ship?"}
+```
+Buttons inside a2ui do not replace a question. Their clicks return in `blockEdits`.
 
 ## Two execution patterns
 
@@ -94,31 +113,26 @@ without Wi-Fi sharing, give it a link setting. `rly ask`, `rly show`, `rly view`
 and `rly diff` accept:
 
 ```sh
-rly ask --file spec.json --detach --devlink        # publish through devlink
 rly ask --file spec.json --detach --public-url 'https://boards.example.com:{port}'
-rly config link devlink                            # make it the default (also: auto, off, or a URL)
+rly ask --file spec.json --detach --link-command 'my-link-tool {port}'
+rly config link command:'my-link-tool {port}'      # make it the default (also: off, or a URL)
 ```
 
-- `--devlink` runs `devlink --json internal PORT`, requires a private https URL
-  back, and prints it as the board `url` (with a collaborator token). It stops
-  with an error if `devlink` is missing or fails. Relay finds it through
-  `RLY_DEVLINK_BIN`, then `PATH`, then `~/.local/bin/devlink`.
-- `auto` does the same when `devlink` is installed and keeps the board local when
-  it is not. `off` (the default) never publishes.
 - `--public-url` takes any https URL that reaches the board's port, such as a
-  reverse proxy or tunnel you run. `{port}` becomes the board port. Loopback
-  hosts are refused. `RLY_PUBLIC_URL` and `RLY_LINK` set the same from the
-  environment; `--no-devlink` turns it off for one run.
-- Precedence: `--no-devlink`, `--devlink`, `--public-url`, `RLY_PUBLIC_URL`,
-  `RLY_LINK`, `rly config link`, then off.
+  reverse proxy you run. `{port}` becomes the board port. Loopback hosts are
+  refused. `RLY_PUBLIC_URL` and `RLY_LINK` set the same from the environment.
+- `--link-command CMD` (or `RLY_LINK_COMMAND`) runs any command that takes the
+  board's port ({port} in the command, or appended) and prints an https URL,
+  either as plain text or as JSON with a `url` field. `RLY_LINK_RELEASE_COMMAND`
+  runs when the board closes, so the provider can remove its route.
+- Precedence: `--link-command`, `--public-url`, `RLY_LINK_COMMAND`,
+  `RLY_PUBLIC_URL`, `RLY_LINK`, `rly config link`, then off.
 - Answers return as usual: `rly wait <id>` and `rly result <id>`.
-- When the board closes, Relay removes the devlink route again.
 
 Report the printed URL to the user and never a `localhost`, `127.0.0.1` or
-`0.0.0.0` address. A published board is reachable by whoever can reach the
-link, and devlink's gateway makes every request look local to the board, so the
-token in the URL and the network behind the link (Tailscale for devlink) are the
-access control. Use `rly share <id> --revoke --all` to cut access.
+`0.0.0.0` address. Whoever can reach the link can reach the board, so the token
+in the URL and the network behind the link are the access control. Use
+`rly share <id> --revoke --all` to cut access.
 
 ## Inline mode — relay as an MCP App (Claude & Codex apps)
 
@@ -134,8 +148,8 @@ browser tab. `rly mcp` speaks the MCP **stdio** transport, so it pairs with a
 
 **Web / mobile / remote hosts** can't reach a stdio subprocess, so for those run
 the **Streamable HTTP** transport: `rly mcp --http [--port N]` serves the same
-tools at `/mcp`. relay needs **only its own CLI** for this — no tunnel tool, no
-extra infra. Because relay is **stateless** (answers go iframe→host→model, never
+tools at `/mcp`. relay needs **only its own CLI** for this, with no extra
+infrastructure. Because relay is **stateless** (answers go iframe→host→model, never
 back to the server), **one deployed instance serves everyone**, so deploy it once
 on any address the app can reach and register that URL as a custom connector:
 
@@ -146,8 +160,6 @@ on any address the app can reach and register that URL as a custom connector:
 - **Smithery** (largest MCP marketplace) — publish the deployed URL with
   `smithery mcp publish <url> -n @you/relay` for discovery + an OAuth gateway, or
   distribute relay as a stdio bundle clients run locally.
-- **Tunnel (optional, dev only)** — `cloudflared`/`tailscale` is *only* for
-  exposing a NAT'd laptop; it's never required and not a relay dependency.
 
 A hosted instance can't see your local files (so `codeFile`/local-image blocks
 won't resolve there — pass URLs or inline content); run it on your own machine if

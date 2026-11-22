@@ -1,17 +1,21 @@
 // The chart block.
 import { CliError } from '../../util.js';
 import { asStr, clampInt } from '../sources.js';
-import { BLOCK_HEIGHT, CHART_KINDS } from '../constants.js';
+import { BLOCK_HEIGHT, CHART_KINDS, CHART_KIND_FIELDS, CHART_SERIES_FIELDS } from '../constants.js';
+
+// The first spelling of a field the agent used, so `chartType` or Chart.js's `datasets` work.
+const firstDefined = (raw, names) => raw[names.find((n) => raw[n] !== undefined)];
 
 // Normalizes one chart block. `id` is the already-assigned block id.
-export function normalizeChartBlock(rawBlock, id, cwd, where, hasHeight) {
+export function normalizeChartBlock(raw, id, cwd, where, hasHeight) {
+  const rawBlock = { ...raw, kind: firstDefined(raw, CHART_KIND_FIELDS), series: firstDefined(raw, CHART_SERIES_FIELDS) };
   const hasConfig = rawBlock.config && typeof rawBlock.config === 'object' && !Array.isArray(rawBlock.config);
   const hasShorthand =
     typeof rawBlock.kind === 'string' ||
     Array.isArray(rawBlock.labels) ||
     Array.isArray(rawBlock.series);
   if (!hasConfig && !hasShorthand) {
-    throw new CliError(`${where}: chart needs "config" (full Chart.js config) or "kind"+"labels"+"series".`);
+    throw new CliError(`${where}: a chart needs "kind" (${CHART_KINDS.join('|')}), "labels" and "series": [{"label","data":[...]}], or a full Chart.js "config". \`rly schema chart\` shows the fields.`);
   }
   const block = { id, type: 'chart' };
   block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, 320);
@@ -21,7 +25,7 @@ export function normalizeChartBlock(rawBlock, id, cwd, where, hasHeight) {
   }
   // Shorthand form: validate kind/labels/series.
   const kind = asStr(rawBlock.kind).trim().toLowerCase();
-  if (!kind) throw new CliError(`${where}: chart shorthand needs a "kind" (${CHART_KINDS.join('|')}).`);
+  if (!kind) throw new CliError(`${where}: add "kind": one of ${CHART_KINDS.join('|')}.`);
   if (!CHART_KINDS.includes(kind)) {
     throw new CliError(`${where}: unknown chart kind "${rawBlock.kind}". Valid: ${CHART_KINDS.join(', ')}.`);
   }

@@ -51,7 +51,7 @@ for (const [kind, code] of Object.entries(VALID)) {
 for (const [kind, code] of Object.entries(BROKEN)) {
   test(`a broken ${kind} diagram is refused with the parser's message`, async () => {
     await assert.rejects(assertSpecReady(mermaidSpec(code)), (err) => {
-      assert.match(err.message, /^board\.blocks\[0\].*: invalid mermaid syntax — /);
+      assert.match(err.message, /^board\.blocks\[0\].*: invalid mermaid syntax\. /);
       assert.match(err.message, /Parse error|Parsing failed/);
       return true;
     });

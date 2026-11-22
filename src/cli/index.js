@@ -1,5 +1,4 @@
 // The rly command router.
-import { SPEC_SCHEMA } from '../spec/index.js';
 import { CliError } from '../util.js';
 import { cmdSkill, firstRunHint, skillFreshnessWarning } from './skill.js';
 import { printHelp } from './help.js';
@@ -10,7 +9,7 @@ import { cmdHistory, cmdList, cmdOpen, cmdReopen, cmdRescue, cmdReuse, cmdRm, cm
 import { cmdDiff, cmdGit } from './git.js';
 import { cmdResult, cmdWait } from './wait.js';
 import { cmdShare } from './share.js';
-import { cmdA2ui, cmdAgent, cmdConfig, cmdServeInternal } from './config.js';
+import { cmdA2ui, cmdAgent, cmdConfig, cmdSchema, cmdServeInternal } from './config.js';
 import { cmdInstall } from './install.js';
 import { cmdUpgrade } from './upgrade.js';
 import { cmdMcp } from './mcp.js';
@@ -79,12 +78,11 @@ export async function main(argv) {
       case 'self-update':
         return await cmdUpgrade(parseArgs(rest));
       case 'agent':
-        return cmdAgent();
+        return cmdAgent(rest[0]);
       case 'a2ui':
         return cmdA2ui();
       case 'schema':
-        console.log(JSON.stringify(SPEC_SCHEMA, null, 2));
-        return 0;
+        return cmdSchema(rest[0]);
       case 'mcp':
         return await cmdMcp(rest);
       case '__serve':

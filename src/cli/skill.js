@@ -119,31 +119,30 @@ export function stampSkillVersion() {
 // AGENTS.md, …). A skill is only a tier-1 hint that agents can ignore; these
 // rules, appended to the instructions the agent always reads, enforce usage.
 // Printed to stdout so `rly skill rules >> CLAUDE.md` is the whole install.
-export const SKILL_RULES = `## relay — visual boards and structured feedback
+export const SKILL_RULES = `## relay: visual boards and structured feedback
 
-- Use Relay for files, visuals, plans, diffs, and multiple related questions.
-  Keep brief answers and progress updates in chat; follow existing user authorization.
+- Use Relay for files, visuals, plans, diffs and several related questions. Keep brief
+  answers and progress updates in chat, and follow the authorization the user already gave.
 - Show without feedback: \`rly show --file spec.json --display-only\` (no waiter).
   Collect input: \`rly ask --file spec.json --detach\`, then keep
-  \`rly wait <boardId> --timeout 1800 --while-active --idle-grace 300\` in the
-  foreground. If it times out, read \`rly result <boardId>\` before continuing.
-- Use the most specific block: table/chart/kpi for data, image/compare for visuals,
-  code/diff for source, mermaid for flows, markdown for prose, html for custom UI.
-  \`rly view\`, \`rly diff\`, and \`rly git\` are shortcuts; visual options use \`options[].blocks\`.
-- Browser file links such as \`[source](/absolute/app.js:98)\` open supported files
-  in a modal and highlight source lines. Unsupported files offer Open in app.
-  For inline MCP or shared reviewers, embed file content as blocks instead.
-- Reconnect existing boards by ID with \`rly rescue\` / \`rly reopen\`; update
-  content with \`rly update\`. Preserve the original port and saved input.
-- On a setup with \`devlink\`, add \`--devlink\` (or run \`rly config link devlink\` once)
-  so the board opens on a private URL that phones and other Macs can reach.
-  Share that printed URL, never a localhost one.
-- Small live widgets (status lists, numbers, buttons) are \`a2ui\` blocks; the
-  grammar is in \`rly a2ui\`. Questions you depend on stay normal questions.
-- Read answers, notes, comment, annotations, and blockEdits together. Use the
-  returned resultFile when stdout is truncated; a timeout is not an answer.
-- Full skill: \`rly skill path\`; fields: \`rly schema\`; advanced recipes and
-  sharing permissions: \`rly agent\`. Load details only when needed.`;
+  \`rly wait <boardId> --timeout 1800 --while-active --idle-grace 300\` in the foreground.
+  A timeout is not an answer: read \`rly result <boardId>\` before continuing.
+- Pick the most specific block: table, chart or kpi for data; image or compare for visuals;
+  code or diff for source; mermaid for flows; markdown for prose. Buttons and live status
+  are \`a2ui\`. Per-area sign-off is one \`checklist\` question. A visual choice puts
+  its picture in \`options[].blocks\`.
+- Exact fields on demand: \`rly schema chart\` (any block or question type), \`rly agent <topic>\`
+  (questions, blocks, annotate, lifecycle, sharing, mcp, a2ui). \`rly view\`, \`rly diff\` and
+  \`rly git\` are shortcuts.
+- A reader on another device needs an https url: \`--public-url 'https://host:{port}'\` or
+  \`--link-command CMD\` (a command that takes the port and prints the url); \`rly config link\`
+  saves it. Give the person the printed url, never a localhost one.
+- Browser file links such as \`[source](/absolute/app.js:98)\` open in a modal. For inline MCP
+  boards and shared reviewers, embed file content as blocks instead.
+- Reconnect a board by id with \`rly rescue\` or \`rly reopen\`, and change it with \`rly update\`.
+- Read answers, notes, comment, annotations and blockEdits together. Use the returned
+  resultFile when stdout is cut short.
+- The full skill is at \`rly skill path\`.`;
 
 export function cmdSkill(rest) {
   const sub = rest[0];

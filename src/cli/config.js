@@ -2,10 +2,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig, parseLinkValue, saveConfig, serializeLink } from '../link.js';
+import { BLOCK_TYPES, SPEC_SCHEMA, TYPES } from '../spec/index.js';
+import { lookupSchema } from '../spec/lookup.js';
 import { runBoard } from '../server/index.js';
 import { HOME } from '../store.js';
 import { CliError } from '../util.js';
 import { DEFAULT_BOARD_TIMEOUT_SEC, PKG_ROOT } from './context.js';
+import { renderAgentTopic } from './agent-topics.js';
 import { printJson } from './io.js';
 
 export function cmdA2ui() {
@@ -13,8 +16,29 @@ export function cmdA2ui() {
   return 0;
 }
 
-export function cmdAgent() {
-  console.log(fs.readFileSync(path.join(PKG_ROOT, 'docs', 'AGENT.md'), 'utf8'));
+const readDoc = (file) => fs.readFileSync(path.join(PKG_ROOT, 'docs', file), 'utf8');
+
+// `rly agent` prints the whole guide; `rly agent <topic>` prints one part of it.
+export function cmdAgent(topic) {
+  if (topic === undefined || topic === 'all') {
+    console.log(readDoc('AGENT.md'));
+    return 0;
+  }
+  console.log(renderAgentTopic(topic, readDoc));
+  return 0;
+}
+
+// `rly schema` prints the whole board schema; `rly schema <name>` prints one block or question type.
+export function cmdSchema(name) {
+  if (name === undefined) {
+    console.log(JSON.stringify(SPEC_SCHEMA, null, 2));
+    return 0;
+  }
+  const found = lookupSchema(name);
+  if (!found) {
+    throw new CliError(`unknown block or question type "${name}". Blocks: ${BLOCK_TYPES.join(', ')}. Questions: ${TYPES.join(', ')}.`, 4);
+  }
+  console.log(JSON.stringify(found, null, 2));
   return 0;
 }
 

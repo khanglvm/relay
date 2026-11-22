@@ -1,166 +1,64 @@
 ---
 name: relay
-description: "Present files, visuals, plans, diffs, and structured user decisions in a Relay browser or inline MCP board. Use for visual review, rich reports, or multiple related questions; use native chat for simple answers and single confirmations."
+description: "Show the user files, visuals, diffs, plans, charts or a set of related questions on a Relay board and collect their answers and comments. Use when a decision needs visuals or several linked questions; simple one-off questions stay in chat."
 ---
 
 # Relay (`rly`)
 
-Choose the surface and component that lets the user understand or decide with
-least effort. Use Relay for files, visuals, substantial plans, and related
-questions. Keep ordinary progress updates and brief answers in chat. Follow the
-user’s existing authorization; a board is not an extra approval requirement.
+Put content in front of the person and read what they decide. Keep short answers and progress updates in chat. A board adds no approval step of its own; follow the authorization the user already gave.
 
-## Choose the operation
+## Workflow
+1. Write a spec to a JSON file. Never pass big JSON in a shell argument.
+2. `rly ask --file spec.json --detach` prints `{boardId,url}` at once. When no reply is needed: `rly show --file spec.json --display-only`.
+3. Give the person the url. To get the result: `rly wait <boardId> --timeout 1800 --while-active --idle-grace 300` (blocks until submit) or `rly result <boardId>` (now). A timeout is not an answer: run `rly result` before you decide.
+4. Read `answers`, `notes`, `comment`, `annotations` and `blockEdits` together; any of them can qualify an answer. When stdout is cut short, read the `resultFile` it names.
 
-- **Show content without asking for feedback:** `rly show --file spec.json --display-only`.
-  Returns immediately; no Submit button or waiter is needed.
-- **Collect answers or comments:** `rly ask --file spec.json --detach`, then wait
-  for that board’s result. Put related questions on one board.
-- **Read a file:** `rly view report.md --display-only`; also accepts CSV/TSV/JSON
-  tables and PDF. Use a `code` block with `codeFile` for source code.
-- **Show changes:** `rly diff`; `rly git pick`, `rly git cherry-pick --code`, and
-  `rly git conflict` collect commit/hunk choices. Apply only the user’s choices.
-- **Continue an existing board:** identify it by URL/port/title with `rly list`
-  or `rly history`. Use `rly rescue <id>` for a disconnected tab (same port),
-  `rly reopen <id>` for a new tab with saved input, or `rly update <id> --file
-  spec.json` to change its content. `rly reuse` deliberately starts a blank run.
+If Relay MCP tools are connected, `relay_ask` (answers wanted) and `relay_show` (display only) take the same spec and the board renders inline. Embed file content with `mdFile`, `codeFile` or an image block, because inline boards cannot open local file links.
 
-If Relay MCP tools are available in the current host, `relay_ask` collects input
-inline and `relay_show` is display-only by default. Use the actual exposed tool
-schema; setup details are in `rly mcp config`. Local file-link previews require
-the **browser board** server. For inline MCP, embed file content using `mdFile`,
-`codeFile`, or an image block instead.
-
-## Author a board
-
-Write valid JSON to a file; avoid embedding large specs in shell arguments.
-Use `rly schema` for exact fields and `rly agent` for detailed recipes, sharing,
-HTML/annotation APIs, and less common components. Load those only as needed.
-
+## Spec in one screen
 ```json
 {
-  "title": "Implementation review",
+  "title": "Hero review",
+  "intro": "Pick one. Click or drag on an image to comment.",
   "blocks": [
-    {"type": "markdown", "md": "Review the [source](/absolute/path/app.js:98)."},
-    {"type": "code", "codeFile": "/absolute/path/app.js", "ref": "source"}
+    {"type": "markdown", "md": "Short context."},
+    {"type": "image", "src": "/abs/a.png", "alt": "A"}
   ],
   "questions": [
-    {"id": "approach", "type": "single", "label": "Which approach?",
-     "options": [{"value": "small", "label": "Small change", "description": "Keep the current interface."},
-                 {"value": "replace", "label": "Replace", "description": "Introduce the new interface."}]},
-    {"id": "notes", "type": "textarea", "label": "What needs adjusting?", "required": false}
+    {"id": "pick", "type": "single", "label": "Which one?", "required": true,
+     "options": [{"value": "a", "label": "A", "description": "why"}, "B"]},
+    {"id": "notes", "type": "textarea", "label": "Anything else?"}
   ]
 }
 ```
+- Question types: single multi yesno text textarea scale color rank checklist allocate.
+- Blocks: markdown(md|mdFile) code(codeFile) diff(diffFile) image compare chart table kpi mermaid graphviz html palette video pdf a2ui. Local files: pass absolute paths.
+- Blocks go at the board root, on a question, or on an option (visual choices).
+- Every id is stable and unique. `required:true` only for answers you cannot continue without.
+- A board with `questions` collects answers. One without is display-only.
 
-Use stable question IDs and descriptive option values. Questions and individual
-options can carry their own `blocks`; put each design variant inside its option.
-Use `required:true` only for answers necessary to continue.
-
-| Content | Component |
-|---|---|
-| Prose / documents | `markdown` with `md` or `mdFile` |
-| Source / changes | `code` with `codeFile`; `diff` with `diffFile`; `git-conflict` |
-| Data / headline metrics | `table` with `rowsFile`, `chart`, `kpi` |
-| Flows / dependencies / UML | `mermaid`, `graphviz`, `plantuml` |
-| Mockups / before-after | `image`, `compare` |
-| Media / reports | `video`, `pdf` |
-| Design choices | `palette`, `typography` |
-| Live status, quick actions, small forms | `a2ui` (grammar: `rly a2ui`) |
-| Custom interactive content | sandboxed `html` |
-
-| Answer shape | Question type |
-|---|---|
-| One / several choices | `single`, `multi` |
-| Binary / rating / color | `yesno`, `scale`, `color` |
-| Free text | `text`, `textarea` |
-| Priorities / budget / sign-off | `rank`, `allocate`, `checklist` |
-
-Any block can have `"ref":"source"`; `[View source](#ref:source)` opens its viewer
-from another part of the board. `mermaid` with `editable:true` returns user edits
-in `blockEdits`. For image feedback, primary drag selects a region/crop;
-Space-drag or middle-drag pans. A compare divider moves only by its handle.
-`pins:true` adds image point comments.
-
-## Open a board on the user's other devices
-
-When the user reads on a phone or another Mac, and `devlink` is installed, add
-`--devlink` to `rly ask|show|view|diff` (or set it once with
-`rly config link devlink`). The command prints a private https URL; give the user
-that URL and never a localhost one. Without `devlink`, `--public-url
-'https://host:{port}'` takes any https URL that reaches the board. Answers still
-come back through `rly wait` and `rly result`.
-
-## A2UI widgets
-
-An `a2ui` block is a small live widget for state and quick actions: a status list,
-numbers, a progress bar, buttons, a short form. Write it as A2UI Express in the
-`express` field; run `rly a2ui` for the grammar and every component. Clicks and
-input values return in `result.blockEdits[blockId]` as `{type:"a2ui", data,
-events:[{name, context, at}]}`. A widget is never a substitute for a question you
-need answered; use `single`, `yesno` or `text` for that.
-
-## File references that open in a modal
-
-In the intro or a markdown block, use `[label](/absolute/path/file.js:98)`.
-Absolute paths are most reliable across authoring directories. `./`, `../`,
-`~/`, `file://` URLs, bare paths, and backtick paths are also recognized. Encode
-spaces in file URLs, for example `[report](file:///tmp/My%20Report.md)`.
-
-- `:line`, `:line:column`, and `#Lstart-Lend` select source lines. Columns are
-  accepted; highlighting is by line.
-- UTF-8 source/config/log files have numbered, highlighted source previews.
-  Markdown renders as a document; CSV/TSV as a table; HTML as a sandboxed static
-  page. These views also offer a Source button.
-- Images, PDF, and browser-compatible audio/video render within the modal.
-  Playback depends on the browser’s codec support.
-- Text previews are limited to 1 MiB and 20,000 lines. Missing files show an
-  error; binary/oversized files and directories offer **Open in app**.
-- Only local paths explicitly referenced by the board are accessible. Links
-  discovered inside a preview do not grant access to more files. References
-  read the current disk content; use content blocks for a captured snapshot or
-  for annotations. Preview modals do not collect annotations.
-- Owner and collaborator browser sessions can preview/open local references.
-  Read-only and reviewer shares cannot; embed needed content as blocks for them.
-
-After a CLI upgrade, running boards retain their previous server/UI snapshot.
-For a board that needs the new viewer, preserve its saved input and reconnect
-that same board with the updated CLI; do not replace it with a new board ID.
-
-## Wait and read feedback
-
-For a response-bearing browser board, retain the returned board ID and keep a
-foreground waiter running in Codex:
-
-```sh
-rly ask --file spec.json --detach
-rly wait <boardId> --timeout 1800 --while-active --idle-grace 300
+## Block and question shapes (copy, then adapt)
+```jsonc
+{"type":"chart","kind":"bar","title":"Deploys vs incidents","labels":["W1","W2"],"series":[{"label":"Deploys","data":[12,19]},{"label":"Incidents","data":[1,0]}]}   // kind: bar|line|pie|doughnut|radar|scatter
+{"type":"kpi","items":[{"label":"Deploys","value":"67","delta":"+12%","dir":"up"}]}
+{"type":"table","columns":[{"key":"name","label":"Name"}],"rows":[{"name":"x"}],"sortable":true}
+{"type":"image","src":"/abs/a.png","alt":"A","pins":true}             // users can also drag a region to comment
+{"type":"compare","before":"/abs/a.png","after":"/abs/b.png"}          // draggable divider
+{"type":"diff","diffFile":"/abs/change.diff"}   {"type":"code","codeFile":"/abs/app.js"}   {"type":"markdown","mdFile":"/abs/PLAN.md"}
+{"type":"mermaid","code":"graph TD; A-->B","editable":true}              // edits come back in blockEdits
+{"type":"a2ui","title":"Checks","express":"$/runs = [{title: \"Build\", trailing: \"ok\", tone: \"ok\"}]\nroot = Card(\"Checks\", [List($/runs), Button(\"Retry\", action=Event(\"retry\", {}))])"}   // buttons and live status: use a2ui, not html
+{"id":"signoff","type":"checklist","label":"Sign off each area","options":["login","billing"]}   // pass/fail/N-A per item: one checklist, not many yes/no
+{"id":"rank","type":"rank","label":"Priorities","options":["speed","a11y"]}   {"id":"split","type":"allocate","label":"Budget","total":100,"options":["type","space"]}
+{"id":"c","type":"single","label":"Scheme?","options":[{"value":"warm","label":"Warm","blocks":[{"type":"html","html":"<div style='height:100%;background:#c2674b'></div>","height":140}]}]}   // a visual per option
+{"id":"s","type":"scale","label":"Rate","min":1,"max":5}   {"id":"col","type":"color","label":"Brand color"}   {"id":"ship","type":"yesno","label":"Ship?"}
 ```
+Buttons inside a2ui do not replace a question. Their clicks return in `blockEdits`.
 
-Keep the process/session handle if the shell tool yields. Resume that process
-until it exits; use the host’s background-completion mechanism only when it is
-available. If the wait times out, run `rly result <boardId>` before deciding
-whether another wait is needed. A timeout is not an answer. Detached boards
-remain available on the same port until submitted or explicitly stopped.
-`--timeout 0` disables the Relay deadline; the default is one day.
+## Other operations
+- Read a file or show a change: `rly view report.md --display-only`, `rly diff`. `rly git pick` and `rly git conflict` collect commit and hunk choices; apply only what the user chose.
+- Continue a board: find it with `rly list` or `rly history`. `rly rescue <id>` reconnects a dropped tab, `rly reopen <id>` serves saved input again, `rly update <id> --file spec.json` changes a running board. Keep its id.
+- A reader on a phone or another computer needs an https url. Pass `--public-url 'https://host:{port}'`, or `--link-command CMD` for any command that takes the port and prints an https URL. `rly config link` saves the choice. Give the person the printed url, never a localhost one.
+- In a markdown block, `[label](/abs/path/file.js:98)` opens that file in a modal on the browser board.
 
-Read **answers, notes, comment, annotations, and blockEdits** together. Notes and
-annotations can qualify a selected answer. On timeout/cancel, these may be under
-`draft`; treat them as unfinished feedback. Reviewer submissions are side
-reviews and never finalize the owner’s board.
-
-For large results, use the returned `resultFile` to read the complete JSON.
-Avoid truncating stdout with `head`/`tail`; inspect every feedback channel before
-acting. To reply to annotations, write
-`[{"annotationId":"a1","text":"Updated the example."}]` to a file and run
-`rly reopen <id> --replies replies.json`.
-
-## Details on demand
-
-- `rly agent`: full guide, HTML/diagram editing, sharing roles, annotations,
-  result shapes, and lifecycle recipes.
-- `rly schema`: authoritative board fields; `rly <command> --help` for CLI flags.
-- `examples/`: ready-to-adapt board specs for visual options, diagrams, and color.
-- `rly share <id> --role review|collab|read`: activate sharing only when requested;
-  `--revoke` disables the selected role. Keep share tokens out of reports/logs.
-- `rly upgrade --force`: update CLI/skill while running boards keep their snapshot.
+## Need more? Load only the topic you need
+`rly agent` lists topics: `questions`, `blocks`, `annotate`, `lifecycle`, `sharing`, `mcp`, `a2ui`. For example `rly agent blocks` before an unusual block. `rly schema chart` or `rly schema checklist` prints the exact fields of one block or question type, and `rly schema` prints them all.
