@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { envFileRoots, expandHome } from '../file-access.js';
+import { envFileRoots, expandHome, isBroadRoot } from '../file-access.js';
 import { mcpConfig } from '../mcp/config.js';
 import { CliError } from '../util.js';
 import { parseArgs } from './args.js';
@@ -35,7 +35,15 @@ export async function cmdMcp(rest) {
   // Default: be the stdio server. main() never resolves this, so the CLI's
   // post-run exit timer never arms — the server lives until stdin closes.
   const { runMcp } = await import('../mcp/serve.js');
-  return runMcp({ fileRoots: mcpFileRoots(args, [process.cwd()]) });
+  return runMcp({ fileRoots: mcpFileRoots(args, stdioDefaultRoots(process.cwd())) });
+}
+
+/** The working directory as the stdio root, unless it is `/` or the home directory. */
+function stdioDefaultRoots(cwd) {
+  if (!isBroadRoot(cwd)) return [cwd];
+  // stdout is the MCP channel, so the notice goes to stderr.
+  process.stderr.write(`relay mcp: the working directory ${cwd} is too wide to read files from by default; pass --root PATH to allow a folder.\n`);
+  return [];
 }
 
 /**

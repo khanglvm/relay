@@ -2,7 +2,7 @@
 import path from 'node:path';
 import { openUrl } from '../open.js';
 import { assertSpecReady, normalizeSpec, questionFromInline } from '../spec/index.js';
-import { HOME, controlUrl, createBoard, deleteBoard, isAlive, listBoards, listRunning, loadBoard, loadRunning, removeRunning, saveBoard } from '../store.js';
+import { HOME, boardFileRoots, controlUrl, createBoard, deleteBoard, isAlive, listBoards, listRunning, loadBoard, loadRunning, removeRunning, saveBoard } from '../store.js';
 import { CliError, pollFor } from '../util.js';
 import { cliFileRoots, mustLoad, parseJson, printJson, readFileOrThrow, readStdin, runOrDetach } from './io.js';
 
@@ -139,7 +139,7 @@ export async function cmdReuse(args) {
     console.log(JSON.stringify(src.spec, null, 2));
     return 0;
   }
-  const record = createBoard(src.spec, { fileRoots: src.fileRoots });
+  const record = createBoard(src.spec, { fileRoots: boardFileRoots(src) });
   return runOrDetach(record, args);
 }
 
@@ -156,7 +156,8 @@ export async function cmdUpdate(args) {
     throw new CliError(`board "${id}" is not running — \`rly reopen ${id}\` to serve it, then update.`, 5);
   }
 
-  const fileRoots = [...new Set([...(record.fileRoots ?? [record.cwd]), ...cliFileRoots(args)])];
+  if (args.root.length) throw new CliError('update cannot add file roots: they are set when the board is created. Start a new board with `rly ask --root PATH`.', 4);
+  const fileRoots = boardFileRoots(record);
   let spec;
   if (args.file) {
     const raw =
@@ -183,7 +184,7 @@ export async function cmdUpdate(args) {
     res = await fetch(new URL('/api/update', controlUrl(running)), {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-relay-token': running.token || '' },
-      body: JSON.stringify({ spec, fileRoots }),
+      body: JSON.stringify({ spec }),
     });
   } catch (err) {
     throw new CliError(`could not reach board "${id}" at ${running.url}: ${String((err && err.message) || err)}`, 5);

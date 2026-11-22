@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createFileAccess } from '../file-access.js';
 import { splitFileReference } from '../file-preview.js';
+import { boardFileRoots } from '../store.js';
 import { sendJson } from './http.js';
 
 // ---------- local-file links (POST /api/open) ----------
@@ -36,13 +37,9 @@ function looksLikeLocalPath(s) {
   return false;
 }
 
-/**
- * The file roots a stored board was created under. Boards saved before roots
- * existed fall back to their authoring directory.
- */
+/** The file access of a stored board: its authoring folder and the roots it was created under. */
 export function recordFileAccess(record) {
-  const cwd = record.cwd || process.cwd();
-  return createFileAccess({ cwd, roots: Array.isArray(record.fileRoots) ? record.fileRoots : [cwd] });
+  return createFileAccess({ cwd: record.cwd || process.cwd(), roots: boardFileRoots(record) });
 }
 
 // Expands ~ / file:// and resolves a (possibly relative) path to an absolute,

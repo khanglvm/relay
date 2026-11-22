@@ -52,7 +52,8 @@ USAGE
                                       disconnected browser tab auto-reconnects & re-saves (no new tab
                                       unless --open). Use when a tab shows "connection lost".
   rly reuse <id> [--dump]             re-run a past board as a new board (--dump prints its spec)
-  rly update <id> --file spec.json    live-mutate a RUNNING board (or --title/--intro/-q); page reloads
+  rly update <id> --file spec.json    live-mutate a RUNNING board (or --title/--intro/-q); page reloads;
+                                      files are read under the roots the board was created with
   rly stop <id> | --all               stop running board(s) (status: cancelled, draft preserved)
   rly history [--limit n] [--json]    saved boards
   rly spec <id>                       print a saved board's spec JSON (edit, then ask --file again)

@@ -36,6 +36,11 @@ export function saveBoardArtifact(id, bytes, ext = 'png') {
   return target;
 }
 
+/** The roots a stored board was created under; a board saved before roots existed keeps its authoring folder. */
+export function boardFileRoots(record) {
+  return Array.isArray(record.fileRoots) ? record.fileRoots : [record.cwd || process.cwd()];
+}
+
 /**
  * @param {any} spec a normalized spec
  * @param {{ fileRoots?: string[] }} [options] the roots the spec was read under; the live server opens only files inside them

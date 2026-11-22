@@ -54,6 +54,10 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
     saveBoard(record);
   }
 
+  // Security: the roots are the ones the board was created under. Nothing a
+  // request carries can widen them, because the spec's pdf and video paths are
+  // streamed from disk and `/api/update` stores a spec without re-reading it.
+  const fileAccess = recordFileAccess(record);
   const startedAt = Date.now();
   // Mutation token: only `rly update` (which reads the running-file record)
   // can authenticate to POST /api/update. Never embedded in the page/boot.
@@ -257,6 +261,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
       } else if (req.method === 'POST' && pathname === '/api/update') {
         if (req.headers['x-relay-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
         const body = JSON.parse((await readBody(req)) || '{}');
+        if (body.fileRoots !== undefined) return sendJson(res, 400, { error: 'file roots are set when a board is created and cannot change on update' });
         const next = body.spec;
         if (next === null || typeof next !== 'object' || Array.isArray(next) ||
             !Array.isArray(next.questions) || !Array.isArray(next.blocks)) {
@@ -268,7 +273,6 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
           return sendJson(res, 400, { error: err && err.message ? err.message : String(err) });
         }
         record.spec = next;
-        if (Array.isArray(body.fileRoots)) record.fileRoots = body.fileRoots.filter((r) => typeof r === 'string');
         rev++;
         saveBoard(record);
         sendJson(res, 200, { ok: true, rev });
@@ -328,7 +332,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
         const blockId = decodeURIComponent(pathname.slice('/video/b/'.length));
         const block = findBlock(record.spec, blockId, 'video');
         if (!block || typeof block.file !== 'string') return sendJson(res, 404, { error: `no local video block "${blockId}"` });
-        const video = checkReadable(recordFileAccess(record), block.file);
+        const video = checkReadable(fileAccess, block.file);
         if (!video.ok) return sendJson(res, 404, { error: `no local video block "${blockId}"` });
         streamFile(req, res, video.file, block.mime || 'application/octet-stream');
       } else if ((req.method === 'GET' || req.method === 'HEAD') && pathname.startsWith('/pdf/b/')) {
@@ -336,7 +340,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
         const blockId = decodeURIComponent(pathname.slice('/pdf/b/'.length));
         const block = findBlock(record.spec, blockId, 'pdf');
         if (!block || typeof block.file !== 'string') return sendJson(res, 404, { error: `no local pdf block "${blockId}"` });
-        const pdf = checkReadable(recordFileAccess(record), block.file);
+        const pdf = checkReadable(fileAccess, block.file);
         if (!pdf.ok) return sendJson(res, 404, { error: `no local pdf block "${blockId}"` });
         streamFile(req, res, pdf.file, block.mime || 'application/pdf');
       } else if (req.method === 'GET' && pathname === '/html/board') {
@@ -365,6 +369,9 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
         if (!sameOrigin(req, actualPort, [advertisedHost], [publicLink?.origin])) return sendJson(res, 403, { error: 'cross-origin requests cannot open files' });
         const access = accessFor(req, reqUrl);
         if (access.role !== 'owner' && access.role !== 'collab') return sendJson(res, 403, { error: 'this share cannot open local files' });
+        // Security: /api/open launches the file's app on this machine, which can
+        // run a script or an .app bundle, so only the person at this machine may.
+        if (pathname === '/api/open' && access.role !== 'owner') return sendJson(res, 403, { error: 'only the board owner on this machine can open files in an app' });
         const body = req.method === 'POST' ? JSON.parse((await readBody(req)) || '{}') : { path: reqUrl.searchParams.get('path') };
         const raw = typeof body.path === 'string' ? body.path : '';
         if (!raw.trim()) return sendJson(res, 400, { error: 'missing "path"' });
@@ -374,7 +381,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
         if (!buildOpenAllowlist(record.spec, baseCwd).has(target)) {
           return sendJson(res, 403, { error: 'this path is not referenced on the board' });
         }
-        const checked = checkReadable(recordFileAccess(record), target, { allowDirectory: true });
+        const checked = checkReadable(fileAccess, target, { allowDirectory: true });
         if (!checked.ok) {
           if (checked.reason === 'missing') return sendJson(res, 404, { error: 'file not found', path: target });
           return sendJson(res, 403, { error: checked.reason === 'outside' ? 'this path is outside the board\'s file roots' : 'this path is not a file or folder' });

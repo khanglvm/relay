@@ -4,14 +4,23 @@ import path from 'node:path';
 
 const PROXY_HEADERS = ['forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-real-ip'];
 
-// Security: a local reverse proxy can send a loopback Host (a link gateway
-// sends `Host: localhost:PORT`), so a request carrying proxy headers is never the
-// tokenless owner. A proxy that adds none is covered by the control token runBoard
-// requires for the owner while a link is set.
+// Security: the board listens on every interface, and Host is the caller's to
+// write, so the owner must also arrive on a loopback socket. A local reverse
+// proxy can send a loopback Host (a link gateway sends `Host: localhost:PORT`),
+// so a request carrying proxy headers is never the tokenless owner. A proxy that
+// adds none is covered by the control token runBoard requires for the owner
+// while a link is set.
 export function isDirectLocalRequest(req) {
+  if (!isLoopbackAddress(req.socket?.remoteAddress)) return false;
   const host = String(req.headers.host || '').split(':')[0];
   if (host !== '127.0.0.1' && host !== 'localhost') return false;
   return !PROXY_HEADERS.some((name) => req.headers[name] !== undefined);
+}
+
+/** True for 127.0.0.0/8 and ::1, including the IPv4-mapped form a dual-stack socket reports. */
+export function isLoopbackAddress(address) {
+  const a = String(address || '').replace(/^::ffff:/i, '');
+  return a === '::1' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(a);
 }
 
 // True when an Origin header (if present) belongs to this board's own server.

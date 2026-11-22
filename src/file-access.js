@@ -56,6 +56,18 @@ export function realRoots(list, cwd) {
   return [...new Set(out)];
 }
 
+/**
+ * True when `dir` is a filesystem root or the home directory. Such a folder is
+ * too wide to grant by default: a desktop host often starts a stdio server at
+ * `/`, which would let a spec read the whole disk. Passing it as `--root` still works.
+ */
+export function isBroadRoot(dir) {
+  let real;
+  try { real = fs.realpathSync.native(path.resolve(dir)); } catch { return false; }
+  if (path.parse(real).root === real) return true;
+  try { return real === fs.realpathSync.native(os.homedir()); } catch { return false; }
+}
+
 /** Roots named by `RLY_FILE_ROOTS`. */
 export function envFileRoots(env = process.env) {
   return String(env[FILE_ROOTS_ENV] || '').split(path.delimiter).filter(Boolean);

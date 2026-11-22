@@ -1,5 +1,28 @@
 # Changelog
 
+### 0.22.2: file roots cannot change after a board is created
+
+Security
+- The board server listens on every interface, and it treated any request with a `Host: localhost` header
+  as the owner. A caller on the same network could write that header, read the share links, turn sharing on,
+  and preview, stream or open the board's files. The owner must now also connect from a loopback address.
+- `/api/update` stored the `fileRoots` it was sent, so a caller holding the board's control token could widen
+  the roots and stream any file through a pdf or video block. The server now keeps the roots the board was
+  created with and refuses an update that carries `fileRoots`.
+- `/api/open` launches a file's app on the board's machine, which runs a script or an `.app` bundle. Only the
+  owner on that machine may call it now. A collaborator on a share link can still preview and stream files.
+- `rly mcp` over stdio no longer takes its working directory as a file root when that directory is `/` or the
+  home directory, which is where desktop hosts often start it. It prints a notice on stderr; pass
+  `--root PATH` to allow a folder.
+
+Changed
+- `rly update` reads the new spec's files under the roots the board was created with, and `rly update --root`
+  fails. To read files somewhere else, start a new board with `rly ask --root PATH`.
+- `rly reuse` of a board saved before 0.22.1 keeps that board's authoring folder as its root, not the current
+  working directory.
+
+Boards started by 0.22.1 keep the old behaviour until they stop; `rly reopen` serves them with the new rules.
+
 ### 0.22.1: a spec can only read files under the file roots
 
 Security
