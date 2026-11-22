@@ -3,6 +3,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { CliError } from './util.js';
+import { assertSafeJson, guardExpress, resolveA2uiBlock, validateSurface } from './a2ui/compile.js';
 
 export const TYPES = ['single', 'multi', 'yesno', 'text', 'textarea', 'scale', 'color', 'rank', 'checklist', 'allocate'];
 
@@ -41,7 +42,7 @@ const HTML_HEIGHT = { min: 100, max: 2400, boardDefault: 400, questionDefault: 3
 
 // Block heights clamp to the same window; defaults vary per block type.
 const BLOCK_HEIGHT = { min: 100, max: 2400 };
-export const BLOCK_TYPES = ['markdown', 'mermaid', 'graphviz', 'plantuml', 'chart', 'table', 'code', 'diff', 'git-conflict', 'video', 'pdf', 'html', 'image', 'palette', 'kpi', 'typography', 'compare'];
+export const BLOCK_TYPES = ['markdown', 'mermaid', 'graphviz', 'plantuml', 'chart', 'table', 'code', 'diff', 'git-conflict', 'video', 'pdf', 'html', 'image', 'palette', 'kpi', 'typography', 'compare', 'a2ui'];
 const CHART_KINDS = ['bar', 'line', 'pie', 'doughnut', 'radar', 'scatter'];
 
 // code/diff blocks may load their text from a local file (like htmlFile). Caps
@@ -412,6 +413,7 @@ export async function assertSpecReady(spec) {
   if (spec.__relayReady === true) return spec;
   for (const { block, where } of allBlocks(spec)) {
     if (block && block.type === 'mermaid') await assertMermaidSyntax(block.code || '', where);
+    if (block && block.type === 'a2ui') await resolveA2uiBlock(block, `${where} (a2ui)`);
   }
   Object.defineProperty(spec, '__relayReady', { value: true, enumerable: false, configurable: true });
   return spec;
@@ -761,6 +763,25 @@ function normalizeBlock(rawBlock, id, cwd, where) {
     return block;
   }
 
+  if (type === 'a2ui') {
+    // A live A2UI v1.0 widget: Express text (compiled in assertSpecReady) or
+    // ready JSON components, checked against Relay's catalog either way.
+    const hasExpress = rawBlock.express !== undefined && rawBlock.express !== null;
+    const hasComponents = rawBlock.components !== undefined && rawBlock.components !== null;
+    if (hasExpress === hasComponents) throw new CliError(`${where}: a2ui block needs exactly one of "express" (A2UI Express text) or "components" (JSON list).`);
+    const block = { id, type: 'a2ui' };
+    if (rawBlock.title !== undefined) block.title = asStr(rawBlock.title);
+    if (hasHeight) block.height = clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, undefined);
+    if (hasExpress) {
+      if (rawBlock.dataModel !== undefined) throw new CliError(`${where}: with "express", set data with \`$/path = value\` lines, not "dataModel".`);
+      block.express = guardExpress(rawBlock.express, where);
+      return block;
+    }
+    assertSafeJson(rawBlock.components, where);
+    const surface = validateSurface({ components: rawBlock.components, dataModel: rawBlock.dataModel }, where);
+    return Object.assign(block, surface);
+  }
+
   if (type === 'palette') {
     // Accept either { palettes: [{name, colors:[…]}, …] } or a single-palette
     // shorthand { name?, colors:[…] }. Each palette needs a non-empty colors
@@ -1046,6 +1067,9 @@ const BLOCK_SCHEMA = {
       review: { type: 'boolean', description: 'diff: when true, render per-hunk Apply / Skip / Hold controls and return choices in result.blockEdits[blockId] as {type:"diff-review", hunks:{...}}. Used by `rly git cherry-pick --code`.' },
       reviewKind: { type: 'string', description: 'diff review: optional label for the review workflow, such as "cherry-pick" or "pick".' },
       commit: { type: 'string', description: 'diff review: optional commit SHA associated with this diff.' },
+      express: { type: 'string', description: 'a2ui: a live widget in A2UI Express, e.g. `$/jobs = [{title:"Build",tone:"ok"}]` then `root = Card("CI", [List($/jobs), Button("Retry", action=Event("retry"))])`. Compiled by the A2UI SDK against Relay\'s catalog (run `rly a2ui` for the grammar and every component). Button events, input values come back in result.blockEdits[blockId] as {type:"a2ui", data, events}.' },
+      components: { type: 'array', description: 'a2ui: the same widget as flat A2UI v1.0 JSON components (root id "root", a Card) instead of "express".', items: { type: 'object' } },
+      dataModel: { type: 'object', description: 'a2ui: the data model for "components" (use `$/path = value` lines with "express" instead).' },
       content: { type: 'string', description: 'git-conflict: inline file content containing conflict markers (<<<<<<< / ======= / >>>>>>>). The board auto-detects each hunk and returns resolutions in result.blockEdits[blockId].' },
       text: { type: 'string', description: 'git-conflict: alias for inline "content".' },
       file: { type: 'string', description: 'git-conflict: local conflicted file path to load, parse, and resolve. Resolved against the CWD.' },
@@ -1191,7 +1215,7 @@ export const SPEC_SCHEMA = {
       type: 'object',
       readOnly: true,
       description:
-        'Returned in the result (not part of the input spec). A map blockId→edited block payload. Editable mermaid blocks return edited source strings. git-conflict blocks return {type:"git-conflict-resolution", resolutions, content, resolved, filename, file}. diff review blocks return {type:"diff-review", hunks, resolved, commit}. null when the user made no edits.',
+        'Returned in the result (not part of the input spec). A map blockId→edited block payload. Editable mermaid blocks return edited source strings. git-conflict blocks return {type:"git-conflict-resolution", resolutions, content, resolved, filename, file}. diff review blocks return {type:"diff-review", hunks, resolved, commit}. a2ui blocks return {type:"a2ui", data (the widget data model with the user input values), events:[{name, context, at}] (each button click, in order)}. null when the user made no edits.',
     },
   },
   anyOf: [{ required: ['questions'] }, { required: ['blocks'] }, { required: ['html'] }, { required: ['htmlFile'] }],

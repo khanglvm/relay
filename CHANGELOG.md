@@ -1,5 +1,26 @@
 # Changelog
 
+### 0.18.0 — private links and A2UI widgets
+
+- Open a board on a phone or another computer: `--devlink` publishes it through
+  the `devlink` command and prints a private https URL, and `--public-url` takes
+  any https URL that reaches the board, with `{port}` for the board port. Set a
+  default with `rly config link devlink`, or with `RLY_LINK` or `RLY_PUBLIC_URL`.
+  `auto` uses `devlink` when it is installed and keeps the board local when it
+  is not. Relay never prints a localhost URL as the link in this mode, and it
+  removes the devlink route when the board closes.
+- New `a2ui` block: a small live widget (status list, numbers, progress bar,
+  buttons, short form) written in A2UI Express, which the official A2UI agent
+  SDK compiles against a Relay catalog. Button clicks and input values return in
+  `result.blockEdits[blockId]` and autosave with the rest of the board.
+  Express that reaches `__proto__`, `constructor` or `prototype`, too much input,
+  unknown components and bad values are refused before the board opens.
+  Text is drawn as text, and links and images must be https.
+- New `rly a2ui` prints the grammar, every component and examples. `docs/A2UI.md`
+  is generated from the catalog by `scripts/gen-a2ui-doc.mjs`, and a test fails
+  when it is out of date. `scripts/vendor-a2ui.mjs` rebuilds the bundled SDK.
+- The agent guide, `rly agent` and the Relay skill cover both features.
+
 ### 0.16.1 — reliable area-comment zones
 
 - Primary drag now draws a comment area directly on image and comparison views;

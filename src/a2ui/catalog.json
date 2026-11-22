@@ -1,0 +1,630 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/khanglvm/relay/a2ui/catalog/v1",
+  "catalogId": "https://github.com/khanglvm/relay/a2ui/catalog/v1",
+  "protocolVersion": "1.0",
+  "title": "Relay board catalog",
+  "description": "Components for a small live widget inside a Relay board: status lists, numbers, progress, tables and a few inputs and buttons. The board's own theme draws them, so you choose components and data, never styling.",
+  "instructions": "One surface is one widget. The root is always a Card (id `root`). Keep it small: at most 60 components, one question per widget. State is a tone (`ok`, `info`, `warn`, `error`, `needs`), never a colour word. Put values in the data model with `$/path = value` lines and bind components to them. A Button's `Event(name, {key: value})` comes back to you in `result.blockEdits[blockId]`, with the values of every input on the card, so name the events for what the person decided (`approve`, `retry`). Use `openUrl` for links. Never put markup in a string: text is drawn as text. Use the board's own question blocks for anything the answer depends on; an A2UI widget is for state, quick actions and small forms.",
+  "components": {
+    "Card": {
+      "type": "object",
+      "description": "The root of a board widget (id `root`): an optional title and its children. Use it for the one widget a board shows.",
+      "properties": {
+        "component": {
+          "const": "Card"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "children": {
+          "$ref": "common_types.json#/$defs/ChildList"
+        }
+      },
+      "required": [
+        "component",
+        "title",
+        "children"
+      ]
+    },
+    "Stack": {
+      "type": "object",
+      "description": "Lays children out in a row or a column.",
+      "properties": {
+        "component": {
+          "const": "Stack"
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "row",
+            "column"
+          ]
+        },
+        "children": {
+          "$ref": "common_types.json#/$defs/ChildList"
+        },
+        "gap": {
+          "type": "string",
+          "enum": [
+            "xs",
+            "sm",
+            "md",
+            "lg"
+          ],
+          "description": "Space between children: xs 4, sm 8 (default), md 12 or lg 16 pixels."
+        },
+        "align": {
+          "type": "string",
+          "enum": [
+            "start",
+            "center",
+            "end",
+            "stretch"
+          ]
+        }
+      },
+      "required": [
+        "component",
+        "direction",
+        "children"
+      ]
+    },
+    "Grid": {
+      "type": "object",
+      "description": "Equal-width columns, filled row by row. On a phone, 3 or 4 columns drop to 2.",
+      "properties": {
+        "component": {
+          "const": "Grid"
+        },
+        "columns": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 4
+        },
+        "children": {
+          "$ref": "common_types.json#/$defs/ChildList"
+        },
+        "gap": {
+          "type": "string",
+          "enum": [
+            "xs",
+            "sm",
+            "md",
+            "lg"
+          ]
+        }
+      },
+      "required": [
+        "component",
+        "columns",
+        "children"
+      ]
+    },
+    "Text": {
+      "type": "object",
+      "description": "Plain prose, never markup. `title` is a heading for the widget's sections, `muted` a quiet note.",
+      "properties": {
+        "component": {
+          "const": "Text"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "variant": {
+          "type": "string",
+          "enum": [
+            "body",
+            "title",
+            "muted"
+          ]
+        }
+      },
+      "required": [
+        "component",
+        "text"
+      ]
+    },
+    "Pill": {
+      "type": "object",
+      "description": "A short state word in a tone.",
+      "properties": {
+        "component": {
+          "const": "Pill"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "tone": {
+          "type": "string",
+          "enum": [
+            "info",
+            "ok",
+            "warn",
+            "error",
+            "needs"
+          ],
+          "description": "`ok` done or healthy, `info` in progress, `warn` slipping, `error` failed, `needs` the person must act."
+        }
+      },
+      "required": [
+        "component",
+        "text",
+        "tone"
+      ]
+    },
+    "Metric": {
+      "type": "object",
+      "description": "One number with a label and an optional note.",
+      "properties": {
+        "component": {
+          "const": "Metric"
+        },
+        "label": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "value": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "note": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        }
+      },
+      "required": [
+        "component",
+        "label",
+        "value"
+      ]
+    },
+    "List": {
+      "type": "object",
+      "description": "Rows of things with a state: a title, an optional subtitle and trailing value, a tone pill and an optional https link.",
+      "properties": {
+        "component": {
+          "const": "List"
+        },
+        "items": {
+          "$ref": "common_types.json#/$defs/DynamicValue",
+          "description": "Array of {title, subtitle?, trailing?, tone?, url?}, usually bound to a data-model path."
+        },
+        "max": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Rows shown before `N more`."
+        }
+      },
+      "required": [
+        "component",
+        "items"
+      ]
+    },
+    "Progress": {
+      "type": "object",
+      "description": "A bar with `value` of `total`, a label and an optional note.",
+      "properties": {
+        "component": {
+          "const": "Progress"
+        },
+        "label": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "value": {
+          "$ref": "common_types.json#/$defs/DynamicNumber"
+        },
+        "total": {
+          "$ref": "common_types.json#/$defs/DynamicNumber"
+        },
+        "note": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "tone": {
+          "type": "string",
+          "enum": [
+            "info",
+            "ok",
+            "warn",
+            "error"
+          ]
+        }
+      },
+      "required": [
+        "component",
+        "label",
+        "value",
+        "total"
+      ]
+    },
+    "Table": {
+      "type": "object",
+      "description": "Rows under typed columns.",
+      "properties": {
+        "component": {
+          "const": "Table"
+        },
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "label"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "rows": {
+          "$ref": "common_types.json#/$defs/DynamicValue",
+          "description": "Array of objects keyed by column `key`."
+        },
+        "max": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "component",
+        "columns",
+        "rows"
+      ]
+    },
+    "Code": {
+      "type": "object",
+      "description": "A code block, shown as text.",
+      "properties": {
+        "component": {
+          "const": "Code"
+        },
+        "code": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "language": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "component",
+        "code"
+      ]
+    },
+    "Image": {
+      "type": "object",
+      "description": "A picture from an https address.",
+      "properties": {
+        "component": {
+          "const": "Image"
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https://"
+        },
+        "alt": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        }
+      },
+      "required": [
+        "component",
+        "url",
+        "alt"
+      ]
+    },
+    "Icon": {
+      "type": "object",
+      "description": "One icon from a fixed set. `label` is what a screen reader says.",
+      "properties": {
+        "component": {
+          "const": "Icon"
+        },
+        "name": {
+          "type": "string",
+          "enum": [
+            "check",
+            "alert",
+            "info",
+            "x",
+            "clock",
+            "file",
+            "folder",
+            "git-branch",
+            "play",
+            "star",
+            "link",
+            "user",
+            "bell",
+            "lock"
+          ]
+        },
+        "label": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "tone": {
+          "type": "string",
+          "enum": [
+            "info",
+            "ok",
+            "warn",
+            "error",
+            "needs"
+          ]
+        }
+      },
+      "required": [
+        "component",
+        "name",
+        "label"
+      ]
+    },
+    "Divider": {
+      "type": "object",
+      "description": "A hairline between sections.",
+      "properties": {
+        "component": {
+          "const": "Divider"
+        }
+      },
+      "required": [
+        "component"
+      ]
+    },
+    "Button": {
+      "type": "object",
+      "description": "A button. `Event(name, context)` sends the click back to the agent in the board's answer, with the current values of the inputs on the card; `openUrl` opens an https link.",
+      "properties": {
+        "component": {
+          "const": "Button"
+        },
+        "label": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "action": {
+          "$ref": "common_types.json#/$defs/Action"
+        },
+        "style": {
+          "type": "string",
+          "enum": [
+            "primary",
+            "plain"
+          ]
+        }
+      },
+      "required": [
+        "component",
+        "label",
+        "action"
+      ]
+    },
+    "TextField": {
+      "type": "object",
+      "description": "A text input bound to the data model at `path`. Its value comes back in the board's answer.",
+      "properties": {
+        "component": {
+          "const": "TextField"
+        },
+        "label": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^/(?!(?:.*/)?(?:__proto__|constructor|prototype|length)(?:/|$))"
+        },
+        "placeholder": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "multiline": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "component",
+        "label",
+        "path"
+      ]
+    },
+    "Toggle": {
+      "type": "object",
+      "description": "An on/off input bound to `path`.",
+      "properties": {
+        "component": {
+          "const": "Toggle"
+        },
+        "label": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^/(?!(?:.*/)?(?:__proto__|constructor|prototype|length)(?:/|$))"
+        }
+      },
+      "required": [
+        "component",
+        "label",
+        "path"
+      ]
+    },
+    "Select": {
+      "type": "object",
+      "description": "A pick-one input bound to `path`; the value is the picked option's `key`.",
+      "properties": {
+        "component": {
+          "const": "Select"
+        },
+        "label": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^/(?!(?:.*/)?(?:__proto__|constructor|prototype|length)(?:/|$))"
+        },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 30,
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "label"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "component",
+        "label",
+        "path",
+        "options"
+      ]
+    },
+    "Slider": {
+      "type": "object",
+      "description": "A number input bound to `path` between `min` and `max`.",
+      "properties": {
+        "component": {
+          "const": "Slider"
+        },
+        "label": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^/(?!(?:.*/)?(?:__proto__|constructor|prototype|length)(?:/|$))"
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "step": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "component",
+        "label",
+        "path",
+        "min",
+        "max"
+      ]
+    }
+  },
+  "functions": {
+    "openUrl": {
+      "type": "object",
+      "description": "Opens an https link in a new tab.",
+      "returnType": "void",
+      "allowedCallers": "rendererOnly",
+      "requiresUserActivation": true,
+      "properties": {
+        "@call": {
+          "const": "openUrl"
+        },
+        "args": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "pattern": "^https://"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "@call",
+        "args"
+      ]
+    }
+  },
+  "$defs": {
+    "anyComponent": {
+      "oneOf": [
+        {
+          "$ref": "#/components/Card"
+        },
+        {
+          "$ref": "#/components/Stack"
+        },
+        {
+          "$ref": "#/components/Grid"
+        },
+        {
+          "$ref": "#/components/Text"
+        },
+        {
+          "$ref": "#/components/Pill"
+        },
+        {
+          "$ref": "#/components/Metric"
+        },
+        {
+          "$ref": "#/components/List"
+        },
+        {
+          "$ref": "#/components/Progress"
+        },
+        {
+          "$ref": "#/components/Table"
+        },
+        {
+          "$ref": "#/components/Code"
+        },
+        {
+          "$ref": "#/components/Image"
+        },
+        {
+          "$ref": "#/components/Icon"
+        },
+        {
+          "$ref": "#/components/Divider"
+        },
+        {
+          "$ref": "#/components/Button"
+        },
+        {
+          "$ref": "#/components/TextField"
+        },
+        {
+          "$ref": "#/components/Toggle"
+        },
+        {
+          "$ref": "#/components/Select"
+        },
+        {
+          "$ref": "#/components/Slider"
+        }
+      ],
+      "discriminator": {
+        "propertyName": "component"
+      }
+    },
+    "anyFunction": {
+      "oneOf": [
+        {
+          "$ref": "#/functions/openUrl"
+        }
+      ]
+    }
+  }
+}

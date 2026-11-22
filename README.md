@@ -37,6 +37,8 @@ rly diff --staged
 - Source files and diffs, including commit choices and merge conflicts.
 - Questions with choices, notes, and other form controls.
 
+- Small live widgets such as status lists, numbers, progress bars and buttons, written in [A2UI](docs/A2UI.md).
+
 Answers and comments autosave. To stop a board, run `rly list` to find its
 ID, then `rly stop <board-id>`.
 
@@ -60,9 +62,17 @@ to collect answers. On timeout, check `rly result <board-id>` before continuing.
 To make this a standing preference, `rly install --target codex` adds Relay
 rules to Codex's instruction file. Run `rly install` to see other targets.
 
+## Open a board on your phone
+
+If the `devlink` command is installed, `rly ask --file spec.json --detach --devlink`
+prints a private https URL that works on other devices. Any https URL that reaches the
+board works too: `--public-url 'https://host:{port}'`. Run `rly config link devlink` to make
+it the default. The details are in the [agent guide](docs/AGENT.md).
+
 ## More help
 
 - [Setup and MCP Apps](docs/SETUP.md): agent configuration, in-chat boards, sharing, and updates.
+- [A2UI widgets](docs/A2UI.md): the `a2ui` block, also available as `rly a2ui`.
 - [Agent guide](docs/AGENT.md): board examples, block types, and JSON schemas; also available as `rly agent`.
 - `rly help` lists commands. `rly upgrade` updates the CLI and skill.
 - [Changelog](CHANGELOG.md) · [MIT license](LICENSE)

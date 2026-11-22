@@ -16,11 +16,13 @@ import {
   removeRunning,
   isAlive,
   saveResultFile,
+  controlUrl,
   HOME,
 } from './store.js';
 import { runBoard } from './server.js';
 import { runMcp, runMcpHttp, mcpConfig } from './mcp.js';
 import { openUrl } from './open.js';
+import { linkSetting, loadConfig, parseLinkValue, saveConfig, serializeLink } from './link.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = path.join(__dirname, '..');
@@ -35,7 +37,7 @@ const VALUED_FLAGS = new Set([
   'file', 'html', 'html-file', 'title', 'intro', 'timeout', 'port',
   'submit-label', 'height', 'limit', 'target', 'id', 'replies',
   'on-result', 'notify-cmd', 'idle-grace', 'scope', 'range',
-  'host', 'token', 'allow-origin', 'role',
+  'host', 'token', 'allow-origin', 'role', 'public-url', 'link',
 ]);
 
 function camel(key) {
@@ -204,6 +206,7 @@ async function runOrDetach(record, args) {
   const timeoutSec = args.timeout !== undefined ? Math.max(0, Number.parseInt(args.timeout, 10) || 0) : DEFAULT_BOARD_TIMEOUT_SEC;
   const port = args.port !== undefined ? Number.parseInt(args.port, 10) || 0 : 0;
   const open = args.open !== false;
+  const link = linkSetting({ args, config: loadConfig(HOME) });
 
   // Push-wake: persist the agent's --on-result command on the record so BOTH
   // the inline runBoard path and the detached __serve path pick it up (the
@@ -223,12 +226,15 @@ async function runOrDetach(record, args) {
         '--port', String(port),
         '--timeout', String(timeoutSec),
         ...(open ? [] : ['--no-open']),
+        '--link', serializeLink(link),
       ],
       { detached: true, stdio: 'ignore' }
     );
     child.unref();
-    const info = await pollFor(() => loadRunning(record.id), 8000);
-    if (!info) throw new CliError(`board ${record.id} failed to start (no server after 8s).`, 1);
+    // A link setting adds a devlink round trip before the board is announced.
+    const startSec = link.mode === 'off' ? 8 : 40;
+    const info = await pollFor(() => loadRunning(record.id), startSec * 1000);
+    if (!info) throw new CliError(`board ${record.id} failed to start (no server after ${startSec}s).`, 1);
     printJson({
       status: 'open',
       boardId: record.id,
@@ -241,7 +247,7 @@ async function runOrDetach(record, args) {
     return 0;
   }
 
-  const { done } = await runBoard({ id: record.id, port, open, timeoutSec });
+  const { done } = await runBoard({ id: record.id, port, open, timeoutSec, link });
   const result = await done;
   printResult(result);
   return exitCodeFor(result.status);
@@ -261,13 +267,13 @@ async function cmdAsk(args, mode) {
 // `rly diff HEAD~1`, `rly diff main -- src/` all work. rly flags: --detach,
 // --no-open, --split (side-by-side), --title.
 async function cmdDiff(rest) {
-  const RLY_FLAGS = new Set(['--detach', '--no-open', '--split']);
+  const RLY_FLAGS = new Set(['--detach', '--no-open', '--split', '--devlink', '--no-devlink']);
   const gitArgs = [];
   const rlyArgv = [];
   for (let i = 0; i < rest.length; i++) {
     const t = rest[i];
-    if (t === '--title') { rlyArgv.push(t, rest[++i]); continue; }
-    if (t.startsWith('--title=')) { rlyArgv.push(t); continue; }
+    if (t === '--title' || t === '--public-url') { rlyArgv.push(t, rest[++i]); continue; }
+    if (t.startsWith('--title=') || t.startsWith('--public-url=')) { rlyArgv.push(t); continue; }
     if (RLY_FLAGS.has(t)) { rlyArgv.push(t); continue; }
     gitArgs.push(t);
   }
@@ -508,8 +514,8 @@ async function cmdReopen(args) {
   }
   const running = loadRunning(record.id);
   if (running && isAlive(running.pid)) {
-    openUrl(running.url);
-    printJson({ status: 'open', boardId: record.id, url: running.url, note: 'already running — browser re-opened' });
+    if (!running.link) openUrl(running.url);
+    printJson({ status: 'open', boardId: record.id, url: running.url, note: running.link ? 'already running' : 'already running — browser re-opened' });
     return 0;
   }
   // Reuse the board's last port (unless the user forced one) so a tab still open
@@ -529,7 +535,7 @@ async function cmdRescue(args) {
   const record = mustLoad(args._[0]);
   const running = loadRunning(record.id);
   if (running && isAlive(running.pid)) {
-    if (args.open) openUrl(running.url);
+    if (args.open && !running.link) openUrl(running.url);
     printJson({
       status: 'open',
       boardId: record.id,
@@ -600,7 +606,7 @@ async function cmdUpdate(args) {
 
   let res;
   try {
-    res = await fetch(new URL('/api/update', running.url), {
+    res = await fetch(new URL('/api/update', controlUrl(running)), {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-relay-token': running.token || '' },
       body: JSON.stringify({ spec }),
@@ -684,7 +690,7 @@ async function cmdWait(args) {
 
   // Deadline hit while the board is still OPEN. Fetch presence (cheaply).
   const running = loadRunning(id);
-  const presence = running && isAlive(running.pid) ? await fetchPresence(running.url) : null;
+  const presence = running && isAlive(running.pid) ? await fetchPresence(controlUrl(running)) : null;
 
   // --while-active: if the user is present + recently active, EXTEND and keep
   // waiting (repeat indefinitely while they stay active).
@@ -743,7 +749,7 @@ async function cmdWaitLoop(id, deadline, opts) {
     await sleep(400);
   }
   const running = loadRunning(id);
-  const presence = running && isAlive(running.pid) ? await fetchPresence(running.url) : null;
+  const presence = running && isAlive(running.pid) ? await fetchPresence(controlUrl(running)) : null;
   if (
     whileActive &&
     presence &&
@@ -781,7 +787,7 @@ async function cmdResult(args) {
     // While open, expose the real-time autosaved draft so agents can peek, plus
     // best-effort presence (whether the user is still viewing/focused/active).
     const out = { status: 'open', boardId: record.id, url: running.url, draft: record.draft ?? null, sideReviews };
-    const presence = await fetchPresence(running.url);
+    const presence = await fetchPresence(controlUrl(running));
     if (presence) out.presence = presence;
     printResult(out); // draft can hold many annotations — sidecar it too
     return 0;
@@ -801,23 +807,24 @@ async function cmdShare(args) {
   if (role !== undefined && !['collab', 'review', 'read', 'all'].includes(role)) {
     throw new CliError('--role must be collab, review, or read.', 4);
   }
-  const shareUrl = new URL('/api/share', running.url);
+  const shareUrl = new URL('/api/share', controlUrl(running));
+  const headers = { 'content-type': 'application/json', 'x-relay-token': running.token || '' };
   let res;
   try {
     if (args.revoke) {
       res = await fetch(shareUrl, {
         method: 'DELETE',
-        headers: { 'content-type': 'application/json' },
+        headers,
         body: JSON.stringify({ role: role || 'all' }),
       });
     } else if (role && role !== 'all') {
       res = await fetch(shareUrl, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers,
         body: JSON.stringify({ role }),
       });
     } else {
-      res = await fetch(shareUrl, { method: 'GET' });
+      res = await fetch(shareUrl, { method: 'GET', headers });
     }
   } catch (err) {
     throw new CliError(`could not reach board "${record.id}" at ${running.url}: ${String((err && err.message) || err)}`, 5);
@@ -856,7 +863,7 @@ function cmdOpen(args) {
   }
   const info = running.find((r) => r.id === id);
   if (!info) throw new CliError(`board "${id}" is not running. Use \`rly reopen ${id}\` to serve it again (with saved answers).`, 5);
-  openUrl(info.url);
+  if (!info.link) openUrl(info.url);
   printJson({ status: 'open', boardId: id, url: info.url });
   return 0;
 }
@@ -1082,6 +1089,11 @@ const SKILL_RULES = `## relay — visual boards and structured feedback
   For inline MCP or shared reviewers, embed file content as blocks instead.
 - Reconnect existing boards by ID with \`rly rescue\` / \`rly reopen\`; update
   content with \`rly update\`. Preserve the original port and saved input.
+- On a setup with \`devlink\`, add \`--devlink\` (or run \`rly config link devlink\` once)
+  so the board opens on a private URL that phones and other Macs can reach.
+  Share that printed URL, never a localhost one.
+- Small live widgets (status lists, numbers, buttons) are \`a2ui\` blocks; the
+  grammar is in \`rly a2ui\`. Questions you depend on stay normal questions.
 - Read answers, notes, comment, annotations, and blockEdits together. Use the
   returned resultFile when stdout is truncated; a timeout is not an answer.
 - Full skill: \`rly skill path\`; fields: \`rly schema\`; advanced recipes and
@@ -1323,6 +1335,11 @@ function cmdInstall(args) {
   return 0;
 }
 
+function cmdA2ui() {
+  console.log(fs.readFileSync(path.join(PKG_ROOT, 'docs', 'A2UI.md'), 'utf8'));
+  return 0;
+}
+
 function cmdAgent() {
   console.log(fs.readFileSync(path.join(PKG_ROOT, 'docs', 'AGENT.md'), 'utf8'));
   return 0;
@@ -1536,6 +1553,25 @@ function cmdMcpConfig(args, sub) {
   throw new CliError(`unknown --target "${target}". Use claude or codex (or \`rly mcp config\` to print all).`, 4);
 }
 
+// `rly config [link [off|auto|devlink|<url>]]` — the saved link default, so
+// every board prints a cross-device URL without a flag.
+function cmdConfig(args) {
+  const [key, value] = args._;
+  if (key === undefined) {
+    printJson(loadConfig(HOME));
+    return 0;
+  }
+  if (key !== 'link') throw new CliError(`unknown config key "${key}". Use: link.`, 4);
+  if (value === undefined) {
+    printJson({ link: loadConfig(HOME).link ?? 'off' });
+    return 0;
+  }
+  const setting = parseLinkValue(value, 'link');
+  const next = saveConfig(HOME, { link: setting.mode === 'off' ? null : serializeLink(setting) });
+  printJson({ status: 'saved', link: next.link ?? 'off' });
+  return 0;
+}
+
 async function cmdServeInternal(args) {
   const id = args.id;
   if (!id) throw new CliError('__serve: missing --id');
@@ -1548,6 +1584,7 @@ async function cmdServeInternal(args) {
     // Detached board: timeout hands back to the agent but keeps the same
     // URL/port serving until Submit or explicit stop.
     keepAliveOnTimeout: true,
+    link: args.link !== undefined ? parseLinkValue(args.link, '--link') : { mode: 'off' },
   });
   await done;
   return 0;
@@ -1590,6 +1627,11 @@ USAGE
   rly share <id> --role review --revoke
                                       revoke one share role; use --revoke --all to disable all roles
                                       active links survive same-port reopen/rescue until revoked
+  rly ask ... --devlink               serve the board on a private cross-device URL through the optional
+                                      devlink command (https over Tailscale); no local browser opens
+  rly ask ... --public-url <url>      same, through your own proxy or tunnel: https://relay.example.com:{port}
+  rly config link <off|auto|devlink|url>
+                                      save that choice for every board (auto = devlink when installed)
   rly list [--json]                   running boards
   rly open [id]                       re-open the browser tab of a running board
   rly reopen <id> [--replies f.json]  serve a saved board again, prefilled with saved answers
@@ -1605,6 +1647,7 @@ USAGE
   rly rm <id> | --all                 delete saved board(s)
   rly schema                          JSON Schema of the board spec
   rly agent                           FULL GUIDE for AI agents (spec format, blocks, sizing, patterns)
+  rly a2ui                            A2UI widget blocks: Express grammar, components, examples
   rly skill [install|rules|path]      bundled universal agent skill (Claude Code, Codex, …)
                                       \`rly skill rules >> CLAUDE.md\` adds always-read usage rules
   rly install --target <agent>        inject relay's rules into an agent's instruction file
@@ -1621,6 +1664,7 @@ USAGE
 COMMON FLAGS
   --title <s> --intro <s> --html-file <f> --height <px> --submit-label <s>
   --timeout <sec> (default 86400; 0 = none) --port <n> --no-open --detach --display-only
+  --devlink | --no-devlink | --public-url <url>   where the board link points (see rly config link)
 
 EXIT CODES   0 submitted/acknowledged · 2 timeout · 3 cancelled · 4 usage · 5 not found
 
@@ -1676,6 +1720,8 @@ export async function main(argv) {
         return await cmdResult(parseArgs(rest));
       case 'share':
         return await cmdShare(parseArgs(rest));
+      case 'config':
+        return cmdConfig(parseArgs(rest));
       case 'list':
         return cmdList(parseArgs(rest));
       case 'open':
@@ -1697,6 +1743,8 @@ export async function main(argv) {
         return await cmdUpgrade(parseArgs(rest));
       case 'agent':
         return cmdAgent();
+      case 'a2ui':
+        return cmdA2ui();
       case 'schema':
         console.log(JSON.stringify(SPEC_SCHEMA, null, 2));
         return 0;
