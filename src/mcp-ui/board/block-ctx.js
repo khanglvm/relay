@@ -1,3 +1,13 @@
+  // A button click in an a2ui block reaches the agent before the person submits.
+  // Events already in the stored snapshot were sent when they happened.
+  function forwardA2uiEvents(blockId, before, after) {
+    if (!BOARD.token || !after || after.type !== 'a2ui' || !Array.isArray(after.events)) return;
+    const known = before && Array.isArray(before.events) ? before.events.length : 0;
+    for (const e of after.events.slice(known)) {
+      callServerTool('a2ui_action', { boardId: BOARD.id, token: BOARD.token, blockId, name: e.name, context: e.context }).catch(() => {});
+    }
+  }
+
   function blockCtx(questionId) {
     return {
       theme: effectiveTheme,
@@ -14,8 +24,10 @@
       },
       edits: state.blockEdits,
       onBlockEdit: (blockId, codeOrNull) => {
+        const before = state.blockEdits[blockId];
         if (codeOrNull === null || codeOrNull === undefined) delete state.blockEdits[blockId];
         else state.blockEdits[blockId] = codeOrNull;
+        forwardA2uiEvents(blockId, before, codeOrNull);
       },
     };
   }

@@ -37,10 +37,11 @@ rly mcp install --target codex
 
 The first command configures Claude Code; the others write Claude Desktop
 and Codex config respectively. Use `rly mcp config` to print config snippets.
-The server exposes `relay_ask` for feedback and `relay_show` for display.
+The server exposes `relay_board` to show a board, `relay_result` to read the answers and `relay_help` for exact field shapes. `relay_ask` and `relay_show` remain as aliases of `relay_board` for one more minor version.
 
 For remote clients, `rly mcp --http` serves Streamable HTTP. Run `rly help`
-for host, port, token, and origin flags. The repo includes a `Dockerfile`.
+for host, port, token, and origin flags. Boards live in the relay home of the
+machine that runs the server. The repo includes a `Dockerfile`.
 See the [agent guide](AGENT.md) for board schemas, transport details,
 and host requirements.
 

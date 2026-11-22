@@ -21,20 +21,65 @@
     }
     return types;
   }
+  function bytesOf(base64) {
+    const bin = atob(base64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  // The preferred route: the host reads the vendor file as a ui:// resource.
+  async function vendorFromResource(file) {
+    const res = await request('resources/read', { uri: 'ui://relay/vendor/' + file });
+    const c = res && Array.isArray(res.contents) ? res.contents[0] : null;
+    return c ? (c.text || (c.blob ? new TextDecoder().decode(bytesOf(c.blob)) : '')) : '';
+  }
+  // For a host that refuses resources/read: the server hands the file over in
+  // chunks. The chunks are joined as bytes before decoding, so a UTF-8 character
+  // split across two chunks stays whole.
+  async function vendorFromTool(file) {
+    const parts = [];
+    let count = 1;
+    for (let i = 0; i < count; i++) {
+      const chunk = await callServerTool('relay_asset', { name: file, index: i }, 60000);
+      count = chunk.count;
+      parts.push(bytesOf(chunk.data));
+    }
+    const all = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+    let at = 0;
+    for (const p of parts) { all.set(p, at); at += p.length; }
+    return new TextDecoder().decode(all);
+  }
+  // Where the server says a vendor file can also be fetched over HTTP, from relay_view.
+  let vendorUrls = null;
+  function vendorFromUrl(file) {
+    return new Promise((resolve, reject) => {
+      const url = vendorUrls && vendorUrls[file];
+      if (!url) return reject(new Error('no url'));
+      const s = document.createElement('script');
+      s.src = url;
+      s.onload = () => resolve('');
+      s.onerror = () => reject(new Error('script failed'));
+      document.head.appendChild(s);
+    });
+  }
   async function ensureVendor(file, globalName) {
     if (window[globalName]) return true;
-    try {
-      const res = await request('resources/read', { uri: 'ui://relay/vendor/' + file });
-      const c = res && Array.isArray(res.contents) ? res.contents[0] : null;
-      const code = c && (c.text || (c.blob ? atob(c.blob) : ''));
-      if (!code) return false;
-      const s = document.createElement('script');
-      s.textContent = code;
-      document.head.appendChild(s);
-      return Boolean(window[globalName]);
-    } catch {
-      return false;
+    for (const load of [vendorFromResource, vendorFromTool, vendorFromUrl]) {
+      try {
+        const code = await load(file);
+        if (!code) {
+          if (window[globalName]) return true;
+          continue;
+        }
+        const s = document.createElement('script');
+        s.textContent = code;
+        document.head.appendChild(s);
+        if (window[globalName]) return true;
+      } catch {
+        // try the next route
+      }
     }
+    return false;
   }
   async function preloadVendors(spec) {
     const types = blockTypesIn(spec);

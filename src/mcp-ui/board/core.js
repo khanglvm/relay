@@ -2,6 +2,8 @@
     try { return JSON.parse(document.getElementById('boot').textContent); } catch { return {}; }
   })();
   const PROTOCOL = '2025-06-18';
+  // Set from the relay_board tool result; every server call for this board presents it.
+  const BOARD = { id: null, token: null };
 
   // ---------- tiny DOM helper (mirrors app.js / blocks.js) ----------
   function el(tag, attrs = {}, ...children) {

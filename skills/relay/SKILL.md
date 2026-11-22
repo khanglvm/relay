@@ -13,7 +13,7 @@ Put content in front of the person and read what they decide. Keep short answers
 3. Give the person the url. To get the result: `rly wait <boardId> --timeout 1800 --while-active --idle-grace 300` (blocks until submit) or `rly result <boardId>` (now). A timeout is not an answer: run `rly result` before you decide.
 4. Read `answers`, `notes`, `comment`, `annotations` and `blockEdits` together; any of them can qualify an answer. When stdout is cut short, read the `resultFile` it names.
 
-If Relay MCP tools are connected, `relay_ask` (answers wanted) and `relay_show` (display only) take the same spec and the board renders inline. Embed file content with `mdFile`, `codeFile` or an image block, because inline boards cannot open local file links.
+If Relay MCP tools are connected, call `relay_board` with the same spec (questions make it collect answers, none make it display-only) and the board renders inline. Read the answers with `relay_result {boardId, wait_seconds}`; `relay_help` gives exact fields. Embed file content with `mdFile`, `codeFile` or an image block, because inline boards cannot open local file links.
 
 ## Spec in one screen
 ```json

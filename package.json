@@ -1,6 +1,6 @@
 {
   "name": "@khanglvm/relay",
-  "version": "0.20.3",
+  "version": "0.21.0",
   "description": "Question boards with rich blocks (markdown, charts, mermaid, tables, code, diffs, video, sandboxed HTML), clickable local file-links, and element-level annotations for AI coding agents (Claude Code, Codex, \u2026): ask users structured questions, present interactive visuals, collect inline comments, read answers as JSON \u2014 in a local browser board OR rendered INLINE inside the Claude & Codex apps as an MCP App (SEP-1865).",
   "keywords": [
     "ai-agents",
@@ -45,7 +45,7 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=18.3"
+    "node": ">=20"
   },
   "scripts": {
     "check": "tsc -p tsconfig.json",
@@ -58,6 +58,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.8",
+    "@modelcontextprotocol/client": "^2.4.0",
     "@types/node": "^20.19.43",
     "typescript": "^7.0.2"
   },
@@ -75,12 +76,18 @@
       "default": "./src/a2ui/compile.js"
     },
     "./mcp": {
-      "types": "./types/mcp.d.ts",
-      "default": "./src/mcp.js"
+      "types": "./types/mcp/index.d.ts",
+      "default": "./src/mcp/index.js"
     },
     "./schema.json": "./schema/spec.v1.json",
     "./package.json": "./package.json"
   },
   "main": "./src/index.js",
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "^2.0.4",
+    "@modelcontextprotocol/node": "^2.1.2",
+    "@modelcontextprotocol/server": "^2.4.0",
+    "zod": "^4.6.7"
+  }
 }

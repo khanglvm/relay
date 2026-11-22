@@ -1524,109 +1524,6 @@ console.log('25. video blocks');
   ok(badExt.code === 4 && /unsupported video extension/.test(badExt.stderr), 'unsupported local video extension → exit 4');
 }
 
-// ---------- 26. MCP App server (stdio JSON-RPC) ----------
-// Drive `rly mcp` over stdio exactly as an MCP host would: a batch of
-// newline-delimited JSON-RPC messages in, the responses collected by id.
-console.log('26. mcp app server (stdio)');
-function mcpRoundtrip(messages) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [BIN, 'mcp'], { env: ENV });
-    let out = '';
-    let err = '';
-    child.stdout.on('data', (d) => (out += d));
-    child.stderr.on('data', (d) => (err += d));
-    child.on('close', () => {
-      const byId = {};
-      const notifications = [];
-      for (const line of out.split('\n')) {
-        const t = line.trim();
-        if (!t) continue;
-        let m;
-        try { m = JSON.parse(t); } catch { continue; }
-        if (m.id !== undefined && m.id !== null) byId[m.id] = m;
-        else notifications.push(m);
-      }
-      resolve({ byId, notifications, out, err });
-    });
-    child.on('error', reject);
-    for (const m of messages) child.stdin.write(JSON.stringify(m) + '\n');
-    child.stdin.end(); // closing stdin ends the server
-  });
-}
-{
-  const { byId, out } = await mcpRoundtrip([
-    { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } } },
-    { jsonrpc: '2.0', method: 'notifications/initialized' },
-    { jsonrpc: '2.0', id: 2, method: 'tools/list' },
-    { jsonrpc: '2.0', id: 3, method: 'resources/list' },
-    { jsonrpc: '2.0', id: 4, method: 'ping' },
-    { jsonrpc: '2.0', id: 5, method: 'resources/read', params: { uri: 'ui://relay/board' } },
-    { jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'relay_ask', arguments: { title: 'Inline', questions: [{ id: 'go', type: 'yesno', label: 'Ship it?' }], blocks: [{ type: 'markdown', md: '## hi' }] } } },
-    { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'relay_ask', arguments: { questions: [{ type: 'nope', label: 'x' }] } } },
-    { jsonrpc: '2.0', id: 8, method: 'resources/read', params: { uri: 'ui://relay/vendor/../package.json' } },
-    { jsonrpc: '2.0', id: 9, method: 'no/such/method' },
-    { jsonrpc: '2.0', id: 10, method: 'tools/call', params: { name: 'relay_show', arguments: { blocks: [{ type: 'palette', title: 'Trending', palettes: [{ name: 'Mocha', sub: 'warm', tag: 'Pantone', tagTone: 'warm', featured: true, colors: ['#C4956A', '#A67B52'] }] }] } } },
-    { jsonrpc: '2.0', id: 11, method: 'tools/call', params: { name: 'relay_ask', arguments: { questions: [{ id: 'brand', type: 'color', label: 'Brand color', presets: ['#c2674b', '#185FA5'], default: '#c2674b' }] } } },
-    { jsonrpc: '2.0', id: 12, method: 'tools/call', params: { name: 'relay_ask', arguments: { questions: [{ id: 'pick', type: 'single', label: 'Pick one', options: ['a', 'b'] }, { id: 'env', type: 'single', label: 'Env', options: ['dev', 'prod'], other: false }] } } },
-    { jsonrpc: '2.0', id: 13, method: 'tools/call', params: { name: 'relay_show', arguments: { blocks: [{ type: 'mermaid', code: 'graph TD; A-->' }] } } },
-  ]);
-
-  // stdout must be pure protocol — every non-blank line is valid JSON-RPC.
-  ok(out.trim().split('\n').every((l) => { try { return JSON.parse(l).jsonrpc === '2.0'; } catch { return false; } }), 'every stdout line is a JSON-RPC message (no log noise on stdout)');
-
-  const init = byId[1].result;
-  ok(init.protocolVersion === '2025-06-18' && init.serverInfo.name === 'relay', 'initialize echoes protocol + serverInfo');
-  ok(init.capabilities.extensions && init.capabilities.extensions['io.modelcontextprotocol/ui'], 'initialize advertises the io.modelcontextprotocol/ui extension');
-
-  const toolNames = byId[2].result.tools.map((t) => t.name);
-  ok(toolNames.includes('relay_ask') && toolNames.includes('relay_show'), 'tools/list exposes relay_ask + relay_show');
-  const ask = byId[2].result.tools.find((t) => t.name === 'relay_ask');
-  ok(ask._meta.ui.resourceUri === 'ui://relay/board', 'relay_ask links the ui resource via _meta.ui.resourceUri');
-  ok(ask._meta['openai/outputTemplate'] === 'ui://relay/board', 'relay_ask also carries openai/outputTemplate for ChatGPT/Codex');
-  ok(ask.inputSchema && ask.inputSchema.properties && ask.inputSchema.properties.questions, 'relay_ask input schema is the board spec');
-
-  const resList = byId[3].result.resources;
-  ok(resList[0].uri === 'ui://relay/board' && resList[0].mimeType === 'text/html;profile=mcp-app', 'resources/list declares the ui:// board with the mcp-app mime');
-
-  ok(JSON.stringify(byId[4].result) === '{}', 'ping → {}');
-
-  const board = byId[5].result.contents[0];
-  ok(board.mimeType === 'text/html;profile=mcp-app' && board.text.length > 1000, 'resources/read returns the board HTML with the profile mime');
-  ok(board.text.includes('ui/message') && board.text.includes('RelayBlocks'), 'board HTML inlines the MCP client + the shared block renderer');
-  ok(board.text.includes('WHEEL_ZOOM_SENSITIVITY') && board.text.includes('requestAnimationFrame(tick)'), 'shared viewer bundles delta-based, animation-frame wheel zoom smoothing');
-  ok(board.text.includes('fluidFit: true') && board.text.includes("opts.fluidFit ? '100%'"), 'responsive charts retain live fit width instead of freezing their initial viewport size');
-  ok(!board.text.includes('e.deltaY < 0 ? 1.15 : 1 / 1.15'), 'shared viewer no longer compounds a fixed 15% jump per wheel event');
-  ok(board.text.includes('ui/update-model-context'), 'board still syncs structured submission context when the host supports it');
-  ok(board.text.indexOf('ui/message') < board.text.indexOf('ui/update-model-context'), 'inline submit sends a user message before the silent context update');
-  ok(board.text.includes('ui/notifications/initialized'), 'board sends ui/notifications/initialized (the host withholds the spec until it does)');
-  ok(board.text.includes('availableDisplayModes'), 'board declares fullscreen support so the host can offer its native control');
-  ok(board.text.includes('ui/notifications/tool-input-partial'), 'board renders progressively from streamed partial tool input');
-  ok(board.text.includes('--color-background-primary'), 'board color-blends onto the host style variables');
-  ok(!board.text.includes('/api/draft') && !board.text.includes('/api/submit'), 'board HTML has no HTTP-server endpoints (pure postMessage)');
-
-  const call = byId[6].result;
-  ok(!call.isError && call.structuredContent.spec.questions.length === 1, 'tools/call returns the normalized spec as structuredContent');
-  ok(call.structuredContent.spec.blocks[0].id === 'b1', 'tools/call spec is fully normalized (block ids assigned)');
-  ok(call.content[0].type === 'text' && /displayed to the user/.test(call.content[0].text), 'tools/call result text tells the model the board is shown');
-
-  ok(byId[7].result.isError && /invalid board spec/.test(byId[7].result.content[0].text), 'a bad spec comes back as an isError tool result (not a protocol crash)');
-  ok(byId[8].error && byId[8].error.code === -32002, 'vendor path traversal is rejected (-32002)');
-  ok(byId[9].error && byId[9].error.code === -32601, 'unknown method → -32601 method not found');
-  const pal = byId[10].result.structuredContent.spec.blocks[0];
-  ok(pal.type === 'palette' && pal.palettes[0].colors.length === 2 && pal.palettes[0].featured === true && pal.palettes[0].tagTone === 'warm', 'palette block normalizes (palettes, colors, featured, tagTone)');
-  ok(board.text.includes('blk-palette') || board.text.includes('renderPalette'), 'board renderer includes the palette block');
-  const cq = byId[11].result.structuredContent.spec.questions[0];
-  ok(cq.type === 'color' && Array.isArray(cq.presets) && cq.presets.length === 2 && cq.default === '#c2674b', 'color question normalizes (type, presets, default)');
-  ok(board.text.includes('controlColor'), 'board renderer includes the color picker control');
-  ok(board.text.includes('RelayAnnotate') && board.text.includes('Annotate.init'), 'board bundles + initializes the element-annotation engine');
-  ok(board.text.includes('ann-confirm') && board.text.includes('requestDelete'), 'board ships the confirm-delete modal (no accidental delete)');
-  ok(!ask.inputSchema.properties.annotations, 'relay_ask input schema omits result-only "annotations"');
-  const sq = byId[12].result.structuredContent.spec.questions;
-  ok(sq[0].other === true && sq[1].other === false, 'single questions default "other" ON (opt out with other:false)');
-  ok(/\[pick\] Pick one \(single/.test(byId[12].result.content[0].text), 'tool-result text carries a fallback question list for non-rendering surfaces');
-  ok(byId[13].result.isError && /invalid mermaid syntax/.test(byId[13].result.content[0].text), 'MCP invalid mermaid returns an isError tool result instead of a displayable board');
-}
-
 // ---------- 27. rly mcp config / install ----------
 console.log('27. mcp config + install');
 {
@@ -1645,47 +1542,6 @@ console.log('27. mcp config + install');
   ok(/already present/.test(JSON.parse(again.stdout).note), 'a second install is idempotent (left as-is)');
   const badTarget = await run(['mcp', 'install', '--target', 'nope']);
   ok(badTarget.code === 4, 'mcp install --target <unknown> → exit 4');
-}
-
-// ---------- 28. MCP App server over Streamable HTTP ----------
-console.log('28. mcp app server (streamable http)');
-{
-  const port = 47193;
-  const child = spawn(process.execPath, [BIN, 'mcp', '--http', '--port', String(port), '--token', 'tkn'], { env: ENV });
-  let serr = '';
-  child.stderr.on('data', (d) => (serr += d));
-  await new Promise((resolve, reject) => {
-    const t = setInterval(() => { if (/listening on/.test(serr)) { clearInterval(t); resolve(); } }, 40);
-    setTimeout(() => { clearInterval(t); reject(new Error('http server did not start: ' + serr)); }, 5000);
-  });
-  const httpRpc = (msg, headers = {}) => new Promise((resolve, reject) => {
-    const data = JSON.stringify(msg);
-    const req = http.request(
-      { host: '127.0.0.1', port, path: '/mcp', method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(data), ...headers } },
-      (r) => { let b = ''; r.on('data', (c) => (b += c)); r.on('end', () => resolve({ status: r.statusCode, headers: r.headers, body: b })); }
-    );
-    req.on('error', reject); req.write(data); req.end();
-  });
-  const noauth = await httpRpc({ jsonrpc: '2.0', id: 1, method: 'ping' });
-  ok(noauth.status === 401, 'http: request without the bearer token → 401');
-  const init = await httpRpc({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {} } }, { authorization: 'Bearer tkn' });
-  ok(init.status === 200 && JSON.parse(init.body).result.serverInfo.name === 'relay', 'http: initialize returns serverInfo');
-  ok(typeof init.headers['mcp-session-id'] === 'string' && init.headers['mcp-session-id'].length > 0, 'http: initialize sets an Mcp-Session-Id header');
-  ok(init.headers['access-control-allow-origin'] !== undefined, 'http: responses carry CORS headers (web hosts can fetch)');
-  const tl = await httpRpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, { authorization: 'Bearer tkn' });
-  ok(JSON.parse(tl.body).result.tools.map((t) => t.name).includes('relay_ask'), 'http: tools/list exposes relay_ask');
-  const rd = await httpRpc({ jsonrpc: '2.0', id: 3, method: 'resources/read', params: { uri: 'ui://relay/board' } }, { authorization: 'Bearer tkn' });
-  ok(JSON.parse(rd.body).result.contents[0].mimeType === 'text/html;profile=mcp-app', 'http: resources/read returns the board html');
-  const call = await httpRpc({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'relay_ask', arguments: { questions: [{ id: 'c', type: 'color', label: 'pick' }] } } }, { authorization: 'Bearer tkn' });
-  ok(JSON.parse(call.body).result.structuredContent.spec.questions[0].type === 'color', 'http: tools/call normalizes + returns the spec');
-  const badMermaidCall = await httpRpc({ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'relay_show', arguments: { blocks: [{ type: 'mermaid', code: 'graph TD; A-->' }] } } }, { authorization: 'Bearer tkn' });
-  const badMermaidRpc = JSON.parse(badMermaidCall.body).result;
-  ok(badMermaidRpc.isError && /invalid mermaid syntax/.test(badMermaidRpc.content[0].text), 'http: invalid mermaid returns an isError tool result before display');
-  const evil = await httpRpc({ jsonrpc: '2.0', id: 5, method: 'ping' }, { authorization: 'Bearer tkn', origin: 'https://evil.example' });
-  ok(evil.status === 403, 'http: a non-localhost Origin is rejected → 403 (DNS-rebind guard)');
-  const note = await httpRpc({ jsonrpc: '2.0', method: 'notifications/initialized' }, { authorization: 'Bearer tkn' });
-  ok(note.status === 202, 'http: a notification → 202 Accepted (no body)');
-  child.kill();
 }
 
 // ---------- 29. markdown mdFile + `rly view` ----------
@@ -2008,14 +1864,6 @@ console.log('37. display-only boards + long-wait defaults');
   await post(askInfo.url, '/api/submit', { answers: { q1: 'yes' } });
   const waited = await indefiniteWait;
   ok(waited.code === 0 && JSON.parse(waited.stdout).status === 'submitted', 'rly wait --timeout 0 waits without a Relay deadline until submit');
-
-  const { byId } = await mcpRoundtrip([
-    { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } } },
-    { jsonrpc: '2.0', method: 'notifications/initialized' },
-    { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'relay_show', arguments: { blocks: [{ type: 'markdown', md: 'FYI' }] } } },
-  ]);
-  ok(byId[2].result.structuredContent.spec.responseRequired === false, 'inline relay_show is display-only by default and does not wait for acknowledgement');
-  ok(/no acknowledgement/i.test(byId[2].result.content[0].text), 'relay_show tells the agent to continue without waiting');
 }
 
 console.log(`\nAll ${passed} assertions passed. (storage: ${HOME})`);

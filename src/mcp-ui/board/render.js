@@ -119,63 +119,55 @@
     return lines.join('\n');
   }
 
+  // The full answers go to the server, which keeps them for relay_result; the
+  // agent gets a one-line nudge. A host that refuses app tool calls gets the
+  // whole transcript as the message instead, so the answers still arrive.
   async function onSubmit(submitBtn, saveEl) {
     if (submitted) return;
     if (!validate()) return;
     submitBtn.disabled = true;
     submitBtn.textContent = 'Submitting…';
     const data = payload();
-    const structured = {
-      boardId: BOOT.boardId || null,
-      status: QS.length ? 'submitted' : 'acknowledged',
-      answers: data.answers,
-      skipped: data.skipped,
-      notes: data.notes,
-      comment: data.comment,
-      blockEdits: data.blockEdits,
-      annotations: data.annotations,
-    };
-    const text = summarize(data);
-    const messageContent = [{ type: 'text', text }];
-    for (const a of data.annotations || []) {
-      const crop = a && a.target && a.target.crop;
-      if (!crop || typeof crop.data !== 'string' || !crop.data) continue;
-      messageContent.push({ type: 'image', data: crop.data, mimeType: crop.mime || 'image/png' });
-    }
-    let messageDelivered = false;
-    let contextDelivered = false;
-    try {
-      // A completed relay form is a user reply, not passive context. Some hosts
-      // ACK `ui/update-model-context` without starting a new model turn, so send
-      // the transcript as a user message first to wake the agent reliably.
-      await request('ui/message', { role: 'user', content: messageContent });
-      messageDelivered = true;
-    } catch {
-      // Older hosts may not advertise image content or may implement the early
-      // single-content draft. Preserve the text wake path before giving up.
-      try {
-        await request('ui/message', { role: 'user', content: [{ type: 'text', text }] });
-        messageDelivered = true;
-      } catch {
-        try {
-          await request('ui/message', { role: 'user', content: { type: 'text', text } });
-          messageDelivered = true;
-        } catch { /* app-initiated messages unavailable */ }
+    const stored = BOARD.token ? await storeSubmission(data) : false;
+    const text = stored
+      ? 'Relay board ' + BOARD.id + ' submitted. Read it with relay_result {"boardId":"' + BOARD.id + '"}.'
+      : summarize(data);
+    const content = [{ type: 'text', text }];
+    if (!stored) {
+      for (const a of data.annotations || []) {
+        const crop = a && a.target && a.target.crop;
+        if (!crop || typeof crop.data !== 'string' || !crop.data) continue;
+        content.push({ type: 'image', data: crop.data, mimeType: crop.mime || 'image/png' });
       }
     }
-    try {
-      // Keep the structured payload available to hosts that attach app context.
-      // This is best-effort because context updates are intentionally silent.
-      await request('ui/update-model-context', { content: messageContent, structuredContent: structured });
-      contextDelivered = true;
-    } catch {
-      try {
-        await request('ui/update-model-context', { content: [{ type: 'text', text }], structuredContent: structured });
-        contextDelivered = true;
-      } catch { /* ui/message may still have delivered the result */ }
-    }
+    const messageDelivered = await sendUserMessage(content, text);
     submitted = true;
-    showDone(messageDelivered, contextDelivered);
+    showDone(messageDelivered, stored);
+  }
+
+  async function storeSubmission(data) {
+    try {
+      await callServerTool('relay_submit', { boardId: BOARD.id, token: BOARD.token, payload: data });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // A completed relay form is a user reply, so it goes as a user message to wake
+  // the agent. Older hosts reject image content or the content array; each retry
+  // keeps the text.
+  async function sendUserMessage(content, text) {
+    const attempts = [content, [{ type: 'text', text }], { type: 'text', text }];
+    for (const attempt of attempts) {
+      try {
+        await request('ui/message', { role: 'user', content: attempt });
+        return true;
+      } catch {
+        // try a simpler shape
+      }
+    }
+    return false;
   }
 
   function showDone(messageDelivered, contextDelivered) {

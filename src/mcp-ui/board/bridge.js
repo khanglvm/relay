@@ -14,7 +14,7 @@
       // host frame gone — nothing we can do
     }
   }
-  function request(method, params) {
+  function request(method, params, timeoutMs = 15000) {
     const id = 'rly-' + (++rpcSeq);
     return new Promise((resolve, reject) => {
       pending.set(id, { resolve, reject });
@@ -25,8 +25,18 @@
           pending.delete(id);
           reject(new Error('timeout: ' + method));
         }
-      }, 15000);
+      }, timeoutMs);
     });
+  }
+  // Calls one of the relay server's tools through the host. A tool-level error
+  // rejects, so callers handle "the host refused" and "the server said no" alike.
+  async function callServerTool(name, args, timeoutMs) {
+    const res = await request('tools/call', { name, arguments: args }, timeoutMs);
+    if (!res || res.isError) {
+      const msg = res && Array.isArray(res.content) && res.content[0] && res.content[0].text;
+      throw new Error(msg || 'tool failed: ' + name);
+    }
+    return res.structuredContent || {};
   }
   function notify(method, params) {
     post({ jsonrpc: '2.0', method, params: params || {} });

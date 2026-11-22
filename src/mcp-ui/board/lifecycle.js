@@ -54,21 +54,59 @@
     previewTimer = setTimeout(() => { previewTimer = null; if (!booted && !submitted) render(); }, 120);
   }
 
-  // The spec can arrive as the tool RESULT (preferred — server-normalized) or,
-  // on a leaner host, as the tool INPUT (raw). Prefer the result: when raw input
-  // lands first, hold briefly for a result before falling back to the input.
+  // The tool result carries only the board id and token. The spec comes from
+  // relay_view, already normalized by the server. A host that will not run app
+  // tool calls still gets a board: the raw tool input is the fallback, held for
+  // a moment so the server's version wins when both arrive.
+  let rawInput = null;
   let rawInputTimer = null;
-  onNotify('ui/notifications/tool-result', (p) => {
+  const DRAFT_EVERY_MS = 4000;
+  let lastDraft = '';
+
+  function startDraftSync() {
+    setInterval(() => {
+      if (!booted || submitted || !BOARD.token || spec.responseRequired === false) return;
+      const body = JSON.stringify(payload());
+      if (body === lastDraft) return;
+      lastDraft = body;
+      callServerTool('relay_draft', { boardId: BOARD.id, token: BOARD.token, draft: JSON.parse(body) }).catch(() => {});
+    }, DRAFT_EVERY_MS);
+  }
+
+  async function bootFromServer(result) {
+    const sc = result && result.structuredContent;
+    const token = result && result._meta && result._meta.relay && result._meta.relay.token;
+    if (!sc || !sc.boardId || !token) return false;
+    BOARD.id = sc.boardId;
+    BOARD.token = token;
+    try {
+      const view = await callServerTool('relay_view', { boardId: BOARD.id, token: BOARD.token });
+      if (!view.spec) return false;
+      vendorUrls = view.vendorUrls || null;
+      await boot(view.spec, true);
+      if (view.finished) {
+        submitted = true;
+        showDone(true, false);
+        return true;
+      }
+      startDraftSync();
+      return true;
+    } catch {
+      BOARD.token = null;
+      return false;
+    }
+  }
+
+  onNotify('ui/notifications/tool-result', async (p) => {
     if (rawInputTimer) { clearTimeout(rawInputTimer); rawInputTimer = null; }
-    const sc = p && p.structuredContent;
-    if (sc && sc.spec) return boot(sc.spec, true);
-    // Some hosts may echo the spec at the top level of structuredContent.
-    if (sc && Array.isArray(sc.questions)) return boot(sc, true);
+    if (booted) return;
+    if (!(await bootFromServer(p)) && rawInput) boot(rawInput, false);
   });
   onNotify('ui/notifications/tool-input', (p) => {
     const args = p && p.arguments;
     if (!args || typeof args !== 'object' || booted || rawInputTimer) return;
-    rawInputTimer = setTimeout(() => { rawInputTimer = null; boot(args, false); }, 250);
+    rawInput = args;
+    rawInputTimer = setTimeout(() => { rawInputTimer = null; boot(args, false); }, 1500);
   });
   onNotify('ui/notifications/tool-input-partial', (p) => {
     const args = p && p.arguments;

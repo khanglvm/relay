@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { mcpConfig, runMcp, runMcpHttp } from '../mcp.js';
+import { mcpConfig } from '../mcp/config.js';
 import { CliError } from '../util.js';
 import { parseArgs } from './args.js';
 import { printJson } from './io.js';
@@ -22,6 +22,7 @@ export async function cmdMcp(rest) {
     // Port precedence: --port flag, then PaaS-injected $PORT / $RLY_MCP_PORT,
     // then the default. PaaS hosts (Render, Railway, Fly, mcpdeploy, …) set $PORT.
     const envPort = process.env.PORT || process.env.RLY_MCP_PORT;
+    const { runMcpHttp } = await import('../mcp/serve.js');
     return runMcpHttp({
       port: args.port ? Number(args.port) : (envPort ? Number(envPort) : undefined),
       host: typeof args.host === 'string' ? args.host : (process.env.RLY_MCP_HOST || '127.0.0.1'),
@@ -31,6 +32,7 @@ export async function cmdMcp(rest) {
   }
   // Default: be the stdio server. main() never resolves this, so the CLI's
   // post-run exit timer never arms — the server lives until stdin closes.
+  const { runMcp } = await import('../mcp/serve.js');
   return runMcp();
 }
 
@@ -52,7 +54,7 @@ function cmdMcpConfig(args, sub) {
     const claudePath = claudeDesktopConfigPath();
     const codexPath = path.join(os.homedir(), '.codex', 'config.toml');
     printJson({
-      note: 'Register relay as an MCP App server, then call relay_ask / relay_show from inside the host.',
+      note: 'Register relay as an MCP App server, then call relay_board from inside the host.',
       claudeCode: 'claude mcp add relay -- rly mcp',
       claudeDesktop: { file: claudePath, add: cfg.json },
       codex: { file: codexPath, add: cfg.toml },
