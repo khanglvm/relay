@@ -174,7 +174,7 @@ async function buildResult(method, params, clientProtocol) {
     case 'tools/call':
       return callTool(params);
     default: {
-      const err = new Error('method not found: ' + method);
+      const err = /** @type {Error & { code?: number }} */ (new Error('method not found: ' + method));
       err.code = -32601;
       throw err;
     }
@@ -189,10 +189,10 @@ function readResource(params) {
   if (typeof uri === 'string' && uri.startsWith(VENDOR_PREFIX)) {
     const name = uri.slice(VENDOR_PREFIX.length);
     const text = vendorText(name);
-    if (text == null) { const e = new Error('vendor not found: ' + name); e.code = -32002; throw e; }
+    if (text == null) { const e = /** @type {Error & { code?: number }} */ (new Error('vendor not found: ' + name)); e.code = -32002; throw e; }
     return { contents: [{ uri, mimeType: 'application/javascript', text }] };
   }
-  const e = new Error('resource not found: ' + uri);
+  const e = /** @type {Error & { code?: number }} */ (new Error('resource not found: ' + uri));
   e.code = -32002;
   throw e;
 }

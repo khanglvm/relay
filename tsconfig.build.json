@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "rootDir": "src",
+    "outDir": "types"
+  },
+  "include": ["src/index.js", "src/spec.js", "src/a2ui/compile.js", "src/mcp.js"]
+}

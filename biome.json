@@ -1,0 +1,19 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
+  "files": {
+    "includes": ["src/**/*.js", "bin/*.js", "scripts/*.mjs", "test/**/*.mjs", "!src/a2ui/vendor", "!src/ui/**", "!src/mcp-ui/**", "!scripts/update-vendor.mjs"]
+  },
+  "formatter": { "enabled": false },
+  "assist": { "enabled": false },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "suspicious": {
+        "noControlCharactersInRegex": "off",
+        "noAssignInExpressions": "off",
+        "useIterableCallbackReturn": "off"
+      },
+      "complexity": { "useOptionalChain": "off" }
+    }
+  }
+}
