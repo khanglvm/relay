@@ -325,3 +325,44 @@ test('the iframe forwards a new a2ui click after the block keeps only its newest
   context.forwardA2uiEvents('w', undefined, { type: 'a2ui', data: {}, events: [ev(99)] });
   assert.deepEqual(sent, [50, 99]);
 });
+
+test('two servers starting together settle on one key', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rly-key-'));
+  const file = path.join(dir, 'home', 'mcp-key');
+  const script = `import(${JSON.stringify(path.join(ROOT, 'src/mcp/token.js'))}).then((m) => process.stdout.write(m.loadServerKey(${JSON.stringify(file)})))`;
+  const run = () => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['-e', script], { env: ENV });
+    let out = '';
+    child.stdout.on('data', (d) => (out += d));
+    child.on('error', reject);
+    child.on('close', () => resolve(out));
+  });
+  try {
+    const keys = await Promise.all(Array.from({ length: 12 }, run));
+    assert.equal(new Set(keys).size, 1);
+    assert.equal(fs.readFileSync(file, 'utf8').trim(), keys[0]);
+    assert.deepEqual(fs.readdirSync(path.dirname(file)), ['mcp-key'], 'no temp files are left behind');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('--token-file sets the bearer token, and an unreadable file stops the server', async () => {
+  const tokenFile = path.join(HOME, 'token');
+  fs.writeFileSync(tokenFile, 'from-file\n');
+  const port = 20000 + Math.floor(Math.random() * 20000);
+  const child = spawn(process.execPath, [BIN, 'mcp', '--http', '--port', String(port), '--token-file', tokenFile], { env: ENV });
+  open.push(() => child.kill());
+  await new Promise((resolve, reject) => {
+    child.stderr.on('data', (d) => String(d).includes('listening') && resolve());
+    child.on('exit', () => reject(new Error('exited')));
+  });
+  const post = (auth) => fetch(`http://127.0.0.1:${port}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(auth ? { authorization: auth } : {}) }, body: '{}' });
+  assert.equal((await post()).status, 401);
+  assert.equal((await post('Bearer wrong')).status, 401);
+  assert.notEqual((await post('Bearer from-file')).status, 401);
+
+  const missing = spawn(process.execPath, [BIN, 'mcp', '--http', '--port', String(port + 1), '--token-file', path.join(HOME, 'nope')], { env: ENV });
+  const code = await new Promise((resolve) => missing.on('close', resolve));
+  assert.notEqual(code, 0);
+});

@@ -22,12 +22,15 @@ export const aliasInput = z.looseObject({});
 export const viewInput = z.object({ boardId, token });
 export const draftInput = z.object({ boardId, token, draft: loose });
 export const submitInput = z.object({ boardId, token, payload: loose });
+/** A widget button click (`blockId`, `name`, `context`), or a renderer event (`action`, plus the surface's `dataModel`). */
 export const actionInput = z.object({
   boardId,
   token,
-  blockId: z.string(),
-  name: z.string(),
+  blockId: z.string().optional(),
+  name: z.string().optional(),
   context: loose.optional(),
+  action: loose.optional(),
+  dataModel: loose.optional(),
 });
 export const assetInput = z.object({ name: z.string(), index: z.number().int().min(0).default(0) });
 

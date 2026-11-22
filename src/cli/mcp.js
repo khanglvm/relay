@@ -26,7 +26,7 @@ export async function cmdMcp(rest) {
     return runMcpHttp({
       port: args.port ? Number(args.port) : (envPort ? Number(envPort) : undefined),
       host: typeof args.host === 'string' ? args.host : (process.env.RLY_MCP_HOST || '127.0.0.1'),
-      token: typeof args.token === 'string' ? args.token : (process.env.RLY_MCP_TOKEN || ''),
+      token: resolveToken(args),
       allowOrigin: typeof args.allowOrigin === 'string' ? args.allowOrigin : (process.env.RLY_MCP_ALLOW_ORIGIN || ''),
     });
   }
@@ -34,6 +34,24 @@ export async function cmdMcp(rest) {
   // post-run exit timer never arms — the server lives until stdin closes.
   const { runMcp } = await import('../mcp/serve.js');
   return runMcp();
+}
+
+/**
+ * The bearer token for --http. `--token` shows up in `ps`, so prefer `--token-file PATH`
+ * or $RLY_MCP_TOKEN; the flag keeps working. A file that cannot be read is an error,
+ * never an open endpoint.
+ */
+function resolveToken(args) {
+  if (typeof args.tokenFile === 'string') {
+    try {
+      const token = fs.readFileSync(args.tokenFile, 'utf8').trim();
+      if (token) return token;
+    } catch (e) {
+      throw new CliError(`cannot read --token-file ${args.tokenFile}: ${e.message}`);
+    }
+    throw new CliError(`--token-file ${args.tokenFile} is empty`);
+  }
+  return typeof args.token === 'string' ? args.token : (process.env.RLY_MCP_TOKEN || '');
 }
 
 // Resolve Claude Desktop's config path for this platform.

@@ -1,5 +1,28 @@
 # Changelog
 
+### 0.22.0 — the pick question and the A2UI board catalog
+
+Added
+- `pick` question: a grid of media tiles (image, video preview or link) with a title and optional
+  caption. Choose one or several with `min` and `max`, and add a note to each pick and one overall
+  note. The answer is `{picks: [{id, note?}], overall?}`, in the order picked. It works in the web
+  board and the MCP App page, at phone width and from the keyboard. `rly schema pick` prints the fields.
+- A2UI board catalog (`src/a2ui/board-catalog.json`): a whole board as one A2UI surface.
+  `toA2ui(spec)` builds the messages and `fromA2ui(dataModel, spec)` turns the surface's data
+  into the same result the web board stores, both from `@khanglvm/relay/a2ui-board`.
+- `relay_view` returns A2UI messages to a host that lists the board catalog under
+  `extensions.a2ui["1.0"].supportedCatalogIds`, or in a call's `_meta.a2ui`. Other hosts keep the
+  iframe. Buttons come back through `a2ui_action`.
+- `rly mcp --http --token-file PATH` reads the bearer token from a file. `--token` still works but
+  shows in `ps`, so prefer the file or `RLY_MCP_TOKEN`.
+
+Fixed
+- Two servers starting together on a fresh relay home could end with different keys in `mcp-key`.
+  The first to finish now wins and the other reads its key.
+
+Changed
+- `relay_ask` and `relay_show` stay as aliases. 0.21 said they would go in 0.22; that is moved to a later release.
+
 ### 0.21.0 — MCP server rebuilt on the official SDK
 
 Breaking

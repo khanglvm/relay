@@ -1,6 +1,6 @@
 {
   "name": "@khanglvm/relay",
-  "version": "0.21.0",
+  "version": "0.22.0",
   "description": "Question boards with rich blocks (markdown, charts, mermaid, tables, code, diffs, video, sandboxed HTML), clickable local file-links, and element-level annotations for AI coding agents (Claude Code, Codex, \u2026): ask users structured questions, present interactive visuals, collect inline comments, read answers as JSON \u2014 in a local browser board OR rendered INLINE inside the Claude & Codex apps as an MCP App (SEP-1865).",
   "keywords": [
     "ai-agents",
@@ -57,6 +57,7 @@
     "prepack": "npm run build:types"
   },
   "devDependencies": {
+    "@a2ui/web_core": "^0.15.0",
     "@biomejs/biome": "^2.6.8",
     "@modelcontextprotocol/client": "^2.4.0",
     "@types/node": "^20.19.43",
@@ -74,6 +75,10 @@
     "./a2ui": {
       "types": "./types/a2ui/compile.d.ts",
       "default": "./src/a2ui/compile.js"
+    },
+    "./a2ui-board": {
+      "types": "./types/a2ui/board.d.ts",
+      "default": "./src/a2ui/board.js"
     },
     "./mcp": {
       "types": "./types/mcp/index.d.ts",

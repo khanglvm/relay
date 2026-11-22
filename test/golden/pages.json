@@ -1,7 +1,7 @@
 {
   "web": {
-    "bytes": 368005,
-    "sha256": "ee404789d99cc95cd4de1150c5aff446077681950078bedc1250e5ea52788270",
+    "bytes": 381176,
+    "sha256": "942ac6eb66e80b4a110f51b647d7e37f3d2f97319d4b8cd1904e12c82eb9a3f5",
     "scripts": [
       {
         "bytes": 2004,
@@ -9,8 +9,8 @@
         "head": "{\"boardId\":\"(varies)\",\"spec\":{\"title\":\"Auth feature — decisi"
       },
       {
-        "bytes": 165603,
-        "sha256": "68515bb0887c9b94bef6fd74faa934ea548b185b2485fcd0d40c8aaaad63774c",
+        "bytes": 175006,
+        "sha256": "d2467ceea0f7353e9d93926e96a5dffe6bec68858e67d6a39edfb26805d09f47",
         "head": "// a2ui-state.js — window.RelayA2uiState: the data model and"
       },
       {
@@ -19,22 +19,22 @@
         "head": "/* relay annotate — element-level comments (window.RelayAnno"
       },
       {
-        "bytes": 72899,
-        "sha256": "c6ecd5d8a26aa9e303e27d15e04f8e251ad920c76922083341982af421f329c6",
+        "bytes": 73325,
+        "sha256": "9b8e07a6bb7da48ea31ffc59b78c19659a0cc9f98b865800d6db97233e2c3cc1",
         "head": "(() => {\n  'use strict';\n\n  const boot = JSON.parse(document"
       }
     ],
     "styles": [
       {
-        "bytes": 83024,
-        "sha256": "47df91f6619d6d3fdae8ddbcca4a349f9e37bd254678f369d6bdabc7ddfcb1c3",
+        "bytes": 86366,
+        "sha256": "063d63eac246481a7ebf33d478e8a442cfeff2302043bdc49e7b10a4cac45e72",
         "head": "/* quest-board theme — editorial minimalism in the spirit of"
       }
     ]
   },
   "mcp": {
-    "bytes": 353689,
-    "sha256": "dd7bc0a78c375b07c679419d51bb6fa3c0b26c6d19c007e745186bfee321429d",
+    "bytes": 367507,
+    "sha256": "ea74050e5173f753d527c56a346a02ff3fc0e4c307ed6cecc5ccb5cf96b29d52",
     "scripts": [
       {
         "bytes": 23,
@@ -42,8 +42,8 @@
         "head": "{\"version\":\"(version)\"}"
       },
       {
-        "bytes": 165603,
-        "sha256": "68515bb0887c9b94bef6fd74faa934ea548b185b2485fcd0d40c8aaaad63774c",
+        "bytes": 175006,
+        "sha256": "d2467ceea0f7353e9d93926e96a5dffe6bec68858e67d6a39edfb26805d09f47",
         "head": "// a2ui-state.js — window.RelayA2uiState: the data model and"
       },
       {
@@ -52,20 +52,20 @@
         "head": "/* relay annotate — element-level comments (window.RelayAnno"
       },
       {
-        "bytes": 59315,
-        "sha256": "f608bb8fabc33f6cbf02740ae79240bb80c18c22abe0577a77c939dfd0a58eaf",
+        "bytes": 60388,
+        "sha256": "729d35bf5e9f08cdbb0f534f6adf25032b34c5a9897087ad1e490e0180398625",
         "head": "// board.js — the relay board as an MCP App (SEP-1865 \"io.mo"
       }
     ],
     "styles": [
       {
-        "bytes": 84618,
-        "sha256": "8360d1ffb0bc9ce0726ef59561887339b5106ebf2a0ab3990366be6b90e0e9c8",
+        "bytes": 87960,
+        "sha256": "1de46e256acbae22388bb33dcb7ff902c8dd0e2bb37a2ab73b42594b70b05591",
         "head": "/* quest-board theme — editorial minimalism in the spirit of"
       },
       {
-        "bytes": 130610,
-        "sha256": "f130fcab462e75651bc7f0fd01b366b03604b529997bea6943d859c7c2da1669",
+        "bytes": 131306,
+        "sha256": "05b8b86d1dd4f059e5378c36f78c2a6d1c1cb7d281fe901678bf33b48e25ed13",
         "head": ", on* handlers, non-fragment href/xlink:href\n  // (<use>/<im"
       }
     ]

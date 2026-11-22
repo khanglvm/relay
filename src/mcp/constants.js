@@ -1,4 +1,6 @@
 // Names and limits shared by the MCP server modules and the board page.
+import { A2UI_ACTION_TOOL } from '../a2ui/board-constants.js';
+
 export const UI_EXT = 'io.modelcontextprotocol/ui';
 export const UI_MIME = 'text/html;profile=mcp-app';
 export const BOARD_URI = 'ui://relay/board';
@@ -25,7 +27,7 @@ export const TOOL = {
   draft: 'relay_draft',
   submit: 'relay_submit',
   asset: 'relay_asset',
-  a2uiAction: 'a2ui_action',
+  a2uiAction: A2UI_ACTION_TOOL,
   ask: 'relay_ask',
   show: 'relay_show',
 };

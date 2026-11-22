@@ -46,6 +46,7 @@ export const QUESTION_FIELDS = {
   rank: ['options', 'default'],
   checklist: ['options', 'statuses', 'default'],
   allocate: ['options', 'total', 'unit', 'default'],
+  pick: ['items', 'min', 'max', 'itemNote', 'overall', 'default'],
 };
 
 function pick(props, names) {

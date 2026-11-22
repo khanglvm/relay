@@ -135,6 +135,7 @@
   for (const q of QS) if (q.type === 'rank') state.answers[q.id] = seedRankOrder(q, state.answers[q.id]);
   for (const q of QS) if (q.type === 'allocate') state.answers[q.id] = seedAllocate(q, state.answers[q.id]);
   for (const q of QS) if (q.type === 'checklist') state.answers[q.id] = seedChecklist(q, state.answers[q.id]);
+  for (const q of QS) if (q.type === 'pick') state.answers[q.id] = window.RelayPick.seed(q, state.answers[q.id]);
   // If the local mirror was newer than the server (or the server had nothing),
   // the in-memory state now holds input the server hasn't seen — flush it once
   // the rest of the app is wired (see the post-init flush near the heartbeat).
@@ -174,6 +175,8 @@
         const sum = Object.values(m).reduce((a, n) => a + (Number(n) || 0), 0);
         return sum > 0 ? { ...m } : undefined;
       }
+      case 'pick':
+        return window.RelayPick.value(q, v);
       default: {
         const t = typeof v === 'string' ? v.trim() : '';
         return t || undefined;

@@ -70,7 +70,8 @@ USAGE
   rly mcp                             run relay as an MCP App server (stdio) — boards render INLINE in
                                       a local desktop host (Claude Desktop, Codex) instead of a browser tab
   rly mcp --http [--port N]           serve over Streamable HTTP for web/mobile/remote hosts
-                                      [--host H --token SECRET --allow-origin ORIGIN]
+                                      [--host H --token-file PATH --allow-origin ORIGIN]
+                                      (token: --token-file, $RLY_MCP_TOKEN, or --token, which shows in the process list)
   rly mcp config | install --target   print host setup, or write it (claude | codex)
 
 COMMON FLAGS

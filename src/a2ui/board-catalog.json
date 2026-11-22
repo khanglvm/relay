@@ -1,0 +1,1004 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/khanglvm/relay/a2ui/catalog/board/v1",
+  "catalogId": "https://github.com/khanglvm/relay/a2ui/catalog/board/v1",
+  "protocolVersion": "1.0",
+  "title": "Relay board catalog",
+  "description": "A whole Relay board as one A2UI surface: the heading, content blocks, questions, a comment box and a submit button. Every component also carries `title` and `text` as plain text, so a renderer that does not know a component can draw those instead.",
+  "instructions": "The surface is built by Relay from a board spec; an agent never writes it. The data model holds /answers/<questionId>, /notes/<questionId>, /comment, /annotations/<blockId> and /blockEdits/<blockId>. Draw the components you know, show `title` and `text` for the rest, bind each Question `value` and `note` to the data model, and send the data model back with the `relay.submit` action.",
+  "components": {
+    "Board": {
+      "type": "object",
+      "description": "The root (id `root`): the board heading, its intro, then the blocks, questions, comment box and submit button in order.",
+      "properties": {
+        "component": {
+          "const": "Board"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "intro": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "children": {
+          "$ref": "common_types.json#/$defs/ChildList"
+        },
+        "responseRequired": {
+          "type": "boolean"
+        },
+        "allowPartial": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "component",
+        "title",
+        "children"
+      ]
+    },
+    "Question": {
+      "type": "object",
+      "description": "One question. `questionType` says how to draw it; `value` binds to the answer at /answers/<id> and `note` to /notes/<id>. Blocks that belong to the question are its children; a block with `optionValue` belongs to that option.",
+      "properties": {
+        "component": {
+          "const": "Question"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "optionValue": {
+          "type": "string"
+        },
+        "questionId": {
+          "type": "string"
+        },
+        "questionType": {
+          "type": "string",
+          "enum": [
+            "single",
+            "multi",
+            "yesno",
+            "text",
+            "textarea",
+            "scale",
+            "color",
+            "rank",
+            "checklist",
+            "allocate",
+            "pick"
+          ]
+        },
+        "label": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "description": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "statuses": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "min": {
+          "type": "integer"
+        },
+        "max": {
+          "type": "integer"
+        },
+        "itemNote": {
+          "type": "boolean"
+        },
+        "overall": {
+          "type": "boolean"
+        },
+        "other": {
+          "type": "boolean"
+        },
+        "total": {
+          "type": "integer"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "minLabel": {
+          "type": "string"
+        },
+        "maxLabel": {
+          "type": "string"
+        },
+        "presets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "palette": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "placeholder": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "default": {
+          "$ref": "common_types.json#/$defs/DynamicValue"
+        },
+        "hasNote": {
+          "type": "boolean"
+        },
+        "value": {
+          "$ref": "common_types.json#/$defs/DynamicValue"
+        },
+        "note": {
+          "$ref": "common_types.json#/$defs/DynamicValue"
+        },
+        "children": {
+          "$ref": "common_types.json#/$defs/ChildList"
+        }
+      },
+      "required": [
+        "component",
+        "questionId",
+        "questionType",
+        "label",
+        "value"
+      ]
+    },
+    "Markdown": {
+      "type": "object",
+      "description": "Markdown text.",
+      "properties": {
+        "component": {
+          "const": "Markdown"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "optionValue": {
+          "type": "string"
+        },
+        "md": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        }
+      },
+      "required": [
+        "component",
+        "md"
+      ]
+    },
+    "Chart": {
+      "type": "object",
+      "description": "A chart: a kind with labels and series, or a full Chart.js config.",
+      "properties": {
+        "component": {
+          "const": "Chart"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "optionValue": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "series": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "config": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "component"
+      ]
+    },
+    "Table": {
+      "type": "object",
+      "description": "Rows under columns.",
+      "properties": {
+        "component": {
+          "const": "Table"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "optionValue": {
+          "type": "string"
+        },
+        "columns": {
+          "type": "array"
+        },
+        "rows": {
+          "$ref": "common_types.json#/$defs/DynamicValue"
+        },
+        "sortable": {
+          "type": "boolean"
+        },
+        "filterable": {
+          "type": "boolean"
+        },
+        "exportable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "component",
+        "columns",
+        "rows"
+      ]
+    },
+    "Code": {
+      "type": "object",
+      "description": "Source code.",
+      "properties": {
+        "component": {
+          "const": "Code"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "optionValue": {
+          "type": "string"
+        },
+        "code": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "lang": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "component",
+        "code"
+      ]
+    },
+    "Diff": {
+      "type": "object",
+      "description": "A unified diff.",
+      "properties": {
+        "component": {
+          "const": "Diff"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "optionValue": {
+          "type": "string"
+        },
+        "diff": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "lang": {
+          "type": "string"
+        },
+        "view": {
+          "type": "string"
+        },
+        "review": {
+          "type": "boolean"
+        },
+        "reviewKind": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "component",
+        "diff"
+      ]
+    },
+    "Mermaid": {
+      "type": "object",
+      "description": "A Mermaid diagram.",
+      "properties": {
+        "component": {
+          "const": "Mermaid"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "optionValue": {
+          "type": "string"
+        },
+        "code": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "editable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "component",
+        "code"
+      ]
+    },
+    "Graphviz": {
+      "type": "object",
+      "description": "A Graphviz (DOT) diagram.",
+      "properties": {
+        "component": {
+          "const": "Graphviz"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "optionValue": {
+          "type": "string"
+        },
+        "dot": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        }
+      },
+      "required": [
+        "component",
+        "dot"
+      ]
+    },
+    "Plantuml": {
+      "type": "object",
+      "description": "A PlantUML diagram.",
+      "properties": {
+        "component": {
+          "const": "Plantuml"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "optionValue": {
+          "type": "string"
+        },
+        "code": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "server": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "component",
+        "code"
+      ]
+    },
+    "Image": {
+      "type": "object",
+      "description": "A picture: an http(s) or data URL.",
+      "properties": {
+        "component": {
+          "const": "Image"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "optionValue": {
+          "type": "string"
+        },
+        "src": {
+          "type": "string"
+        },
+        "alt": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "pins": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "component",
+        "src"
+      ]
+    },
+    "Compare": {
+      "type": "object",
+      "description": "Two pictures side by side with a slider.",
+      "properties": {
+        "component": {
+          "const": "Compare"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "optionValue": {
+          "type": "string"
+        },
+        "before": {
+          "type": "string"
+        },
+        "after": {
+          "type": "string"
+        },
+        "beforeLabel": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "afterLabel": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        }
+      },
+      "required": [
+        "component",
+        "before",
+        "after"
+      ]
+    },
+    "Html": {
+      "type": "object",
+      "description": "Custom markup. A host draws it in a sandboxed frame or shows the text fallback.",
+      "properties": {
+        "component": {
+          "const": "Html"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "optionValue": {
+          "type": "string"
+        },
+        "html": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        }
+      },
+      "required": [
+        "component",
+        "html"
+      ]
+    },
+    "Palette": {
+      "type": "object",
+      "description": "Colour swatch palettes.",
+      "properties": {
+        "component": {
+          "const": "Palette"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "optionValue": {
+          "type": "string"
+        },
+        "palettes": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "required": [
+        "component",
+        "palettes"
+      ]
+    },
+    "Kpi": {
+      "type": "object",
+      "description": "Stat cards.",
+      "properties": {
+        "component": {
+          "const": "Kpi"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "optionValue": {
+          "type": "string"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "required": [
+        "component",
+        "items"
+      ]
+    },
+    "Typography": {
+      "type": "object",
+      "description": "Type specimens.",
+      "properties": {
+        "component": {
+          "const": "Typography"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "optionValue": {
+          "type": "string"
+        },
+        "specimens": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "required": [
+        "component",
+        "specimens"
+      ]
+    },
+    "Video": {
+      "type": "object",
+      "description": "A YouTube or Vimeo video.",
+      "properties": {
+        "component": {
+          "const": "Video"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "optionValue": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "videoId": {
+          "type": "string"
+        },
+        "start": {
+          "type": "integer"
+        },
+        "src": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "component"
+      ]
+    },
+    "Pdf": {
+      "type": "object",
+      "description": "A PDF at a URL.",
+      "properties": {
+        "component": {
+          "const": "Pdf"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "optionValue": {
+          "type": "string"
+        },
+        "src": {
+          "type": "string"
+        },
+        "mime": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "component",
+        "src"
+      ]
+    },
+    "GitConflict": {
+      "type": "object",
+      "description": "A file with git conflict markers.",
+      "properties": {
+        "component": {
+          "const": "GitConflict"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "optionValue": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "conflicts": {
+          "type": "array"
+        },
+        "parts": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "component"
+      ]
+    },
+    "Widget": {
+      "type": "object",
+      "description": "A small live widget in Relay's widget catalog (https://github.com/khanglvm/relay/a2ui/catalog/v1): flat `widgetComponents` and their `widgetData`.",
+      "properties": {
+        "component": {
+          "const": "Widget"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "optionValue": {
+          "type": "string"
+        },
+        "widgetComponents": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "widgetData": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "component",
+        "widgetComponents"
+      ]
+    },
+    "Comment": {
+      "type": "object",
+      "description": "The \"anything else\" box, bound to /comment.",
+      "properties": {
+        "component": {
+          "const": "Comment"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "label": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "value": {
+          "$ref": "common_types.json#/$defs/DynamicValue"
+        }
+      },
+      "required": [
+        "component",
+        "label",
+        "value"
+      ]
+    },
+    "Submit": {
+      "type": "object",
+      "description": "The submit button. Its action `relay.submit` sends the answers; the host passes the data model along.",
+      "properties": {
+        "component": {
+          "const": "Submit"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "text": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "label": {
+          "$ref": "common_types.json#/$defs/DynamicString"
+        },
+        "action": {
+          "$ref": "common_types.json#/$defs/Action"
+        }
+      },
+      "required": [
+        "component",
+        "label",
+        "action"
+      ]
+    }
+  },
+  "functions": {
+    "openUrl": {
+      "type": "object",
+      "description": "Opens an https link in a new tab.",
+      "returnType": "void",
+      "allowedCallers": "rendererOnly",
+      "requiresUserActivation": true,
+      "properties": {
+        "@call": {
+          "const": "openUrl"
+        },
+        "args": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "pattern": "^https://"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "@call",
+        "args"
+      ]
+    }
+  },
+  "$defs": {
+    "anyComponent": {
+      "oneOf": [
+        {
+          "$ref": "#/components/Board"
+        },
+        {
+          "$ref": "#/components/Question"
+        },
+        {
+          "$ref": "#/components/Markdown"
+        },
+        {
+          "$ref": "#/components/Chart"
+        },
+        {
+          "$ref": "#/components/Table"
+        },
+        {
+          "$ref": "#/components/Code"
+        },
+        {
+          "$ref": "#/components/Diff"
+        },
+        {
+          "$ref": "#/components/Mermaid"
+        },
+        {
+          "$ref": "#/components/Graphviz"
+        },
+        {
+          "$ref": "#/components/Plantuml"
+        },
+        {
+          "$ref": "#/components/Image"
+        },
+        {
+          "$ref": "#/components/Compare"
+        },
+        {
+          "$ref": "#/components/Html"
+        },
+        {
+          "$ref": "#/components/Palette"
+        },
+        {
+          "$ref": "#/components/Kpi"
+        },
+        {
+          "$ref": "#/components/Typography"
+        },
+        {
+          "$ref": "#/components/Video"
+        },
+        {
+          "$ref": "#/components/Pdf"
+        },
+        {
+          "$ref": "#/components/GitConflict"
+        },
+        {
+          "$ref": "#/components/Widget"
+        },
+        {
+          "$ref": "#/components/Comment"
+        },
+        {
+          "$ref": "#/components/Submit"
+        }
+      ],
+      "discriminator": {
+        "propertyName": "component"
+      }
+    },
+    "anyFunction": {
+      "oneOf": [
+        {
+          "$ref": "#/functions/openUrl"
+        }
+      ]
+    }
+  }
+}

@@ -64,6 +64,10 @@ function clientBlock(b) {
 // level AND inside each option's blocks.
 function clientQuestion(q) {
   const out = { ...q, blocks: (q.blocks || []).map(clientBlock) };
+  // pick tiles: embedded image bytes are served at /img/p/<question>/<tile>, like image blocks.
+  if (Array.isArray(q.items)) {
+    out.items = q.items.map((t) => (typeof t.image === 'string' && t.image.startsWith('data:') ? { ...t, image: undefined, hasImage: true } : t));
+  }
   if (Array.isArray(q.options)) {
     out.options = q.options.map((o) =>
       o && Array.isArray(o.blocks) && o.blocks.length ? { ...o, blocks: o.blocks.map(clientBlock) } : o
