@@ -119,6 +119,47 @@
     return a;
   }
 
+  /** One tile: the pick button, its link, and the note that shows while it is picked. */
+  function tileCell(q, tile, { cur, canEdit, toggle, onChange }) {
+    const btn = h('button', 'pk-pick');
+    btn.type = 'button';
+    btn.disabled = !canEdit;
+    btn.setAttribute('aria-pressed', 'false');
+    const order = h('span', 'pk-order');
+    order.setAttribute('aria-hidden', 'true');
+    const check = h('span', 'pk-check');
+    check.append(icon('check'));
+    check.append(order);
+    const head = h('span', 'pk-head');
+    head.append(h('span', 'pk-title', tile.title), check);
+    btn.append(mediaOf(q, tile), head);
+    if (tile.caption) btn.append(h('span', 'pk-caption', tile.caption));
+    btn.addEventListener('click', () => toggle(tile.id));
+
+    const noteWrap = h('div', 'pk-notewrap');
+    const note = h('textarea', 'pk-note');
+    note.rows = 2;
+    note.placeholder = 'Why this one? (optional)';
+    note.setAttribute('aria-label', `Note on ${tile.title}`);
+    const pickOf = () => cur().picks.find((p) => p.id === tile.id);
+    note.value = (pickOf() && pickOf().note) || '';
+    note.disabled = !canEdit;
+    note.addEventListener('input', () => {
+      const p = pickOf();
+      if (!p) return;
+      p.note = note.value;
+      if (onChange) onChange();
+    });
+    noteWrap.append(note);
+
+    const root = h('div', 'pk-tile');
+    root.append(btn);
+    const link = openLink(tile);
+    if (link) root.append(link);
+    root.append(noteWrap);
+    return { root, btn, order, noteWrap, note };
+  }
+
   /**
    * Builds the control for one pick question.
    * @param {object} q normalized question
@@ -178,45 +219,9 @@
     }
 
     for (const tile of items) {
-      const btn = h('button', 'pk-pick');
-      btn.type = 'button';
-      btn.disabled = !canEdit;
-      btn.setAttribute('aria-pressed', 'false');
-      const order = h('span', 'pk-order');
-      order.setAttribute('aria-hidden', 'true');
-      const check = h('span', 'pk-check');
-      check.append(icon('check'));
-      check.append(order);
-      const title = h('span', 'pk-title', tile.title);
-      const head = h('span', 'pk-head');
-      head.append(title, check);
-      btn.append(mediaOf(q, tile), head);
-      if (tile.caption) btn.append(h('span', 'pk-caption', tile.caption));
-      btn.addEventListener('click', () => toggle(tile.id));
-
-      const noteWrap = h('div', 'pk-notewrap');
-      const note = h('textarea', 'pk-note');
-      note.rows = 2;
-      note.placeholder = 'Why this one? (optional)';
-      note.setAttribute('aria-label', `Note on ${tile.title}`);
-      const pickOf = () => cur().picks.find((p) => p.id === tile.id);
-      note.value = (pickOf() && pickOf().note) || '';
-      note.disabled = !canEdit;
-      note.addEventListener('input', () => {
-        const p = pickOf();
-        if (!p) return;
-        p.note = note.value;
-        if (hooks.onChange) hooks.onChange();
-      });
-      noteWrap.append(note);
-
-      const root = h('div', 'pk-tile');
-      root.append(btn);
-      const link = openLink(tile);
-      if (link) root.append(link);
-      root.append(noteWrap);
-      cells.set(tile.id, { root, btn, order, noteWrap, note });
-      grid.append(root);
+      const cell = tileCell(q, tile, { cur, canEdit, toggle, onChange: hooks.onChange });
+      cells.set(tile.id, cell);
+      grid.append(cell.root);
     }
 
     root.append(grid, status);

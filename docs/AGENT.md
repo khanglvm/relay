@@ -53,6 +53,7 @@ stderr. Exit codes: `0` submitted/acknowledged · `2` timeout · `3` cancelled �
 {"id":"signoff","type":"checklist","label":"Sign off each area","options":["login","billing"]}   // pass/fail/N-A per item: one checklist, not many yes/no
 {"id":"rank","type":"rank","label":"Priorities","options":["speed","a11y"]}   {"id":"split","type":"allocate","label":"Budget","total":100,"options":["type","space"]}
 {"id":"c","type":"single","label":"Scheme?","options":[{"value":"warm","label":"Warm","blocks":[{"type":"html","html":"<div style='height:100%;background:#c2674b'></div>","height":140}]}]}   // a visual per option
+{"id":"hero","type":"pick","label":"Shortlist two","max":2,"items":[{"id":"a","title":"Warm","image":"/abs/a.png","caption":"Terracotta"},{"id":"b","title":"Demo","video":"https://example.com/b.mp4"},{"id":"c","title":"Ref","url":"https://example.com/c"}]}   // media tiles; answer {picks:[{id,note?}],overall?}; max 1 = single, min/max bound a multi
 {"id":"s","type":"scale","label":"Rate","min":1,"max":5}   {"id":"col","type":"color","label":"Brand color"}   {"id":"ship","type":"yesno","label":"Ship?"}
 ```
 Buttons inside a2ui do not replace a question. Their clicks return in `blockEdits`.
@@ -147,7 +148,9 @@ Tools:
 
 The flow: call `relay_board`, tell the person the board is on screen, and carry on or wait. When they submit, the host posts a one-line message naming the board. Read the answers with `relay_result`. Do not ask the same questions again in chat.
 
-`rly mcp` speaks stdio to a local desktop host. `rly mcp --http [--port N] [--token-file PATH] [--allow-origin ORIGIN]` serves Streamable HTTP at `/mcp` for hosts that connect over a network. The bearer token comes from `--token-file`, `RLY_MCP_TOKEN` or `--token`; the flag shows in `ps`, so prefer the file or the variable. Boards are stored in the relay home of the machine that runs the server, so `codeFile` and local images resolve there and nowhere else. To add the tools to a server you already run, call `registerRelay(server, {store, assetUrl, linkUrl})` from `@khanglvm/relay/mcp`.
+`rly mcp` speaks stdio to a local desktop host. `rly mcp --http [--port N] [--token-file PATH] [--allow-origin ORIGIN]` serves Streamable HTTP at `/mcp` for hosts that connect over a network. The bearer token comes from `--token-file`, `RLY_MCP_TOKEN` or `--token`; the flag shows in `ps`, so prefer the file or the variable. Boards are stored in the relay home of the machine that runs the server, so `codeFile` and local images resolve there and nowhere else. A host that draws A2UI can show the whole board natively instead of the iframe. It declares the board catalog, `https://github.com/khanglvm/relay/a2ui/catalog/board/v1`, under `extensions.a2ui["1.0"].supportedCatalogIds` when it connects, or per call in `_meta.a2ui`; the call wins over the connection. `relay_view` then returns the board as A2UI messages (`application/a2ui+json`, `application/json+a2ui` is accepted when declared) and the host sends button events to `a2ui_action` with the surface's data model. The catalog is `src/a2ui/board-catalog.json`; `toA2ui(spec)` and `fromA2ui(dataModel, spec)` from `@khanglvm/relay/a2ui-board` convert in both directions, and the result matches what the web board stores. Hosts that did not declare it keep the iframe.
+
+To add the tools to a server you already run, call `registerRelay(server, {store, assetUrl, linkUrl})` from `@khanglvm/relay/mcp`.
 
 If the host streams the tool call as you write it, the board renders valid blocks and questions as they arrive and finishes when your call completes.
 
@@ -274,6 +277,7 @@ choices plus the full resolved file in `result.blockEdits[blockId]`:
 | `rank`     | `["b","a","c"]` — ordered option values, highest priority first |
 | `checklist`| `{ "login":"pass", "checkout":"fail" }` — per-item status map |
 | `allocate` | `{ "eng":50, "design":30, "ops":20 }` — budget distributed across options |
+| `pick`     | `{ "picks":[{"id":"a","note":"why"}], "overall":"…" }` — tiles in the order picked |
 
 `rank` renders the `options` as a reorderable list (drag or ↑/↓ buttons); the
 user prioritizes them and the answer is the ordered array of values. Needs ≥2
@@ -287,10 +291,18 @@ distributes a budget (`"total"`, default 100) across the options with sliders +
 a live total bar; answer is `{optionValue: number}`. Both take per-option
 `description`/`blocks` like single/multi.
 
+`pick` shows media tiles to choose from. `items` are tiles: a string, or
+`{id, title, caption?, image?, video?, url?}`, where `image` is a path or an
+https URL, `video` plays as a muted preview when it is a file and opens as a
+link otherwise, and `url` opens the page. `max` caps the picks (1 makes it a
+single choice), `min` above 0 makes it required, and `itemNote:false` or
+`overall:false` hide the per-tile and overall notes. Unknown ids are dropped
+and the list is cut to `max`. Up to 60 tiles.
+
 Aliases accepted: radio/choice/select→single, checkbox→multi,
 boolean/bool/yn→yesno, input→text, longtext→textarea, rating/likert→scale,
 colour/swatch→color, ranking/order/ordering/prioritize/sort→rank,
-signoff/qa→checklist, budget/distribute/points→allocate.
+signoff/qa→checklist, budget/distribute/points→allocate, tiles/gallery/shortlist→pick.
 
 ### Result JSON (stdout)
 
