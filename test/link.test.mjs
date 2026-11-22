@@ -27,7 +27,8 @@ test('parseLinkValue accepts the named modes and https templates', () => {
 });
 
 test('parseLinkValue refuses loopback URLs and unknown words', () => {
-  assert.throws(() => parseLinkValue('http://localhost:{port}'), /only works on this machine/);
+  assert.throws(() => parseLinkValue('http://boards.example.com:{port}'), /use https/);
+  assert.throws(() => parseLinkValue('https://localhost:{port}'), /only works on this machine/);
   assert.throws(() => parseLinkValue('https://127.0.0.1:{port}'), /only works on this machine/);
   assert.throws(() => parseLinkValue('tailscale'), /use off, auto, devlink/);
   assert.throws(() => parseLinkValue('https://'), /not a valid URL/);
@@ -66,6 +67,7 @@ test('pickDevlinkUrl refuses loopback, plain http, no URL and non-JSON', () => {
   assert.throws(() => pickDevlinkUrl(devlinkJson('http://internal.example.dev:5000')), /not a private https URL/);
   assert.throws(() => pickDevlinkUrl(JSON.stringify({ records: [] })), /no URL/);
   assert.throws(() => pickDevlinkUrl('not json'), /not JSON/);
+  assert.throws(() => pickDevlinkUrl(devlinkJson('not a url')), /not a URL/);
 });
 
 test('resolveLink: off and auto-without-devlink keep the board local', async () => {
@@ -122,4 +124,46 @@ test('--public-url: the board prints the public origin with a collab token and l
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
+});
+
+// Opens a board in a throwaway RLY_HOME and returns {port, token, rly, share(headers)}; share GETs /api/share via 127.0.0.1.
+async function withBoard(extraArgs, fn) {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'rly-link-'));
+  const env = { ...process.env, HOME: home, USERPROFILE: home, RLY_HOME: home };
+  const rly = (args) => spawnSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' });
+  try {
+    const spec = path.join(home, 'spec.json');
+    fs.writeFileSync(spec, JSON.stringify({ title: 'link', blocks: [{ type: 'markdown', md: 'hi' }] }));
+    const opened = rly(['ask', '--file', spec, '--detach', '--no-open', ...extraArgs]);
+    assert.equal(opened.status, 0, opened.stderr);
+    const { boardId, port } = JSON.parse(opened.stdout);
+    const { token } = JSON.parse(fs.readFileSync(path.join(home, 'running', `${boardId}.json`), 'utf8'));
+    const share = (headers) => new Promise((resolve, reject) => {
+      http.get({ host: '127.0.0.1', port, path: '/api/share', headers: { host: `localhost:${port}`, ...headers } }, (res) => { res.resume(); resolve(res.statusCode); }).on('error', reject);
+    });
+    try { await fn({ boardId, port, token, rly, share }); } finally { rly(['stop', boardId]); }
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
+
+test('a request through a local proxy is not the owner, even with a loopback Host', async () => {
+  await withBoard(['--no-devlink'], async ({ port, share }) => {
+    assert.equal(await share({}), 200);
+    // The devlink gateway rewrites Host to localhost:PORT and adds forwarding headers.
+    assert.equal(await share({ 'x-forwarded-for': '127.0.0.1', 'x-forwarded-host': `localhost:${port}` }), 403);
+    assert.equal(await share({ forwarded: 'for=100.64.0.9' }), 403);
+    assert.equal(await share({ 'x-real-ip': '100.64.0.9' }), 403);
+  });
+});
+
+test('with a public link, the owner needs the control token, so a header-less proxy is locked out', async () => {
+  await withBoard(['--public-url', 'https://boards.example.com:{port}'], async ({ boardId, token, rly, share }) => {
+    assert.equal(await share({}), 403);
+    assert.equal(await share({ 'x-relay-token': 'wrong' }), 403);
+    assert.equal(await share({ 'x-relay-token': token }), 200);
+    const listed = rly(['share', boardId]);
+    assert.equal(listed.status, 0, listed.stderr);
+    assert.equal(JSON.parse(listed.stdout).status, 'shares');
+  });
 });

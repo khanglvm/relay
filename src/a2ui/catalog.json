@@ -414,7 +414,7 @@
         },
         "path": {
           "type": "string",
-          "pattern": "^/"
+          "pattern": "^/(?!(?:.*/)?(?:__proto__|constructor|prototype|length)(?:/|$))"
         },
         "placeholder": {
           "$ref": "common_types.json#/$defs/DynamicString"
@@ -441,7 +441,7 @@
         },
         "path": {
           "type": "string",
-          "pattern": "^/"
+          "pattern": "^/(?!(?:.*/)?(?:__proto__|constructor|prototype|length)(?:/|$))"
         }
       },
       "required": [
@@ -462,7 +462,7 @@
         },
         "path": {
           "type": "string",
-          "pattern": "^/"
+          "pattern": "^/(?!(?:.*/)?(?:__proto__|constructor|prototype|length)(?:/|$))"
         },
         "options": {
           "type": "array",
@@ -505,7 +505,7 @@
         },
         "path": {
           "type": "string",
-          "pattern": "^/"
+          "pattern": "^/(?!(?:.*/)?(?:__proto__|constructor|prototype|length)(?:/|$))"
         },
         "min": {
           "type": "number"

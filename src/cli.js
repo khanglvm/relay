@@ -808,22 +808,23 @@ async function cmdShare(args) {
     throw new CliError('--role must be collab, review, or read.', 4);
   }
   const shareUrl = new URL('/api/share', controlUrl(running));
+  const headers = { 'content-type': 'application/json', 'x-relay-token': running.token || '' };
   let res;
   try {
     if (args.revoke) {
       res = await fetch(shareUrl, {
         method: 'DELETE',
-        headers: { 'content-type': 'application/json' },
+        headers,
         body: JSON.stringify({ role: role || 'all' }),
       });
     } else if (role && role !== 'all') {
       res = await fetch(shareUrl, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers,
         body: JSON.stringify({ role }),
       });
     } else {
-      res = await fetch(shareUrl, { method: 'GET' });
+      res = await fetch(shareUrl, { method: 'GET', headers });
     }
   } catch (err) {
     throw new CliError(`could not reach board "${record.id}" at ${running.url}: ${String((err && err.message) || err)}`, 5);

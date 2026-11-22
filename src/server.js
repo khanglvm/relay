@@ -569,6 +569,18 @@ function buildOpenAllowlist(spec, baseCwd) {
   return set;
 }
 
+const PROXY_HEADERS = ['forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-real-ip'];
+
+// Security: a local reverse proxy can send a loopback Host (the devlink gateway
+// sends `Host: localhost:PORT`), so a request carrying proxy headers is never the
+// tokenless owner. A proxy that adds none is covered by the control token runBoard
+// requires for the owner while a link is set.
+function isDirectLocalRequest(req) {
+  const host = String(req.headers.host || '').split(':')[0];
+  if (host !== '127.0.0.1' && host !== 'localhost') return false;
+  return !PROXY_HEADERS.some((name) => req.headers[name] !== undefined);
+}
+
 // True when an Origin header (if present) belongs to this board's own server.
 // Same-origin fetches send no Origin or our own; a foreign Origin is a
 // cross-site POST and must not be allowed to open a local file.
@@ -843,8 +855,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
   let publicLink = null;
   const advertisedHost = shareHost();
   const accessFor = (req, reqUrl = null) => {
-    const host = String(req.headers.host || '').split(':')[0];
-    if (host === '127.0.0.1' || host === 'localhost') {
+    if (isDirectLocalRequest(req) && (!publicLink || req.headers['x-relay-token'] === token)) {
       return {
         role: 'owner',
         canShare: true,
@@ -1302,9 +1313,8 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
     throw err;
   }
   if (publicLink) {
-    // Requests through the link carry a non-loopback Host, so they are not the
-    // owner. The collaborator token in the URL is what lets the owner's phone
-    // answer and submit; it is held in memory and never saved on the board.
+    // Requests through the link are never the owner; the collaborator token in
+    // the URL is what lets the owner's browsers answer and submit.
     activeShares.collab = true;
     url = shareUrlFor('collab');
   }

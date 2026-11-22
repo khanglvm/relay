@@ -22,7 +22,8 @@ export function parseLinkValue(raw, where = 'link') {
   const lower = value.toLowerCase();
   if (lower === 'off' || lower === 'local') return { mode: 'off' };
   if (lower === 'auto' || lower === 'devlink') return { mode: lower };
-  if (/^https?:\/\//i.test(value)) {
+  if (/^http:\/\//i.test(value)) throw new CliError(`${where}: use https://, because the board's share token travels in the URL.`);
+  if (/^https:\/\//i.test(value)) {
     let host;
     try { host = new URL(value.replace('{port}', '1')).hostname; } catch { throw new CliError(`${where}: "${value}" is not a valid URL.`); }
     if (isLoopbackHost(host)) throw new CliError(`${where}: ${host} only works on this machine. Use a host other devices can reach.`);
@@ -62,7 +63,8 @@ export function pickDevlinkUrl(stdout) {
   try { records = JSON.parse(stdout).records; } catch { throw new CliError('devlink printed something that is not JSON.', 1); }
   const url = Array.isArray(records) ? records.map((r) => r && r.url).find((u) => typeof u === 'string') : null;
   if (!url) throw new CliError('devlink returned no URL for this board.', 1);
-  const parsed = new URL(url);
+  let parsed;
+  try { parsed = new URL(url); } catch { throw new CliError(`devlink returned "${url}", which is not a URL.`, 1); }
   if (parsed.protocol !== 'https:' || isLoopbackHost(parsed.hostname)) throw new CliError(`devlink returned ${url}, which is not a private https URL.`, 1);
   return parsed.origin;
 }

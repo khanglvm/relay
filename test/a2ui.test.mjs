@@ -36,6 +36,12 @@ test('Express refuses unknown components, bad enums and oversized text', async (
   await assert.rejects(compileExpress(`root = Card("${'x'.repeat(A2UI_LIMITS.expressChars)}", [])`), /too long|larger|limit|characters/i);
 });
 
+test('input paths cannot name the prototype chain or an array length', () => {
+  const field = (path) => ({ components: [{ id: 'root', component: 'Card', title: 't', children: ['f'] }, { id: 'f', component: 'TextField', label: 'n', path }] });
+  assert.doesNotThrow(() => validateSurface(field('/note/text')));
+  for (const bad of ['/__proto__/x', '/a/constructor', '/rows/length', '/length']) assert.throws(() => validateSurface(field(bad)), undefined, bad);
+});
+
 test('a surface needs a Card root, no orphans and no more than the component cap', () => {
   const card = { id: 'root', component: 'Card', title: 't', children: [] };
   assert.doesNotThrow(() => validateSurface({ components: [card] }));
