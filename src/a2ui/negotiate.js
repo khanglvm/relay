@@ -30,7 +30,7 @@ export function declaresBoardCatalog(declaration) {
 /**
  * Whether a call should get A2UI messages: the call's own `_meta.a2ui` decides first,
  * then the capabilities the client declared when it connected.
- * @param {{ capabilities?: unknown, meta?: unknown }} caller
+ * @param {{ capabilities?: any, meta?: any }} caller
  */
 export function wantsA2ui({ capabilities, meta }) {
   if (isObject(meta) && 'a2ui' in meta) return declaresBoardCatalog(meta.a2ui);
