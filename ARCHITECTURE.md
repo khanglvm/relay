@@ -5,21 +5,21 @@ An agent hands Relay a spec (JSON). `normalizeSpec` turns it into a stable shape
 
 ```
 agent -> rly ask / MCP relay_ask -> normalizeSpec -> store (RLY_HOME/boards)
-                                       |-> server.js -> browser board -> /api/submit -> store
+                                       |-> server/ -> browser board -> /api/submit -> store
                                        |-> mcp.js    -> iframe board  -> ui/message  -> agent
 agent <- rly wait / rly result <- store
 ```
 
 ## Modules
-- `src/spec.js`: validates and normalizes a spec, reads `mdFile` and `rowsFile` sources, and holds `SPEC_SCHEMA`. `assertSpecReady` adds the checks that need async work (mermaid syntax, A2UI Express).
-- `src/index.js`: the public library entry. It wraps `spec.js`, `store.js` and `a2ui/compile.js`.
-- `src/cli.js`: parses arguments and runs each command. `bin/rly.js` calls it.
-- `src/server.js`: serves a board on a local port, builds the page, handles `/api/*` (board, draft, submit, update, artifact, file open, file preview, share) and the share and access rules.
+- `src/spec/`: `normalize.js` turns a spec into its normalized form; `blocks/` has one file per block type; `sources.js` reads `mdFile` and `rowsFile` text; `schema.js` holds `SPEC_SCHEMA`; `ready.js` has `assertSpecReady`, the checks that need async work (mermaid syntax, A2UI Express). `index.js` is the barrel.
+- `src/index.js`: the public library entry. It wraps `spec/`, `store.js` and `a2ui/compile.js`.
+- `src/cli/`: one file per command (`ask`, `wait`, `share`, `git`, `boards`, `skill`, `install`, `upgrade`, `mcp`, `config`) and `index.js`, the router. `bin/rly.js` calls it.
+- `src/server/`: `board.js` serves a board on a local port and handles `/api/*` (board, draft, submit, update, artifact, file open, file preview, share) with the access rules; `page.js` builds the page; `sanitize.js` cleans posted data; `files.js` opens and streams local files; `http.js`, `reviews.js`, `result.js` and `paths.js` hold the helpers.
 - `src/mcp.js`: JSON-RPC over stdio or Streamable HTTP. Declares the `ui://relay/board` resource and the `relay_ask` and `relay_show` tools.
 - `src/store.js`: boards, results, running-server records and preferences under `RLY_HOME`.
 - `src/link.js`: picks how a board gets a private https URL.
 - `src/a2ui/`: the widget catalog, the compiler that checks widgets against it, and the vendored agent SDK.
-- `src/ui/`, `src/mcp-ui/`: browser code. The server and `mcp.js` read these files as text and inline them into one page.
+- `src/ui/`, `src/mcp-ui/`: browser code, split by feature (`ui/blocks/`, `ui/app/`, `ui/annotate/`, `mcp-ui/board/`). `ui/manifest.js` lists the files of each bundle in order; the server and `mcp.js` read them as text and inline them into one page.
 - `src/file-preview.js`, `src/open.js`, `src/util.js`: file previews, the OS opener and small helpers.
 
 ## Data flow
@@ -29,8 +29,8 @@ agent <- rly wait / rly result <- store
 
 ## Boundaries
 - Filesystem: `RLY_HOME` (default `~/.relay`) holds boards, results, running records and image artifacts.
-- Network: the board server listens on all interfaces. Host checks and the owner and share rules in `server.js` decide who may use it. `devlink` or a public URL template gives a private link.
-- Spec input is untrusted: sizes and key names are checked in `spec.js` and `a2ui/compile.js` before a board opens.
+- Network: the board server listens on all interfaces. Host checks and the owner and share rules in `server/board.js` decide who may use it. `devlink` or a public URL template gives a private link.
+- Spec input is untrusted: sizes and key names are checked in `spec/` and `a2ui/compile.js` before a board opens.
 - npm: published by `.github/workflows/npm-publish.yml` with trusted publishing.
 
 ## Decisions

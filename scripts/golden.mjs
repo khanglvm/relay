@@ -98,7 +98,8 @@ export async function capturePages() {
   try {
     const web = await webPage(home);
     const mcp = await mcpPage(home);
-    return { web: pageSummary(web), mcp: pageSummary(mcp) };
+    const version = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+    return { web: pageSummary(web), mcp: pageSummary(mcp.replaceAll(version, '(version)')) };
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

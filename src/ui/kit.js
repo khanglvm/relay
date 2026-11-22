@@ -1,3 +1,4 @@
+// code-craft: allow-size the browser kit is served whole as /kit.js; its helpers share one scope.
 /**
  * relay kit.js — loaded INSIDE sandboxed custom-HTML iframes via <script src="/kit.js">.
  * NO access to the parent DOM (sandbox without allow-same-origin) — only postMessage.

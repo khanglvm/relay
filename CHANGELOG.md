@@ -1,5 +1,18 @@
 # Changelog
 
+### 0.20.0 — files split by feature
+
+- No behaviour change. `src/cli.js`, `src/server.js`, `src/spec.js` and the
+  browser files `blocks.js`, `app.js`, `annotate.js` and `mcp-ui/board.js` are now
+  folders of small files. The served pages are byte-identical, checked against a
+  stored capture (`test/golden`, `npm test`).
+- `src/ui/manifest.js` is the one list of browser files that both page
+  builders use.
+- Deep imports of the old files (`src/spec.js`, `src/cli.js`, `src/server.js`)
+  no longer resolve. They were already outside the `exports` map; use
+  `@khanglvm/relay/spec` for the spec module.
+- Tests moved to `test/unit` and `test/e2e`.
+
 ### 0.19.0 — a standard package
 
 - Import Relay as a library: `createBoard`, `normalizeSpec`, `validateSpec`

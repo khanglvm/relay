@@ -1,7 +1,7 @@
 // Public library entry (`import ... from '@khanglvm/relay'`). It exposes the
 // spec checks and the board store without starting a server or a browser.
 import { compileExpress, validateSurface } from './a2ui/compile.js';
-import { normalizeSpec } from './spec.js';
+import { normalizeSpec } from './spec/index.js';
 import { createBoard as storeBoard } from './store.js';
 
 /**

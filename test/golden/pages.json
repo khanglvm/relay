@@ -33,13 +33,13 @@
     ]
   },
   "mcp": {
-    "bytes": 349389,
-    "sha256": "213858c5ec2425ad263b35095d3108ea85ec82b564310b34ce6c1a2b2132badf",
+    "bytes": 349392,
+    "sha256": "b3d8935170d5d54523f12315813ba35d99b2c8b0321e2e45e4351c2705ec1c99",
     "scripts": [
       {
-        "bytes": 45,
-        "sha256": "6c7dccd2c970cfa79b7cb25baa6ef8d0a48e4a481f31d008fa8dd68d0cbad68b",
-        "head": "{\"version\":\"0.19.0\",\"boardId\":\"mcp-(varies)\"}"
+        "bytes": 48,
+        "sha256": "14c11e2951db8c7e984f6c129052f9e8b62e8ddf7665cdb336c26c53121e5827",
+        "head": "{\"version\":\"(version)\",\"boardId\":\"mcp-(varies)\"}"
       },
       {
         "bytes": 165603,

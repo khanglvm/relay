@@ -1,6 +1,6 @@
 {
   "name": "@khanglvm/relay",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "description": "Question boards with rich blocks (markdown, charts, mermaid, tables, code, diffs, video, sandboxed HTML), clickable local file-links, and element-level annotations for AI coding agents (Claude Code, Codex, \u2026): ask users structured questions, present interactive visuals, collect inline comments, read answers as JSON \u2014 in a local browser board OR rendered INLINE inside the Claude & Codex apps as an MCP App (SEP-1865).",
   "keywords": [
     "ai-agents",
@@ -52,7 +52,7 @@
     "lint": "biome ci --diagnostic-level=error .",
     "gen:schema": "node scripts/gen-schema.mjs --write",
     "build:types": "tsc -p tsconfig.build.json",
-    "test": "node test/smoke.mjs && node --test test/link.test.mjs test/a2ui.test.mjs test/unit/*.test.mjs",
+    "test": "node test/e2e/smoke.test.mjs && node --test test/unit/*.test.mjs test/e2e/golden.test.mjs",
     "smoke:pack": "node scripts/smoke-pack.mjs",
     "prepack": "npm run build:types"
   },
@@ -67,8 +67,8 @@
       "default": "./src/index.js"
     },
     "./spec": {
-      "types": "./types/spec.d.ts",
-      "default": "./src/spec.js"
+      "types": "./types/spec/index.d.ts",
+      "default": "./src/spec/index.js"
     },
     "./a2ui": {
       "types": "./types/a2ui/compile.d.ts",

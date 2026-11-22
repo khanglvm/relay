@@ -1,7 +1,7 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
   "files": {
-    "includes": ["src/**/*.js", "bin/*.js", "scripts/*.mjs", "test/**/*.mjs", "!src/a2ui/vendor", "!src/ui/**", "!src/mcp-ui/**", "!scripts/update-vendor.mjs"]
+    "includes": ["src/**/*.js", "bin/*.js", "scripts/*.mjs", "test/**/*.mjs", "!src/a2ui/vendor", "!src/ui/**", "!src/mcp-ui/**", "!scripts/update-vendor.mjs", "src/ui/manifest.js"]
   },
   "formatter": { "enabled": false },
   "assist": { "enabled": false },

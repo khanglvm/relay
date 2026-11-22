@@ -1,3 +1,4 @@
+// code-craft: allow-size one MCP server: tool schemas, the stdio loop and the App resource share one request handler.
 // mcp.js — relay as an MCP App (SEP-1865, extension "io.modelcontextprotocol/ui").
 //
 // `rly mcp` starts an MCP server over stdio with no npm runtime dependencies.
@@ -20,12 +21,11 @@ import path from 'node:path';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { assertSpecReady, normalizeSpec, SPEC_SCHEMA } from './spec.js';
+import { assertSpecReady, normalizeSpec, SPEC_SCHEMA } from './spec/index.js';
 import { CliError } from './util.js';
+import { fillPage, SRC_DIR } from './ui/manifest.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const UI_DIR = path.join(__dirname, 'ui');
-const MCP_UI_DIR = path.join(__dirname, 'mcp-ui');
 const PKG_ROOT = path.join(__dirname, '..');
 const VENDOR_DIR = path.join(PKG_ROOT, 'vendor');
 const PKG = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, 'package.json'), 'utf8'));
@@ -43,12 +43,11 @@ const escapeHtml = (s) =>
 
 // ---------- UI asset assembly (cached for the process lifetime) ----------
 const _cache = new Map();
-function readAsset(dir, name) {
-  const key = dir + '\0' + name;
-  if (_cache.has(key)) return _cache.get(key);
+function readAsset(file) {
+  if (_cache.has(file)) return _cache.get(file);
   let content = '';
-  try { content = fs.readFileSync(path.join(dir, name), 'utf8'); } catch { content = ''; }
-  _cache.set(key, content);
+  try { content = fs.readFileSync(path.join(SRC_DIR, file), 'utf8'); } catch { content = ''; }
+  _cache.set(file, content);
   return content;
 }
 
@@ -57,17 +56,12 @@ function readAsset(dir, name) {
 // /api routes exist in the sandbox; vendors load over the bridge on demand).
 function buildBoardPage() {
   if (_cache.has('__page__')) return _cache.get('__page__');
-  const html = readAsset(MCP_UI_DIR, 'index.html');
   const boot = { version: PKG.version, boardId: 'mcp-' + Date.now().toString(36) };
-  const page = html
-    .split('__TITLE__').join('Relay')
-    .split('/*__CSS__*/').join(readAsset(UI_DIR, 'style.css'))
-    .split('/*__BLOCKS_CSS__*/').join(readAsset(UI_DIR, 'blocks.css') + '\n' + readAsset(UI_DIR, 'a2ui.css'))
-    .split('/*__ANNOTATE_CSS__*/').join(readAsset(UI_DIR, 'annotate.css'))
-    .split('/*__BLOCKS_JS__*/').join(readAsset(UI_DIR, 'a2ui-state.js') + '\n' + readAsset(UI_DIR, 'a2ui.js') + '\n' + readAsset(UI_DIR, 'blocks.js'))
-    .split('/*__ANNOTATE_JS__*/').join(readAsset(UI_DIR, 'annotate.js'))
-    .split('/*__BOARD_JS__*/').join(readAsset(MCP_UI_DIR, 'board.js'))
-    .split('__BOOT_JSON__').join(JSON.stringify(boot).replace(/</g, '\\u003c'));
+  const page = fillPage(
+    readAsset('mcp-ui/index.html'),
+    { title: 'Relay', bootJson: JSON.stringify(boot).replace(/</g, '\\u003c'), entry: 'board' },
+    readAsset,
+  );
   _cache.set('__page__', page);
   return page;
 }

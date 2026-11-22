@@ -4,7 +4,7 @@
 // while the file on disk differs from this output.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { SPEC_SCHEMA } from '../src/spec.js';
+import { SPEC_SCHEMA } from '../src/spec/index.js';
 
 export const SCHEMA_FILE = fileURLToPath(new URL('../schema/spec.v1.json', import.meta.url));
 

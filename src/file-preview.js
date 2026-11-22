@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { normalizeSpec } from './spec.js';
+import { normalizeSpec } from './spec/index.js';
 
 const TEXT_LIMIT = 1024 * 1024;
 const MEDIA = {
