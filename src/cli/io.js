@@ -163,7 +163,7 @@ export async function runOrDetach(record, args) {
       { detached: true, stdio: 'ignore' }
     );
     child.unref();
-    // A link setting adds a devlink round trip before the board is announced.
+    // A link setting adds a link-provider round trip before the board is announced.
     const startSec = link.mode === 'off' ? 8 : 40;
     const info = await pollFor(() => loadRunning(record.id), startSec * 1000);
     if (!info) throw new CliError(`board ${record.id} failed to start (no server after ${startSec}s).`, 1);

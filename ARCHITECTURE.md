@@ -29,7 +29,7 @@ agent <- rly wait / rly result <- store
 
 ## Boundaries
 - Filesystem: `RLY_HOME` (default `~/.relay`) holds boards, results, running records and image artifacts.
-- Network: the board server listens on all interfaces. Host checks and the owner and share rules in `server/board.js` decide who may use it. `devlink` or a public URL template gives a private link.
+- Network: the board server listens on all interfaces. Host checks and the owner and share rules in `server/board.js` decide who may use it. A public URL template or a link-provider command (`link.js`) gives a private link; `devlink` is one provider.
 - Spec input is untrusted: sizes and key names are checked in `spec/` and `a2ui/compile.js` before a board opens.
 - npm: published by `.github/workflows/npm-publish.yml` with trusted publishing.
 

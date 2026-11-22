@@ -16,7 +16,7 @@ An agent often needs more than a chat reply: a chart to review, a diff to approv
 Chat replies cannot hold a chart, a diff and a form together, and they lose the target of a comment. Relay keeps the target with each comment and works in a browser or inline in an MCP App host.
 
 ## Operating Context
-Runs on the developer's machine, or on a container host through `rly mcp --http`. A board can be opened on a phone through a private `devlink` URL. The user interface is in English.
+Runs on the developer's machine, or on a container host through `rly mcp --http`. A board can be opened on a phone through a private https URL from a public URL template or a link-provider command. The user interface is in English.
 
 ## Capabilities and Constraints
 - Ten question types and eighteen block types, including markdown, charts, mermaid, diffs, images, HTML and A2UI widgets.

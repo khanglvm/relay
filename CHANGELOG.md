@@ -1,5 +1,14 @@
 # Changelog
 
+### 0.20.1 — generic link provider
+
+- `--link-command CMD` (or `RLY_LINK_COMMAND`, or `rly config link command:CMD`)
+  publishes a board through any command that takes the board's port and prints
+  an https URL, as plain text or JSON with `url`. `RLY_LINK_RELEASE_COMMAND` runs
+  when the board closes. `--devlink` keeps working as a shortcut for one such
+  provider.
+- Project docs and help text name no particular host or network.
+
 ### 0.20.0 — files split by feature
 
 - No behaviour change. `src/cli.js`, `src/server.js`, `src/spec.js` and the

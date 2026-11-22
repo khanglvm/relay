@@ -122,7 +122,7 @@ export function loadRunning(id) {
 }
 
 // The URL this machine uses to talk to a running board. `url` may be a
-// cross-device link (devlink, a proxy) that only people open.
+// cross-device link (a link provider, a proxy) that only people open.
 export function controlUrl(running) {
   return running.localUrl || running.url;
 }

@@ -38,10 +38,11 @@ USAGE
   rly share <id> --role review --revoke
                                       revoke one share role; use --revoke --all to disable all roles
                                       active links survive same-port reopen/rescue until revoked
-  rly ask ... --devlink               serve the board on a private cross-device URL through the optional
-                                      devlink command (https over Tailscale); no local browser opens
+  rly ask ... --link-command <cmd>    serve the board at the https URL a link-provider command prints
+                                      for its port ({port} in <cmd>, else appended); no local browser opens
+  rly ask ... --devlink               same, through the optional devlink command
   rly ask ... --public-url <url>      same, through your own proxy or tunnel: https://relay.example.com:{port}
-  rly config link <off|auto|devlink|url>
+  rly config link <off|auto|devlink|url|command:CMD>
                                       save that choice for every board (auto = devlink when installed)
   rly list [--json]                   running boards
   rly open [id]                       re-open the browser tab of a running board

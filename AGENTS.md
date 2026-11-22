@@ -21,7 +21,7 @@ Relay (`rly`, npm `@khanglvm/relay`) gives an AI coding agent a board for showin
 - `src/server/`: the local board server (`board.js`) and the page builder (`page.js`).
 - `src/mcp.js`: the MCP App server (stdio and HTTP).
 - `src/store.js`: boards and results on disk under `RLY_HOME` (default `~/.relay`).
-- `src/link.js`: private links through `devlink` or a public URL template.
+- `src/link.js`: private links through a public URL template or a link-provider command (`devlink` is one provider).
 - `src/a2ui/`: A2UI widget catalog, compiler and the bundled agent SDK.
 - `src/ui/`, `src/mcp-ui/`: browser code and CSS. They are sent as text to the page, not imported by Node; `src/ui/manifest.js` lists the files of each bundle in order. Pieces are cut at statement boundaries, so a bundle stays byte-identical.
 - `vendor/`: bundled browser libraries (mermaid, chart, viz and others), refreshed by `scripts/update-vendor.mjs`.

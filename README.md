@@ -64,10 +64,17 @@ rules to Codex's instruction file. Run `rly install` to see other targets.
 
 ## Open a board on your phone
 
-If the `devlink` command is installed, `rly ask --file spec.json --detach --devlink`
-prints a private https URL that works on other devices. Any https URL that reaches the
-board works too: `--public-url 'https://host:{port}'`. Run `rly config link devlink` to make
-it the default. The details are in the [agent guide](docs/AGENT.md).
+A board listens on this machine only until you give it a link. Two generic ways:
+
+- A URL template for any proxy or tunnel you run: `--public-url 'https://host.example.com:{port}'`.
+- A link-provider command: `--link-command 'my-publisher {port}'`. Relay runs it with the
+  board's port; it prints an https URL (plain text, or JSON with `url`), and the board is
+  served at that origin. Set `RLY_LINK_RELEASE_COMMAND` to a command that runs when the
+  board closes. Commands are split on spaces and run without a shell.
+
+[`devlink`](https://github.com/khanglvm/devlink) is one such provider and has a shortcut:
+`--devlink`. Run `rly config link <off|auto|devlink|url|command:CMD>` to make a choice the
+default. The details are in the [agent guide](docs/AGENT.md).
 
 ## More help
 

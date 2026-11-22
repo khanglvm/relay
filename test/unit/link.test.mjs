@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { findDevlink, isLoopbackHost, linkSetting, parseLinkValue, pickDevlinkUrl, resolveLink, serializeLink } from '../../src/link.js';
+import { findDevlink, isLoopbackHost, linkSetting, parseLinkValue, pickDevlinkUrl, pickLinkUrl, resolveLink, serializeLink } from '../../src/link.js';
 
 const devlinkJson = (url) => JSON.stringify({ records: [{ url }] });
 const fakeExec = (stdout) => { const calls = []; const fn = async (bin, args) => { calls.push([bin, ...args]); return { stdout }; }; fn.calls = calls; return fn; };
@@ -30,7 +30,7 @@ test('parseLinkValue refuses loopback URLs and unknown words', () => {
   assert.throws(() => parseLinkValue('http://boards.example.com:{port}'), /use https/);
   assert.throws(() => parseLinkValue('https://localhost:{port}'), /only works on this machine/);
   assert.throws(() => parseLinkValue('https://127.0.0.1:{port}'), /only works on this machine/);
-  assert.throws(() => parseLinkValue('tailscale'), /use off, auto, devlink/);
+  assert.throws(() => parseLinkValue('vpn'), /use off, auto, devlink/);
   assert.throws(() => parseLinkValue('https://'), /not a valid URL/);
 });
 
@@ -59,7 +59,7 @@ test('findDevlink prefers RLY_DEVLINK_BIN, then PATH, then ~/.local/bin', () => 
 });
 
 test('pickDevlinkUrl returns the origin of a private https url', () => {
-  assert.equal(pickDevlinkUrl(devlinkJson('https://internal.khangle.dev:61083/')), 'https://internal.khangle.dev:61083');
+  assert.equal(pickDevlinkUrl(devlinkJson('https://internal.example.com:61083/')), 'https://internal.example.com:61083');
 });
 
 test('pickDevlinkUrl refuses loopback, plain http, no URL and non-JSON', () => {
@@ -88,9 +88,31 @@ test('resolveLink: devlink publishes the port and forgets it on release', async 
   assert.deepEqual(exec.calls[1], ['/bin/devlink', 'forget', '4000']);
 });
 
+test('command links: parse, serialize, precedence', () => {
+  assert.deepEqual(parseLinkValue('command:pub {port}'), { mode: 'command', publish: 'pub {port}' });
+  assert.throws(() => parseLinkValue('command:'), /needs a command/);
+  assert.equal(serializeLink({ mode: 'command', publish: 'pub {port}' }), 'command:pub {port}');
+  assert.deepEqual(linkSetting({ args: { linkCommand: 'pub' }, env: { RLY_PUBLIC_URL: 'https://a.example.com:{port}' }, config: {} }), { mode: 'command', publish: 'pub' });
+  assert.deepEqual(linkSetting({ args: { devlink: true, linkCommand: 'pub' }, env: {}, config: {} }), { mode: 'devlink' });
+});
+
+test('resolveLink: a link command publishes the port and runs the release command', async () => {
+  const exec = fakeExec('https://pub.example.com:4000/\n');
+  const link = await resolveLink({ mode: 'command', publish: 'pub --port {port}' }, 4000, { env: { RLY_LINK_RELEASE_COMMAND: 'unpub' }, exec });
+  assert.equal(link.origin, 'https://pub.example.com:4000');
+  assert.deepEqual(exec.calls[0], ['pub', '--port', '4000']);
+  link.release();
+  assert.deepEqual(exec.calls[1], ['unpub', '4000']);
+});
+
+test('pickLinkUrl takes plain text or JSON and refuses loopback', () => {
+  assert.equal(pickLinkUrl('{"url":"https://a.example.com:1/x"}'), 'https://a.example.com:1');
+  assert.throws(() => pickLinkUrl('https://localhost:1'), /not a private https URL/);
+});
+
 test('resolveLink: a failing devlink names the port and the reason', async () => {
-  const exec = async () => { throw Object.assign(new Error('exit 1'), { stderr: 'line one\nTailscale is down' }); };
-  await assert.rejects(resolveLink({ mode: 'devlink' }, 4000, { env: { RLY_DEVLINK_BIN: '/bin/devlink' }, exec }), /port 4000: Tailscale is down/);
+  const exec = async () => { throw Object.assign(new Error('exit 1'), { stderr: 'line one\nnetwork is down' }); };
+  await assert.rejects(resolveLink({ mode: 'devlink' }, 4000, { env: { RLY_DEVLINK_BIN: '/bin/devlink' }, exec }), /port 4000: network is down/);
 });
 
 test('resolveLink: a URL template fills in the port', async () => {
@@ -150,7 +172,7 @@ async function withBoard(extraArgs, fn) {
 test('a request through a local proxy is not the owner, even with a loopback Host', async () => {
   await withBoard(['--no-devlink'], async ({ port, share }) => {
     assert.equal(await share({}), 200);
-    // The devlink gateway rewrites Host to localhost:PORT and adds forwarding headers.
+    // The link gateway rewrites Host to localhost:PORT and adds forwarding headers.
     assert.equal(await share({ 'x-forwarded-for': '127.0.0.1', 'x-forwarded-host': `localhost:${port}` }), 403);
     assert.equal(await share({ forwarded: 'for=100.64.0.9' }), 403);
     assert.equal(await share({ 'x-real-ip': '100.64.0.9' }), 403);

@@ -4,7 +4,7 @@ import path from 'node:path';
 
 const PROXY_HEADERS = ['forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-real-ip'];
 
-// Security: a local reverse proxy can send a loopback Host (the devlink gateway
+// Security: a local reverse proxy can send a loopback Host (a link gateway
 // sends `Host: localhost:PORT`), so a request carrying proxy headers is never the
 // tokenless owner. A proxy that adds none is covered by the control token runBoard
 // requires for the owner while a link is set.

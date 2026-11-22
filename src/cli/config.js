@@ -18,7 +18,7 @@ export function cmdAgent() {
   return 0;
 }
 
-// `rly config [link [off|auto|devlink|<url>]]` — the saved link default, so
+// `rly config [link [off|auto|devlink|command:CMD|<url>]]` — the saved link default, so
 // every board prints a cross-device URL without a flag.
 export function cmdConfig(args) {
   const [key, value] = args._;

@@ -87,7 +87,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
   const presenceByRole = { owner: null, collab: null, review: null, read: null };
   let actualPort = 0;
   let url = '';
-  // The cross-device origin from a link setting (devlink or a URL template), once resolved.
+  // The cross-device origin from a link setting (a link provider or a URL template), once resolved.
   let publicLink = null;
   const advertisedHost = shareHost();
   const accessFor = (req, reqUrl = null) => {
