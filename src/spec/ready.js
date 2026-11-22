@@ -17,6 +17,36 @@ function compactError(err) {
   return msg.length > 500 ? msg.slice(0, 497) + '...' : msg;
 }
 
+// A sandbox in which the browser build of mermaid can parse, but not render.
+function parserContext() {
+  const quietConsole = { log() {}, info() {}, warn() {}, error() {}, debug() {} };
+  const context = {
+    console: quietConsole,
+    setTimeout,
+    clearTimeout,
+    // Mermaid 11's langium parsers (pie, gitGraph, packet, architecture, radar)
+    // and its link handling call these browser globals, which a vm context lacks.
+    TextEncoder,
+    TextDecoder,
+    structuredClone,
+    URL,
+  };
+  context.globalThis = context;
+  // DOMPurify 3 (bundled in mermaid) builds a stub without addHook or sanitize
+  // when window has no document, and mermaid calls both while it parses labels.
+  // This document is just enough for DOMPurify to build its full API: with no
+  // document.implementation it reports isSupported = false, and then sanitize
+  // returns its input unchanged. That is safe only because this instance parses
+  // and never renders. The document stays on window, not as a global, so
+  // mermaid's own code never takes a DOM path.
+  context.window = {
+    addEventListener() {},
+    document: { nodeType: 9, createElement: () => ({}) },
+    Element: function Element() {},
+  };
+  return vm.createContext(context);
+}
+
 async function mermaidValidator() {
   if (mermaidValidatorPromise) return mermaidValidatorPromise;
   mermaidValidatorPromise = (async () => {
@@ -27,15 +57,7 @@ async function mermaidValidator() {
     } catch {
       throw new CliError('mermaid blocks need the vendored parser (vendor/mermaid.min.js is missing).');
     }
-    const quietConsole = { log() {}, info() {}, warn() {}, error() {}, debug() {} };
-    const context = {
-      console: quietConsole,
-      setTimeout,
-      clearTimeout,
-    };
-    context.globalThis = context;
-    context.window = { addEventListener() {} };
-    vm.createContext(context);
+    const context = parserContext();
     try {
       vm.runInContext(source, context, { filename: sourcePath });
     } catch (err) {

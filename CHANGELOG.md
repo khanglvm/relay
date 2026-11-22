@@ -1,5 +1,15 @@
 # Changelog
 
+### 0.20.2 — mermaid diagrams pass the check again
+
+- Valid mermaid diagrams open again in `rly ask`, `relay_ask` and `relay_show`.
+  Since the syntax check arrived in 0.13.7 it refused any flowchart with a node
+  or edge label, and most other diagram types (class, state, gantt, pie,
+  gitGraph and more), with errors such as `Ro.addHook is not a function` or
+  `TextEncoder is not defined`. Sequence and ER diagrams, and flowcharts of
+  bare links such as `A --> B`, got through. A diagram with a real syntax error is still refused
+  with the parser's message.
+
 ### 0.20.1 — generic link provider
 
 - `--link-command CMD` (or `RLY_LINK_COMMAND`, or `rly config link command:CMD`)
