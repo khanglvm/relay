@@ -17,11 +17,14 @@ import { createBoard, loadBoard, saveBoard, saveResultFile } from '../store.js';
  * @property {(id: string, patch: Partial<BoardRecord>) => BoardRecord | null | Promise<BoardRecord | null>} update
  */
 
-/** The default store: one JSON file per board under the relay home, shared with the CLI. */
-export function fileStore() {
+/**
+ * The default store: one JSON file per board under the relay home, shared with the CLI.
+ * @param {{ retentionDays?: number | string | boolean }} [options] how long old boards stay; see `resolveRetentionDays`
+ */
+export function fileStore({ retentionDays } = {}) {
   const get = (id) => (/^b-[a-z0-9]+$/i.test(String(id)) ? loadBoard(id) : null);
   return {
-    create: (spec, options) => createBoard(spec, options),
+    create: (spec, options) => createBoard(spec, { ...options, retentionDays }),
     get,
     update(id, patch) {
       const record = get(id);

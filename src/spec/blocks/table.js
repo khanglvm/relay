@@ -1,7 +1,6 @@
 // The table block: CSV, TSV and JSON row files, and normalization.
-import fs from 'node:fs';
 import path from 'node:path';
-import { resolveReadable } from '../../file-access.js';
+import { readReadable } from '../../file-access.js';
 import { CliError } from '../../util.js';
 import { BLOCK_HEIGHT, TEXT_FILE_MAX_BYTES } from '../constants.js';
 import { asStr, clampInt } from '../sources.js';
@@ -40,9 +39,7 @@ function parseDelimited(text, delim) {
 // CSV/TSV: first row = header → column keys. JSON: an array of objects (columns
 // from the union of keys) or arrays (needs explicit "columns").
 function loadRowsFile(file, files, where) {
-  const { file: p } = resolveReadable(files, file, where, 'rowsFile');
-  let buf;
-  try { buf = fs.readFileSync(p); } catch { throw new CliError(`${where}: cannot read rowsFile "${file}" (resolved: ${p})`); }
+  const { file: p, buf } = readReadable(files, file, where, 'rowsFile');
   if (buf.length > TEXT_FILE_MAX_BYTES) {
     throw new CliError(`${where}: rowsFile "${file}" is ${(buf.length / 1024).toFixed(0)}KB — max ${TEXT_FILE_MAX_BYTES / 1024}KB.`);
   }

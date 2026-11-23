@@ -5,7 +5,7 @@ const VALUED_FLAGS = new Set([
   'file', 'html', 'html-file', 'title', 'intro', 'timeout', 'port',
   'submit-label', 'height', 'limit', 'target', 'id', 'replies',
   'on-result', 'notify-cmd', 'idle-grace', 'scope', 'range',
-  'host', 'token', 'token-file', 'root', 'allow-origin', 'role', 'public-url', 'link', 'link-command',
+  'host', 'token', 'token-file', 'root', 'allow-origin', 'retention-days', 'role', 'public-url', 'link', 'link-command',
 ]);
 
 function camel(key) {

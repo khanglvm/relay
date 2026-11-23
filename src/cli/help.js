@@ -73,6 +73,7 @@ USAGE
   rly mcp --http [--port N]           serve over Streamable HTTP for web/mobile/remote hosts
                                       [--host H --token-file PATH --allow-origin ORIGIN]
                                       [--root PATH ...]   folders a spec may read local files from (none by default over HTTP; also $RLY_FILE_ROOTS)
+                                      [--retention-days N|off]   delete boards unchanged for N days (default 30; also $RLY_RETENTION_DAYS)
                                       (token: --token-file, $RLY_MCP_TOKEN, or --token, which shows in the process list)
   rly mcp config | install --target   print host setup, or write it (claude | codex)
 

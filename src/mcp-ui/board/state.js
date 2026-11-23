@@ -26,6 +26,10 @@
 
   function seedDefaults() {
     for (const q of QS) if (q.default !== undefined) state.answers[q.id] = q.default;
+    completeAnswers();
+  }
+  // Brings every answer to a complete, valid shape (see the per-type seeders below).
+  function completeAnswers() {
     // Rank questions carry a full, valid permutation so an untouched rank still
     // submits a meaningful order (mirrors the browser board's seedRankOrder).
     for (const q of QS) {

@@ -84,6 +84,7 @@ export async function saveDraft(store, id, draft, spec) {
       comment: limit(d.comment, MAX_TEXT),
       notes: asObject(d.notes),
       annotations: sanitizeAnnotations(d.annotations, id),
+      blockEdits: sanitizeBlockEdits(d.blockEdits),
       updatedAt: new Date().toISOString(),
     },
   });

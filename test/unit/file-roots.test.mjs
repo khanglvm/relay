@@ -4,10 +4,10 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import test, { after } from 'node:test';
+import test, { after, mock } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
-import { createFileAccess, resolveReadable } from '../../src/file-access.js';
+import { createFileAccess, openReadable, resolveReadable } from '../../src/file-access.js';
 import { normalizeSpec } from '../../src/spec/index.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -74,10 +74,23 @@ test('a device path and a directory are refused', () => {
   assert.throws(() => read(codeBlock('sub')), /not a regular file/);
 });
 
-test('a missing path tells "cannot read" inside a root and "outside" beyond it, so existence does not leak', () => {
-  assert.throws(() => read(codeBlock('nope.txt')), /cannot read/);
-  assert.throws(() => read(codeBlock('../outside/nope.txt')), /outside allowed roots/);
-  assert.throws(() => read(codeBlock(path.join(outside, 'nope.txt'))), /outside allowed roots/);
+test('every refusal reads the same, whether the path is missing, a directory, a symlink out or outside', () => {
+  const message = (given) => {
+    try { read(codeBlock(given)); } catch (err) { return err.message; }
+    return assert.fail(`${given} was read`);
+  };
+  const generic = (given) => message(given).replaceAll(JSON.stringify(given), '"PATH"');
+  const refusals = ['nope.txt', 'sub', 'link/secret.txt', 'secret-link.txt', '../outside/nope.txt', SECRET, path.join(outside, 'nope.txt')];
+  assert.equal(new Set(refusals.map(generic)).size, 1, 'one message for every kind of refusal');
+  assert.match(generic('nope.txt'), /cannot read "PATH".*no such file, not a regular file, or path outside allowed roots.*--root.*fileRoots/);
+});
+
+test('a refusal echoes the path as written and never a resolved target or folder layout', () => {
+  for (const given of ['secret-link.txt', 'link/secret.txt', 'sub/../nope.txt']) {
+    const text = (() => { try { read(codeBlock(given)); } catch (err) { return err.message; } return ''; })();
+    assert.ok(text.includes(JSON.stringify(given)), given);
+    assert.ok(!text.includes(TMP) && !text.includes('resolved'), `${given}: ${text}`);
+  }
 });
 
 test('~ expands to the home directory and is checked like any other path', () => {
@@ -257,4 +270,77 @@ test('rly ask refuses a spec file path outside the spec folder and the working d
   const code = await new Promise((resolve) => r.on('close', resolve));
   assert.notEqual(code, 0);
   assert.match(err, /outside allowed roots/);
+});
+
+// The file a check approved must be the file that is read: a swap between the check and the open is refused.
+const swapTest = process.platform === 'win32' ? test.skip : test;
+
+function swapBeforeOpen(swap) {
+  const realOpen = fs.openSync;
+  return mock.method(fs, 'openSync', (...args) => {
+    swap();
+    return realOpen(...args);
+  });
+}
+
+swapTest('a file swapped for a symlink to an outside file between the check and the open is not read', () => {
+  const target = path.join(work, 'race-file.txt');
+  fs.writeFileSync(target, 'inside');
+  const hook = swapBeforeOpen(() => {
+    fs.rmSync(target);
+    fs.symlinkSync(SECRET, target);
+  });
+  try {
+    assert.throws(() => read(codeBlock('race-file.txt')), /cannot read "race-file.txt"/);
+    assert.equal(hook.mock.callCount(), 1);
+  } finally {
+    hook.mock.restore();
+    fs.rmSync(target, { force: true });
+  }
+});
+
+swapTest('a folder swapped for a symlink to an outside folder between the check and the open is not read', () => {
+  const dir = path.join(work, 'race-dir');
+  fs.mkdirSync(dir);
+  fs.writeFileSync(path.join(dir, 'f.txt'), 'inside');
+  fs.mkdirSync(path.join(outside, 'race-dir'), { recursive: true });
+  fs.writeFileSync(path.join(outside, 'race-dir', 'f.txt'), 'OUTSIDE');
+  const hook = swapBeforeOpen(() => {
+    fs.renameSync(dir, `${dir}.moved`);
+    fs.symlinkSync(path.join(outside, 'race-dir'), dir);
+  });
+  try {
+    assert.throws(() => read(codeBlock('race-dir/f.txt')), /cannot read "race-dir\/f.txt"/);
+  } finally {
+    hook.mock.restore();
+    fs.rmSync(dir, { force: true });
+    fs.rmSync(`${dir}.moved`, { recursive: true, force: true });
+  }
+});
+
+swapTest('a file replaced by another file inside the roots is read as the file the path names now', () => {
+  const target = path.join(work, 'race-same.txt');
+  fs.writeFileSync(target, 'before');
+  const hook = swapBeforeOpen(() => {
+    fs.rmSync(target);
+    fs.writeFileSync(target, 'after');
+  });
+  try {
+    assert.equal(read(codeBlock('race-same.txt')).blocks[0].code, 'after');
+  } finally {
+    hook.mock.restore();
+    fs.rmSync(target, { force: true });
+  }
+});
+
+test('openReadable hands back one descriptor for a file and none for a directory', () => {
+  const access = createFileAccess({ cwd: work, roots: [work] });
+  const file = openReadable(access, 'ok.txt');
+  assert.ok(file.ok && typeof file.fd === 'number');
+  assert.equal(fs.readFileSync(file.fd, 'utf8'), 'fine');
+  fs.closeSync(file.fd);
+  const dir = openReadable(access, 'sub', { allowDirectory: true });
+  assert.ok(dir.ok && dir.fd === null);
+  assert.equal(openReadable(access, 'sub').ok, false);
+  assert.equal(openReadable(access, SECRET).reason, 'outside');
 });

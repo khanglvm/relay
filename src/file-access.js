@@ -94,22 +94,75 @@ export function isInsideRoots(target, roots) {
  * @param {FileAccess} access
  * @param {unknown} raw the path as written; `~` and relative paths are expanded
  * @param {{ allowDirectory?: boolean }} [options] directories are refused unless a caller opens them in an app
- * @returns {{ ok: boolean, file?: string, stat?: fs.Stats, reason?: 'invalid' | 'outside' | 'missing' | 'not-file', resolved?: string }} `file` and `stat` when ok; otherwise `reason` and the real path it was refused at
+ * @returns {{ ok: boolean, file?: string, stat?: fs.Stats, reason?: 'invalid' | 'outside' | 'missing' | 'not-file' | 'changed' }} `file` and `stat` when ok; otherwise the `reason`, which callers keep to themselves
  */
 export function checkReadable(access, raw, { allowDirectory = false } = {}) {
   const text = typeof raw === 'string' ? raw.trim() : '';
-  if (!text || text.includes('\0')) return { ok: false, reason: 'invalid', resolved: text };
+  if (!text || text.includes('\0')) return { ok: false, reason: 'invalid' };
   const resolved = path.resolve(access.cwd, expandHome(text));
   const real = realpathOrAncestor(resolved);
-  if (!isInsideRoots(real, access.roots)) return { ok: false, reason: 'outside', resolved: real };
+  if (!isInsideRoots(real, access.roots)) return { ok: false, reason: 'outside' };
   let stat;
-  try { stat = fs.statSync(real); } catch { return { ok: false, reason: 'missing', resolved: real }; }
-  if (!stat.isFile() && !(allowDirectory && stat.isDirectory())) return { ok: false, reason: 'not-file', resolved: real };
+  try { stat = fs.statSync(real); } catch { return { ok: false, reason: 'missing' }; }
+  if (!stat.isFile() && !(allowDirectory && stat.isDirectory())) return { ok: false, reason: 'not-file' };
   return { ok: true, file: real, stat };
+}
+
+// O_NOFOLLOW refuses a final component that became a symlink after the check.
+// O_NONBLOCK keeps a file swapped for a FIFO from hanging the open; the identity check below then refuses it.
+const OPEN_FLAGS = fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0) | (fs.constants.O_NONBLOCK ?? 0);
+
+/** True when `file` still resolves to itself, inside the roots, and is the very file `fd` has open. */
+function isStillTheCheckedFile(access, file, fd) {
+  try {
+    if (fs.realpathSync.native(file) !== file || !isInsideRoots(file, access.roots)) return false;
+    const open = fs.fstatSync(fd);
+    const named = fs.statSync(file);
+    return open.isFile() && open.dev === named.dev && open.ino === named.ino;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Like `checkReadable`, but also opens a regular file, and keeps the open
+ * descriptor as the only way to read it. A path checked and then read by name
+ * can be swapped for a symlink in between; the descriptor cannot. After the
+ * open, the path must still resolve to the same file inside the roots, or the
+ * read is refused. A directory (when allowed) comes back with `fd: null`.
+ * The caller closes `fd`, or hands it to `streamFile`, which does.
+ * @param {FileAccess} access
+ * @param {unknown} raw
+ * @param {{ allowDirectory?: boolean }} [options]
+ * @returns {{ ok: boolean, file?: string, stat?: fs.Stats, fd?: number | null, reason?: 'invalid' | 'outside' | 'missing' | 'not-file' | 'changed' }}
+ */
+export function openReadable(access, raw, options = {}) {
+  const checked = checkReadable(access, raw, options);
+  if (!checked.ok) return { ok: false, reason: /** @type {any} */ (checked.reason) };
+  const file = /** @type {string} */ (checked.file);
+  if (!/** @type {fs.Stats} */ (checked.stat).isFile()) return { ok: true, file, stat: /** @type {fs.Stats} */ (checked.stat), fd: null };
+  let fd;
+  try { fd = fs.openSync(file, OPEN_FLAGS); } catch { return { ok: false, reason: 'changed' }; }
+  if (!isStillTheCheckedFile(access, file, fd)) {
+    fs.closeSync(fd);
+    return { ok: false, reason: 'changed' };
+  }
+  return { ok: true, file, stat: fs.fstatSync(fd), fd };
+}
+
+/**
+ * One message for every refusal, so it says nothing about whether the path
+ * exists, where a symlink leads or what the folders look like. It echoes the
+ * path as the caller wrote it.
+ */
+function refusal(where, field, raw) {
+  const given = typeof raw === 'string' ? raw : String(raw);
+  return new CliError(`${where}: ${field}: cannot read "${given}": no such file, not a regular file, or path outside allowed roots; ${FIX_HINT}.`);
 }
 
 /**
  * The real path of a file a spec names, or a CliError worded for the agent.
+ * Use `readReadable` to read it.
  * @param {FileAccess} access
  * @param {unknown} raw
  * @param {string} where which block, e.g. `board.blocks[0]`
@@ -118,12 +171,26 @@ export function checkReadable(access, raw, { allowDirectory = false } = {}) {
  */
 export function resolveReadable(access, raw, where, field) {
   const checked = checkReadable(access, raw);
-  if (checked.ok) return { file: /** @type {string} */ (checked.file), stat: /** @type {fs.Stats} */ (checked.stat) };
-  const given = typeof raw === 'string' ? raw : String(raw);
-  const prefix = `${where}: ${field}: `;
-  if (checked.reason === 'outside') {
-    throw new CliError(`${prefix}path outside allowed roots (\"${given}\" resolves to ${checked.resolved}); ${FIX_HINT}.`);
+  if (!checked.ok) throw refusal(where, field, raw);
+  return { file: /** @type {string} */ (checked.file), stat: /** @type {fs.Stats} */ (checked.stat) };
+}
+
+/**
+ * The bytes of a file a spec names, read through one opened descriptor.
+ * @param {FileAccess} access
+ * @param {unknown} raw
+ * @param {string} where which block, e.g. `board.blocks[0]`
+ * @param {string} field which field, e.g. `codeFile`
+ * @returns {{ file: string, stat: fs.Stats, buf: Buffer }}
+ */
+export function readReadable(access, raw, where, field) {
+  const opened = openReadable(access, raw);
+  if (!opened.ok || opened.fd === null) throw refusal(where, field, raw);
+  try {
+    return { file: opened.file, stat: opened.stat, buf: fs.readFileSync(opened.fd) };
+  } catch {
+    throw refusal(where, field, raw);
+  } finally {
+    fs.closeSync(opened.fd);
   }
-  if (checked.reason === 'not-file') throw new CliError(`${prefix}\"${given}\" is not a regular file (resolved: ${checked.resolved}).`);
-  throw new CliError(`${prefix}cannot read \"${given}\" (resolved: ${checked.resolved})`);
 }

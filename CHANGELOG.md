@@ -1,5 +1,36 @@
 # Changelog
 
+### 0.23.0: boards expire after 30 days, and file reads cannot be redirected
+
+Security
+- A spec's local file was checked against the file roots and then read by name. A symlink swapped in between
+  the check and the read could send the read outside the roots. Relay now opens the file once, refuses a final
+  component that became a symlink, and reads through that open descriptor only after the path still resolves to
+  the same file (device and inode) inside the roots. This covers every reader: `codeFile`, `mdFile`,
+  `htmlFile`, `diffFile`, `rowsFile`, images, and the pdf, video, preview and content routes of the live server.
+- A refused path used to print where it resolved to, which showed symlink targets and folder layout, and the
+  message differed for a missing file, a folder and a path outside the roots. Every refusal now reads the
+  same, names the path as the caller wrote it, and tells nothing about whether the path exists.
+
+Added
+- Retention: a board that has not changed for 30 days is removed, with its result file and artifacts, when a
+  new board is created. A board whose server is still running is never removed. Change the window with
+  `RLY_RETENTION_DAYS`, `rly mcp --retention-days N`, or `registerRelay(server, { retentionDays })`; `0`,
+  `false` or `off` keeps every board. Processes that share one `RLY_HOME` sweep one at a time, at most once an
+  hour. A custom `store` passed to `registerRelay` handles its own cleanup.
+
+Fixed
+- A board, its result file, its running record and the saved theme are written to a temp file and renamed, so
+  a crash in the middle of a save no longer leaves a half-written file.
+- A board inside a chat host (the MCP App iframe) came back empty after a reload, and four seconds later it
+  overwrote the saved draft with the empty one. It now restores the answers, notes, comment, annotations and
+  edited diagrams. The browser board already restored its draft.
+- Streaming an empty file from a board's pdf, video or content route threw instead of answering.
+
+Changed
+- The error text for an unreadable spec file no longer carries "(resolved: ...)". It still contains the phrases
+  "cannot read", "not a regular file" and "outside allowed roots", and the same `--root` hint.
+
 ### 0.22.2: file roots cannot change after a board is created
 
 Security

@@ -1,6 +1,5 @@
 // Readers for text that a block takes inline or from a file next to the spec.
-import fs from 'node:fs';
-import { resolveReadable } from '../file-access.js';
+import { readReadable } from '../file-access.js';
 import { CliError } from '../util.js';
 import { TEXT_FILE_MAX_BYTES } from './constants.js';
 
@@ -26,12 +25,7 @@ export function readBlockHtml(block, files, where) {
 
 function readHtmlFile(obj, files, where) {
   if (typeof obj.htmlFile !== 'string' || !obj.htmlFile.trim()) return '';
-  const { file } = resolveReadable(files, obj.htmlFile, where, 'htmlFile');
-  try {
-    return fs.readFileSync(file, 'utf8');
-  } catch {
-    throw new CliError(`${where}: cannot read htmlFile "${obj.htmlFile}" (resolved: ${file})`);
-  }
+  return readReadable(files, obj.htmlFile, where, 'htmlFile').buf.toString('utf8');
 }
 
 // Reads a code/diff block body from an inline string field or a local file.
@@ -40,13 +34,7 @@ function readHtmlFile(obj, files, where) {
 export function readTextSource(block, inlineKey, fileKey, files, where) {
   if (typeof block[inlineKey] === 'string' && block[inlineKey] !== '') return block[inlineKey];
   if (typeof block[fileKey] === 'string' && block[fileKey].trim()) {
-    const { file: p } = resolveReadable(files, block[fileKey], where, fileKey);
-    let buf;
-    try {
-      buf = fs.readFileSync(p);
-    } catch {
-      throw new CliError(`${where}: cannot read ${fileKey} "${block[fileKey]}" (resolved: ${p})`);
-    }
+    const { buf } = readReadable(files, block[fileKey], where, fileKey);
     if (buf.length > TEXT_FILE_MAX_BYTES) {
       throw new CliError(`${where}: ${fileKey} "${block[fileKey]}" is ${(buf.length / 1024).toFixed(0)}KB — max ${TEXT_FILE_MAX_BYTES / 1024}KB.`);
     }
@@ -61,13 +49,7 @@ export function readAnyTextSource(block, inlineKeys, fileKeys, files, where, lab
   }
   for (const key of fileKeys) {
     if (typeof block[key] === 'string' && block[key].trim()) {
-      const { file: p } = resolveReadable(files, block[key], where, label);
-      let buf;
-      try {
-        buf = fs.readFileSync(p);
-      } catch {
-        throw new CliError(`${where}: cannot read ${label} "${block[key]}" (resolved: ${p})`);
-      }
+      const { file: p, buf } = readReadable(files, block[key], where, label);
       if (buf.length > TEXT_FILE_MAX_BYTES) {
         throw new CliError(`${where}: ${label} "${block[key]}" is ${(buf.length / 1024).toFixed(0)}KB — max ${TEXT_FILE_MAX_BYTES / 1024}KB.`);
       }

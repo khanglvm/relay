@@ -33,8 +33,8 @@
     ]
   },
   "mcp": {
-    "bytes": 367507,
-    "sha256": "ea74050e5173f753d527c56a346a02ff3fc0e4c307ed6cecc5ccb5cf96b29d52",
+    "bytes": 369436,
+    "sha256": "1fd635252478756960b079a20524f6bbe9a907b388485f2448b0c39bbf5da6b8",
     "scripts": [
       {
         "bytes": 23,
@@ -52,8 +52,8 @@
         "head": "/* relay annotate — element-level comments (window.RelayAnno"
       },
       {
-        "bytes": 60388,
-        "sha256": "729d35bf5e9f08cdbb0f534f6adf25032b34c5a9897087ad1e490e0180398625",
+        "bytes": 62317,
+        "sha256": "d3b9953f208e8b5962d399c0a84e84cf1ed107a65b6e89506bfcbb17c380921a",
         "head": "// board.js — the relay board as an MCP App (SEP-1865 \"io.mo"
       }
     ],

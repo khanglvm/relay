@@ -76,6 +76,13 @@ A board listens on this machine only until you give it a link. Two generic ways:
 `--devlink`. Run `rly config link <off|auto|devlink|url|command:CMD>` to make a choice the
 default. The details are in the [agent guide](docs/AGENT.md).
 
+## Saved boards
+
+Boards live in `~/.relay` (set `RLY_HOME` to move it). A board that has not changed for 30 days is
+removed, with its result and artifacts, the next time a board is created. A board whose server is
+still running is kept. Set `RLY_RETENTION_DAYS=60` to change the window, or `off` to keep every board.
+`rly mcp --retention-days N` and `registerRelay(server, { retentionDays: N })` set it for a server.
+
 ## More help
 
 - [Setup and MCP Apps](docs/SETUP.md): agent configuration, in-chat boards, sharing, and updates.

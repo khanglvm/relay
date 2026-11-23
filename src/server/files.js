@@ -4,7 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createFileAccess } from '../file-access.js';
-import { splitFileReference } from '../file-preview.js';
+import { filePreview, mediaType, splitFileReference } from '../file-preview.js';
+import { openUrl } from '../open.js';
 import { boardFileRoots } from '../store.js';
 import { sendJson } from './http.js';
 
@@ -96,17 +97,13 @@ export function buildOpenAllowlist(spec, baseCwd) {
   return set;
 }
 
-// Streams a file with HTTP Range support so a <video>/<audio> element can seek
-// and the browser can request byte ranges instead of the whole clip. Honors a
-// single "bytes=start-end" range; falls back to the full body otherwise. Safe
-// for a HEAD probe (sends headers, no body).
-export function streamFile(req, res, filePath, contentType) {
-  let stat;
-  try {
-    stat = fs.statSync(filePath);
-  } catch {
-    return sendJson(res, 404, { error: 'file not found' });
-  }
+// Streams an opened file (`openReadable`'s `fd` and `stat`) with HTTP Range
+// support so a <video>/<audio> element can seek and the browser can request byte
+// ranges instead of the whole clip. Honors a single "bytes=start-end" range;
+// falls back to the full body otherwise. Safe for a HEAD probe (sends headers,
+// no body). Takes ownership of the descriptor and closes it on every path.
+export function streamFile(req, res, opened, contentType) {
+  const { fd, stat } = opened;
   const total = stat.size;
   const range = req.headers.range;
   const baseHeaders = {
@@ -130,6 +127,7 @@ export function streamFile(req, res, filePath, contentType) {
       }
     }
     if (start > end || start >= total) {
+      fs.closeSync(fd);
       res.writeHead(416, { 'content-range': `bytes */${total}`, 'cache-control': 'no-store' });
       return res.end();
     }
@@ -138,11 +136,46 @@ export function streamFile(req, res, filePath, contentType) {
   }
   baseHeaders['content-length'] = String(end - start + 1);
   res.writeHead(status, baseHeaders);
-  if (req.method === 'HEAD') return res.end();
-  const stream = fs.createReadStream(filePath, { start, end });
+  if (req.method === 'HEAD' || total === 0) {
+    fs.closeSync(fd);
+    return res.end();
+  }
+  const stream = fs.createReadStream('', { fd, start, end });
   stream.on('error', () => {
     if (!res.headersSent) sendJson(res, 500, { error: 'stream error' });
     else res.destroy();
   });
+  res.on('close', () => stream.destroy());
   stream.pipe(res);
+}
+
+export function closeOpened(opened) {
+  if (opened.fd !== null && opened.fd !== undefined) fs.closeSync(opened.fd);
+}
+
+/**
+ * Answers /api/file-preview, /api/file-content and /api/open for a file that
+ * `openReadable` already checked. Every branch closes the descriptor.
+ */
+export function respondWithOpenedFile(req, res, pathname, opened, raw, target) {
+  const { file: real, stat } = opened;
+  if (pathname === '/api/file-content') {
+    const media = mediaType(real);
+    if (!stat.isFile() || !media) {
+      closeOpened(opened);
+      return sendJson(res, 415, { error: 'this file type cannot be streamed' });
+    }
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'");
+    return streamFile(req, res, opened, media[1]);
+  }
+  try {
+    if (pathname === '/api/file-preview') {
+      return sendJson(res, 200, { ok: true, ...filePreview(opened, splitFileReference(raw)) });
+    }
+    if (!openUrl(real)) return sendJson(res, 500, { error: 'could not open the file' });
+    sendJson(res, 200, { ok: true, path: target, name: path.basename(target) });
+  } finally {
+    closeOpened(opened);
+  }
 }

@@ -16,7 +16,11 @@ export function createRelayServer(options = {}) {
     { instructions: INSTRUCTIONS, capabilities: { extensions: { [UI_EXT]: { mimeTypes: [UI_MIME] } } } },
   );
   const appTools = registerRelay(server, options);
-  // The iframe tools only matter to a host that renders the board; others never see them.
+  // MCP Apps (spec 2026-01-26, "Resource Discovery > Visibility") makes the host drop
+  // app-only tools from the model's tool list (MUST NOT include them), and only
+  // asks servers to check client capabilities (SHOULD). A server that learns the
+  // client at initialize (stdio) hides the tools here; a stateless HTTP request
+  // carries no initialize, so those tools stay listed and the host filters them.
   server.server.oninitialized = () => {
     if (!clientRendersBoards(server.server.getClientCapabilities())) for (const tool of appTools) tool.disable();
   };

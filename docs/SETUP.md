@@ -63,6 +63,13 @@ Boards autosave answers and comments. Detached boards keep serving after
 a wait times out, until submission or `rly stop <board-id>`. Multiple boards
 can run at once.
 
+Boards are stored under `RLY_HOME` (default `~/.relay`). A board unchanged for 30 days is deleted, along
+with its result file and artifacts, when the next board is created; boards with a running server stay.
+`RLY_RETENTION_DAYS` changes the number of days and `off` (or `0`) keeps every board. `rly mcp
+--retention-days N` and the `retentionDays` option of `registerRelay` do the same for an MCP server.
+Several processes can share one `RLY_HOME`: only one sweeps at a time, and a home is swept at most once an
+hour. A custom `store` given to `registerRelay` does its own cleanup.
+
 Relay has no npm runtime dependencies. It bundles the browser libraries for
 charts and diagrams and loads them only when a board needs them. Local
 file links open referenced paths in the default app; `RLY_OPEN_CMD` overrides

@@ -28,7 +28,12 @@ export function mediaType(target) {
   return MEDIA[path.extname(target).toLowerCase()] || null;
 }
 
-export function filePreview(target, stat, reference) {
+/**
+ * @param {{ file: string, stat: fs.Stats, fd: number | null }} opened a file from `openReadable`; the caller closes it
+ * @param {{ line: number | null, endLine: number | null }} reference
+ */
+export function filePreview(opened, reference) {
+  const { file: target, stat, fd } = opened;
   const base = { name: path.basename(target), size: stat.size, line: reference.line, endLine: reference.endLine };
   const unavailable = (reason) => ({ ...base, kind: 'unsupported', reason });
   if (!stat.isFile()) return unavailable('Directories cannot be previewed. Open this location in an app.');
@@ -36,12 +41,9 @@ export function filePreview(target, stat, reference) {
   if (media) return { ...base, kind: media[0], mime: media[1] };
   if (stat.size > TEXT_LIMIT) return unavailable('Text previews are limited to 1 MiB. Open this file in an app.');
   // Read at most the limit + 1 even if a file grows between stat and read.
-  const fd = fs.openSync(target, 'r');
-  let bytes;
-  try {
-    const buffer = Buffer.alloc(TEXT_LIMIT + 1);
-    bytes = buffer.subarray(0, fs.readSync(fd, buffer, 0, buffer.length, 0));
-  } finally { fs.closeSync(fd); }
+  if (fd === null) return unavailable('This file cannot be read.');
+  const buffer = Buffer.alloc(TEXT_LIMIT + 1);
+  const bytes = buffer.subarray(0, fs.readSync(fd, buffer, 0, buffer.length, 0));
   if (bytes.length > TEXT_LIMIT) return unavailable('Text previews are limited to 1 MiB. Open this file in an app.');
   let text;
   try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }

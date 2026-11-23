@@ -36,6 +36,7 @@ const json = (value, structured) => ({ content: [{ type: 'text', text: JSON.stri
  * @param {any} server an McpServer
  * @param {object} [options]
  * @param {import('./store.js').RelayStore} [options.store] where boards live; defaults to the relay home on disk
+ * @param {number | string | boolean} [options.retentionDays] with the default store, boards unchanged for this many days are removed when a new board is made (default 30; `0`, `false` or "off" keeps every board). `RLY_RETENTION_DAYS` sets it when the option is absent. A custom `store` does its own cleanup
  * @param {string[]} [options.fileRoots] folders a spec may read local files from (`codeFile`, images, `rowsFile`...); none by default, so a remote client cannot read the server's disk
  * @param {string | Buffer} [options.tokenKey] the secret behind board tokens; defaults to a key file in the relay home
  * @param {(name: string) => string} [options.assetUrl] URL of a vendor file, for hosts that can fetch it
@@ -43,7 +44,7 @@ const json = (value, structured) => ({ content: [{ type: 'text', text: JSON.stri
  * @returns the app-only tools, so a server can hide them from a client that cannot render the board
  */
 export function registerRelay(server, options = {}) {
-  const ctx = { server, options, store: options.store ?? fileStore(), key: options.tokenKey ?? loadServerKey() };
+  const ctx = { server, options, store: options.store ?? fileStore({ retentionDays: options.retentionDays }), key: options.tokenKey ?? loadServerKey() };
   registerBoardTools(ctx);
   registerReadTools(ctx);
   const appTools = registerAppTools(ctx);

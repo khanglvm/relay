@@ -3,7 +3,6 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { filePreview, mediaType, splitFileReference } from '../file-preview.js';
 import { resolveLink } from '../link.js';
 import { openUrl } from '../open.js';
 import { assertSpecReady, cleanAnswers } from '../spec/index.js';
@@ -14,8 +13,8 @@ import { isDirectLocalRequest, readBody, sameOrigin, sendDataImage, sendFromDir,
 import { UI_DIR, VENDOR_DIR } from './paths.js';
 import { findBlock, findHtmlBlock, firstBoardHtml, firstQuestionHtml, sanitizeAnnotations, sanitizeBlockEdits } from './sanitize.js';
 import { ARTIFACT_MAX_BYTES, ARTIFACT_MIMES, artifactBytesMatch, runOnResult } from './result.js';
-import { checkReadable } from '../file-access.js';
-import { buildOpenAllowlist, recordFileAccess, resolveLocalPath, streamFile } from './files.js';
+import { openReadable } from '../file-access.js';
+import { buildOpenAllowlist, recordFileAccess, resolveLocalPath, respondWithOpenedFile, streamFile } from './files.js';
 
 // Serves one board on 127.0.0.1 and resolves `done` when it finishes
 // (submitted / acknowledged / timeout / cancelled). The result is also
@@ -332,17 +331,17 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
         const blockId = decodeURIComponent(pathname.slice('/video/b/'.length));
         const block = findBlock(record.spec, blockId, 'video');
         if (!block || typeof block.file !== 'string') return sendJson(res, 404, { error: `no local video block "${blockId}"` });
-        const video = checkReadable(fileAccess, block.file);
-        if (!video.ok) return sendJson(res, 404, { error: `no local video block "${blockId}"` });
-        streamFile(req, res, video.file, block.mime || 'application/octet-stream');
+        const video = openReadable(fileAccess, block.file);
+        if (!video.ok || video.fd === null) return sendJson(res, 404, { error: `no local video block "${blockId}"` });
+        streamFile(req, res, video, block.mime || 'application/octet-stream');
       } else if ((req.method === 'GET' || req.method === 'HEAD') && pathname.startsWith('/pdf/b/')) {
         // Local PDF bytes, Range-streamed for the browser's built-in PDF viewer.
         const blockId = decodeURIComponent(pathname.slice('/pdf/b/'.length));
         const block = findBlock(record.spec, blockId, 'pdf');
         if (!block || typeof block.file !== 'string') return sendJson(res, 404, { error: `no local pdf block "${blockId}"` });
-        const pdf = checkReadable(fileAccess, block.file);
-        if (!pdf.ok) return sendJson(res, 404, { error: `no local pdf block "${blockId}"` });
-        streamFile(req, res, pdf.file, block.mime || 'application/pdf');
+        const pdf = openReadable(fileAccess, block.file);
+        if (!pdf.ok || pdf.fd === null) return sendJson(res, 404, { error: `no local pdf block "${blockId}"` });
+        streamFile(req, res, pdf, block.mime || 'application/pdf');
       } else if (req.method === 'GET' && pathname === '/html/board') {
         // Legacy alias → the board's first html block.
         const block = firstBoardHtml(record.spec);
@@ -381,24 +380,12 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
         if (!buildOpenAllowlist(record.spec, baseCwd).has(target)) {
           return sendJson(res, 403, { error: 'this path is not referenced on the board' });
         }
-        const checked = checkReadable(fileAccess, target, { allowDirectory: true });
-        if (!checked.ok) {
-          if (checked.reason === 'missing') return sendJson(res, 404, { error: 'file not found', path: target });
-          return sendJson(res, 403, { error: checked.reason === 'outside' ? 'this path is outside the board\'s file roots' : 'this path is not a file or folder' });
+        const opened = openReadable(fileAccess, target, { allowDirectory: true });
+        if (!opened.ok) {
+          if (opened.reason === 'missing') return sendJson(res, 404, { error: 'file not found', path: target });
+          return sendJson(res, 403, { error: opened.reason === 'outside' ? 'this path is outside the board\'s file roots' : 'this path is not a file or folder' });
         }
-        const { file: real, stat } = checked;
-        if (pathname === '/api/file-preview') {
-          return sendJson(res, 200, { ok: true, ...filePreview(real, stat, splitFileReference(raw)) });
-        }
-        if (pathname === '/api/file-content') {
-          const media = mediaType(real);
-          if (!stat.isFile() || !media) return sendJson(res, 415, { error: 'this file type cannot be streamed' });
-          res.setHeader('X-Content-Type-Options', 'nosniff');
-          res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'");
-          return streamFile(req, res, real, media[1]);
-        }
-        if (!openUrl(real)) return sendJson(res, 500, { error: 'could not open the file' });
-        sendJson(res, 200, { ok: true, path: target, name: path.basename(target) });
+        respondWithOpenedFile(req, res, pathname, opened, raw, target);
       } else if (req.method === 'POST' && pathname === '/api/draft') {
         if (record.spec.responseRequired === false) return sendJson(res, 409, { error: 'display-only boards do not collect feedback' });
         const access = accessFor(req, reqUrl);

@@ -7,7 +7,7 @@
   }
 
   let booted = false;
-  async function boot(rawOrNormalized, alreadyNormalized) {
+  async function boot(rawOrNormalized, alreadyNormalized, draft) {
     if (booted || submitted) return;
     const next = alreadyNormalized ? rawOrNormalized : clientNormalize(rawOrNormalized);
     if (!next || (!Array.isArray(next.questions)) ) { return; }
@@ -18,10 +18,11 @@
     spec = next;
     QS = spec.questions || [];
     seedDefaults();
+    restoreDraft(draft);
     indexHtmlBlocks(spec);
     setStatus('Preparing…');
     if (Annotate && spec.responseRequired !== false) {
-      Annotate.init({ initial: [], onChange: (a) => { state.annotations = Array.isArray(a) ? a : []; } });
+      Annotate.init({ initial: state.annotations, onChange: (a) => { state.annotations = Array.isArray(a) ? a : []; } });
     } else if (Annotate && typeof Annotate.teardown === 'function') {
       Annotate.teardown();
     }
@@ -83,7 +84,7 @@
       const view = await callServerTool('relay_view', { boardId: BOARD.id, token: BOARD.token });
       if (!view.spec) return false;
       vendorUrls = view.vendorUrls || null;
-      await boot(view.spec, true);
+      await boot(view.spec, true, view.draft);
       if (view.finished) {
         submitted = true;
         showDone(true, false);

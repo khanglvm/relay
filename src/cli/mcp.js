@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { envFileRoots, expandHome, isBroadRoot } from '../file-access.js';
 import { mcpConfig } from '../mcp/config.js';
+import { resolveRetentionDays } from '../retention.js';
 import { CliError } from '../util.js';
 import { parseArgs } from './args.js';
 import { printJson } from './io.js';
@@ -26,6 +27,7 @@ export async function cmdMcp(rest) {
     const { runMcpHttp } = await import('../mcp/serve.js');
     return runMcpHttp({
       fileRoots: mcpFileRoots(args, []),
+      retentionDays: mcpRetention(args),
       port: args.port ? Number(args.port) : (envPort ? Number(envPort) : undefined),
       host: typeof args.host === 'string' ? args.host : (process.env.RLY_MCP_HOST || '127.0.0.1'),
       token: resolveToken(args),
@@ -35,7 +37,7 @@ export async function cmdMcp(rest) {
   // Default: be the stdio server. main() never resolves this, so the CLI's
   // post-run exit timer never arms — the server lives until stdin closes.
   const { runMcp } = await import('../mcp/serve.js');
-  return runMcp({ fileRoots: mcpFileRoots(args, stdioDefaultRoots(process.cwd())) });
+  return runMcp({ fileRoots: mcpFileRoots(args, stdioDefaultRoots(process.cwd())), retentionDays: mcpRetention(args) });
 }
 
 /** The working directory as the stdio root, unless it is `/` or the home directory. */
@@ -53,6 +55,13 @@ function stdioDefaultRoots(cwd) {
  */
 function mcpFileRoots(args, defaults) {
   return [...defaults, ...args.root, ...envFileRoots()].map((p) => path.resolve(expandHome(p)));
+}
+
+/** `--retention-days N` (or "off"), checked now so a typo stops the server instead of the first board. */
+function mcpRetention(args) {
+  const option = typeof args.retentionDays === 'string' ? args.retentionDays : undefined;
+  resolveRetentionDays(option);
+  return option;
 }
 
 /**

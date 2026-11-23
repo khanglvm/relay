@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import { pruneBoards, resolveRetentionDays } from './retention.js';
 
 // All state lives under one dir so multiple boards/instances never collide.
 // RLY_HOME override exists for tests and sandboxed agents.
@@ -18,6 +19,21 @@ export function newId() {
   const t = Date.now().toString(36).slice(-5);
   const r = Math.random().toString(36).slice(2, 5);
   return `b-${t}${r}`;
+}
+
+/**
+ * Writes through a temp file in the same folder and renames it over the target,
+ * so a crash mid-write leaves the old file, never half a new one.
+ */
+function writeFileAtomic(file, data) {
+  const temp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+  try {
+    fs.writeFileSync(temp, data);
+    fs.renameSync(temp, file);
+  } catch (err) {
+    try { fs.unlinkSync(temp); } catch { /* never written */ }
+    throw err;
+  }
 }
 
 const boardPath = (id) => path.join(BOARDS_DIR, `${id}.json`);
@@ -43,9 +59,9 @@ export function boardFileRoots(record) {
 
 /**
  * @param {any} spec a normalized spec
- * @param {{ fileRoots?: string[] }} [options] the roots the spec was read under; the live server opens only files inside them
+ * @param {{ fileRoots?: string[], retentionDays?: number | string | boolean }} [options] `fileRoots`: the roots the spec was read under; the live server opens only files inside them. `retentionDays`: how long old boards stay (see `resolveRetentionDays`)
  */
-export function createBoard(spec, { fileRoots } = {}) {
+export function createBoard(spec, { fileRoots, retentionDays } = {}) {
   ensureDirs();
   const record = {
     id: newId(),
@@ -61,12 +77,33 @@ export function createBoard(spec, { fileRoots } = {}) {
     result: null,
   };
   saveBoard(record);
+  pruneOldBoards(resolveRetentionDays(retentionDays));
   return record;
+}
+
+/**
+ * Removes boards unchanged for `days`, except those a live server still serves.
+ * A failed sweep never blocks the board being created, so errors stay here.
+ * @returns {string[]} the ids removed
+ */
+export function pruneOldBoards(days, { force = false } = {}) {
+  try {
+    return pruneBoards({
+      home: HOME,
+      boardsDir: BOARDS_DIR,
+      days,
+      keep: new Set(listRunning().map((r) => r.id)),
+      remove: deleteBoard,
+      force,
+    });
+  } catch {
+    return [];
+  }
 }
 
 export function saveBoard(record) {
   ensureDirs();
-  fs.writeFileSync(boardPath(record.id), JSON.stringify(record, null, 2));
+  writeFileAtomic(boardPath(record.id), JSON.stringify(record, null, 2));
 }
 
 export function loadBoard(id) {
@@ -85,7 +122,7 @@ export function saveResultFile(id, result) {
   try {
     ensureDirs();
     const p = path.join(BOARDS_DIR, `${id}.result.json`);
-    fs.writeFileSync(p, JSON.stringify(result, null, 2));
+    writeFileAtomic(p, JSON.stringify(result, null, 2));
     return p;
   } catch {
     return null;
@@ -120,7 +157,7 @@ export function listBoards(limit = 20) {
 
 export function saveRunning(info) {
   ensureDirs();
-  fs.writeFileSync(runningPath(info.id), JSON.stringify(info, null, 2));
+  writeFileAtomic(runningPath(info.id), JSON.stringify(info, null, 2));
 }
 
 export function loadRunning(id) {
@@ -159,7 +196,7 @@ export function loadPref() {
 
 export function savePref(patch) {
   ensureDirs();
-  fs.writeFileSync(prefPath(), JSON.stringify({ ...loadPref(), ...patch }, null, 2));
+  writeFileAtomic(prefPath(), JSON.stringify({ ...loadPref(), ...patch }, null, 2));
 }
 
 export function isAlive(pid) {

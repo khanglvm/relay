@@ -103,6 +103,7 @@ export const BOARD_SCRIPT_PARTS = [
     'mcp-ui/board/vendors.js',
     'mcp-ui/board/block-ctx.js',
     'mcp-ui/board/state.js',
+    'mcp-ui/board/draft.js',
     'mcp-ui/board/controls.js',
     'mcp-ui/board/render.js',
     'mcp-ui/board/lifecycle.js',
