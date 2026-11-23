@@ -1,5 +1,19 @@
 # Changelog
 
+### 0.23.1: a bad retention setting no longer leaves a stray board, and a tighter file check on Linux
+
+Security
+- The 0.23.0 check confirmed the opened file by walking its path again. Someone who can write inside a file
+  root could swap a parent folder for a symlink to an outside folder, and back, between those steps, and the
+  read would leave the roots. On Linux, Relay now also asks the kernel which file the descriptor holds
+  (`/proc/self/fd`) and refuses any file outside the checked path. Node has no such call on macOS or Windows,
+  so the race stays open there for a writer inside a root. Roots should hold only files you trust.
+
+Fixed
+- With `RLY_RETENTION_DAYS` or `retentionDays` set to something that is not a number of days, creating a
+  board wrote the board file and then failed, so every retry left one more unanswered board behind. The
+  setting is now checked first, and the error comes before anything is written.
+
 ### 0.23.0: boards expire after 30 days, and file reads cannot be redirected
 
 Security

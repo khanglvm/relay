@@ -112,9 +112,24 @@ export function checkReadable(access, raw, { allowDirectory = false } = {}) {
 // O_NONBLOCK keeps a file swapped for a FIFO from hanging the open; the identity check below then refuses it.
 const OPEN_FLAGS = fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0) | (fs.constants.O_NONBLOCK ?? 0);
 
-/** True when `file` still resolves to itself, inside the roots, and is the very file `fd` has open. */
+/**
+ * The path the kernel holds for an open descriptor, or null where Node cannot ask (macOS, Windows).
+ * Linux keeps it in /proc/self/fd, which no rename of a parent folder can fake.
+ */
+function openedPath(fd) {
+  if (process.platform !== 'linux') return null;
+  try { return fs.readlinkSync(`/proc/self/fd/${fd}`); } catch { return null; }
+}
+
+/**
+ * True when `file` still resolves to itself, inside the roots, and is the very file `fd` has open.
+ * Known open risk on macOS and Windows: the name checks below walk the path again, so a writer inside a
+ * root who swaps a parent folder for a symlink and back between those calls can still win the race.
+ */
 function isStillTheCheckedFile(access, file, fd) {
   try {
+    const opened = openedPath(fd);
+    if (opened !== null && opened !== file) return false;
     if (fs.realpathSync.native(file) !== file || !isInsideRoots(file, access.roots)) return false;
     const open = fs.fstatSync(fd);
     const named = fs.statSync(file);

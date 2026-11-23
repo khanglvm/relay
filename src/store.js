@@ -62,6 +62,8 @@ export function boardFileRoots(record) {
  * @param {{ fileRoots?: string[], retentionDays?: number | string | boolean }} [options] `fileRoots`: the roots the spec was read under; the live server opens only files inside them. `retentionDays`: how long old boards stay (see `resolveRetentionDays`)
  */
 export function createBoard(spec, { fileRoots, retentionDays } = {}) {
+  // A bad retention setting throws here, before any file is written.
+  const days = resolveRetentionDays(retentionDays);
   ensureDirs();
   const record = {
     id: newId(),
@@ -77,7 +79,7 @@ export function createBoard(spec, { fileRoots, retentionDays } = {}) {
     result: null,
   };
   saveBoard(record);
-  pruneOldBoards(resolveRetentionDays(retentionDays));
+  pruneOldBoards(days);
   return record;
 }
 

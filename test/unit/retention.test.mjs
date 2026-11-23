@@ -186,6 +186,17 @@ test('RLY_RETENTION_DAYS=off and the retentionDays option keep every board', () 
   assert.equal(short.out, 'false');
 });
 
+test('a bad retention setting refuses the new board before writing it', () => {
+  const { out } = inChild({ RLY_RETENTION_DAYS: 'soon' }, `
+    let error = '';
+    try { store.createBoard({ title: 'fresh', questions: [], blocks: [] }); } catch (err) { error = err.message; }
+    console.log(JSON.stringify({ error, boards: fs.existsSync(store.BOARDS_DIR) ? fs.readdirSync(store.BOARDS_DIR) : [] }));
+  `);
+  const { error, boards } = JSON.parse(out);
+  assert.match(error, /RLY_RETENTION_DAYS must be a number of days/);
+  assert.deepEqual(boards, []);
+});
+
 test('saveBoard writes through a temp file, so a failed write leaves the old board whole', () => {
   const { out } = inChild({}, `
     const rec = { id: 'b-keep', createdAt: 'x', title: 'one', spec: { questions: [] }, result: null, draft: null };

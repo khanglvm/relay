@@ -318,6 +318,37 @@ swapTest('a folder swapped for a symlink to an outside folder between the check 
   }
 });
 
+// Linux only: elsewhere Node cannot read a descriptor's path, and this race stays open (see file-access.js).
+const linuxTest = process.platform === 'linux' ? test : test.skip;
+
+linuxTest('a parent folder flipped to an outside symlink and back around each name check is not read', () => {
+  const dir = path.join(work, 'flip-dir');
+  const moved = `${dir}.moved`;
+  const elsewhere = path.join(outside, 'flip-dir');
+  fs.mkdirSync(dir);
+  fs.writeFileSync(path.join(dir, 'f.txt'), 'inside');
+  fs.mkdirSync(elsewhere, { recursive: true });
+  fs.writeFileSync(path.join(elsewhere, 'f.txt'), 'OUTSIDE');
+  const toLink = () => { fs.renameSync(dir, moved); fs.symlinkSync(elsewhere, dir); };
+  const toDir = () => { fs.rmSync(dir); fs.renameSync(moved, dir); };
+  const realOpen = fs.openSync;
+  const realResolve = fs.realpathSync.native;
+  const realStat = fs.statSync;
+  let opened = false;
+  const hooks = [
+    mock.method(fs, 'openSync', (...args) => { toLink(); const fd = realOpen(...args); opened = true; return fd; }),
+    mock.method(fs.realpathSync, 'native', (...args) => { if (opened && fs.existsSync(moved)) toDir(); return realResolve(...args); }),
+    mock.method(fs, 'statSync', (...args) => { if (opened && !fs.existsSync(moved)) toLink(); return realStat(...args); }),
+  ];
+  try {
+    assert.throws(() => read(codeBlock('flip-dir/f.txt')), /cannot read "flip-dir\/f.txt"/);
+  } finally {
+    for (const hook of hooks) hook.mock.restore();
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(moved, { recursive: true, force: true });
+  }
+});
+
 swapTest('a file replaced by another file inside the roots is read as the file the path names now', () => {
   const target = path.join(work, 'race-same.txt');
   fs.writeFileSync(target, 'before');
