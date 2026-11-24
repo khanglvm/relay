@@ -15,7 +15,7 @@ If your host app has its own way to ask the user or show results (native questio
 3. Give the person the url. To get the result: `rly wait <boardId> --timeout 1800 --while-active --idle-grace 300` (blocks until submit) or `rly result <boardId>` (now). A timeout is not an answer: run `rly result` before you decide.
 4. Read `answers`, `notes`, `comment`, `annotations` and `blockEdits` together; any of them can qualify an answer. When stdout is cut short, read the `resultFile` it names.
 
-If Relay MCP tools are connected, call `relay_board` with the same spec (questions make it collect answers, none make it display-only) and the board renders inline. Then call `relay_result {boardId, wait_seconds: 600}` and repeat while it says `open`: answers collected that way need no chat message, which some hosts make the person confirm; `relay_help` gives exact fields. Embed file content with `mdFile`, `codeFile` or an image block, because inline boards cannot open local file links.
+If Relay MCP tools are connected, call `relay_board` with the same spec (questions make it collect answers, none make it display-only) and the board renders inline. Then call `relay_result {boardId, wait_seconds: 50}` and repeat while it says `open`: answers collected that way need no chat message, which some hosts make the person confirm; `relay_help` gives exact fields. Embed file content with `mdFile`, `codeFile` or an image block, because inline boards cannot open local file links.
 
 ## Spec in one screen
 ```json

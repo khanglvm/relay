@@ -1,5 +1,14 @@
 # Changelog
 
+### 0.25.1: relay_result waits at most 50 seconds
+
+Fixed
+- `relay_result` could block for up to 600 seconds, but MCP clients give up on a tool call after about 60
+  (Claude Code and the Agent SDK; Codex defaults to 60). An agent told to wait 600 got a timeout error on
+  every call and never collected the answers, so the board fell back to the chat message. The wait is now
+  capped at 50 seconds and returns `open` in time for the agent to call again. The `relay_board` result,
+  the skill and the agent guide say `wait_seconds: 50`.
+
 ### 0.25.0: no confirm prompt on submit when the agent is waiting, and radio controls
 
 Changed

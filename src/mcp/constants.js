@@ -12,9 +12,12 @@ export const DEFAULT_HTTP_PORT = 4319;
 // well under the size a host will pass to an iframe.
 export const VENDOR_CHUNK_BYTES = 768 * 1024;
 
-// The longest relay_result may block. A host's own tool timeout is usually
-// shorter, so the person polls again instead of the call hanging.
-export const MAX_WAIT_SECONDS = 600;
+// The longest relay_result may block. MCP clients give up on a tool call after
+// about 60 seconds (Claude Code and the Agent SDK measured on M6; Codex's
+// default tool_timeout_sec is 60), and a wait the client abandoned fails the
+// agent and could count as a pickup. 50 seconds returns "open" in time for the
+// agent to call again.
+export const MAX_WAIT_SECONDS = 50;
 
 // relay_board results stay under this size so a model reading it pays for a summary, not the spec.
 export const RESULT_BUDGET_BYTES = 2048;

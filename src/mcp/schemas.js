@@ -41,5 +41,5 @@ export const helpInput = z.object({
 
 export const resultInput = z.object({
   boardId,
-  wait_seconds: z.number().min(0).optional().describe('Block up to this long for the submission; default 0 returns now'),
+  wait_seconds: z.number().min(0).optional().describe('Block up to this many seconds (at most 50) for the submission; default 0 returns now. Call again while the status is open.'),
 });
