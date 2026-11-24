@@ -1,5 +1,14 @@
 # Changelog
 
+### 0.23.2: no browser tab under T3 Code or Sushi
+
+Changed
+- A new board no longer opens this Mac's browser when an agent runs Relay inside T3 Code
+  (`T3CODE_THREAD_ID` or `T3CODE_HOME` set) or Sushi (`SUSHI_BOT_ID` or `SUSHI_HOME` set). The person
+  drives those agents from another device and reads the board there, so the tab only covered the Mac's
+  screen. `RLY_OPEN=1` or `RLY_OPEN=0` sets the default either way, and `--open` or `--no-open` still
+  decides for one board.
+
 ### 0.23.1: a bad retention setting no longer leaves a stray board, and a tighter file check on Linux
 
 Security

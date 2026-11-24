@@ -79,7 +79,8 @@ USAGE
 
 COMMON FLAGS
   --title <s> --intro <s> --html-file <f> --height <px> --submit-label <s>
-  --timeout <sec> (default 86400; 0 = none) --port <n> --no-open --detach --display-only
+  --timeout <sec> (default 86400; 0 = none) --port <n> --open | --no-open --detach --display-only
+               no browser tab by default under T3 Code or Sushi; $RLY_OPEN=1|0 sets the default
   --devlink | --no-devlink | --public-url <url>   where the board link points (see rly config link)
 
 EXIT CODES   0 submitted/acknowledged · 2 timeout · 3 cancelled · 4 usage · 5 not found

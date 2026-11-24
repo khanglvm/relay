@@ -75,6 +75,13 @@ charts and diagrams and loads them only when a board needs them. Local
 file links open referenced paths in the default app; `RLY_OPEN_CMD` overrides
 the opener.
 
+A new board opens in this machine's browser, except under an agent host the
+person drives from another device: T3 Code (`T3CODE_THREAD_ID` or
+`T3CODE_HOME` set) or Sushi (`SUSHI_BOT_ID` or `SUSHI_HOME` set). There the
+board shows in the host app and through the printed URL. `RLY_OPEN=1` or
+`RLY_OPEN=0` sets the default either way, and `--open` or `--no-open` decides
+for one board.
+
 ## Migration from quest-board
 
 relay was formerly `@khanglvm/quest-board` (CLI: `qbd`) — that package is

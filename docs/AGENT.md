@@ -849,7 +849,9 @@ call rather than calling it repeatedly in a loop.
 
 - Prefer `--detach` + `rly wait` if your shell tool kills long commands.
 - Don't pass `--no-open` for real users — the browser tab opening *is* the
-  notification. Use it only in tests.
+  notification. Use it only in tests. Under T3 Code or Sushi, Relay already
+  skips the tab, because the person reads the board from another device.
+  Give them the printed URL.
 - Quote JSON carefully; prefer writing a spec file or piping via `--file -`.
 - Use stable `id`s on questions so your follow-up logic reads clean keys.
 - `rly result <id>` while a board is open returns the live draft — useful to

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { envFileRoots, expandHome } from '../file-access.js';
 import { linkSetting, loadConfig, serializeLink } from '../link.js';
+import { autoOpenDefault } from '../open.js';
 import { runBoard } from '../server/index.js';
 import { assertSpecReady, questionFromInline } from '../spec/index.js';
 import { HOME, loadBoard, loadRunning, saveBoard, saveResultFile } from '../store.js';
@@ -158,7 +159,7 @@ export async function runOrDetach(record, args) {
   await assertSpecReady(record.spec);
   const timeoutSec = args.timeout !== undefined ? Math.max(0, Number.parseInt(args.timeout, 10) || 0) : DEFAULT_BOARD_TIMEOUT_SEC;
   const port = args.port !== undefined ? Number.parseInt(args.port, 10) || 0 : 0;
-  const open = args.open !== false;
+  const open = args.open === true || (args.open !== false && autoOpenDefault());
   const link = linkSetting({ args, config: loadConfig(HOME) });
 
   // Push-wake: persist the agent's --on-result command on the record so BOTH
