@@ -9,10 +9,35 @@
   function requiredMark() {
     return el('span', { class: 'req' }, el('span', { 'aria-hidden': 'true' }, ' *'), el('span', { class: 'sr-only' }, ' (required)'));
   }
-  /** Toggle buttons say whether they are on, since their colour alone does not reach a screen reader. */
-  function setPressed(button, on) {
-    button.classList.toggle('sel', on);
-    button.setAttribute('aria-pressed', on ? 'true' : 'false');
+  let uidSeq = 0;
+  const uid = (prefix) => prefix + '-' + (++uidSeq);
+  /**
+   * Gives a row of single-choice buttons radio semantics: each says whether it
+   * is checked, Tab enters at the chosen one (or the first), and the arrow keys
+   * move to and choose the next. Returns a function that repaints the state.
+   * The caller puts role=radiogroup and a label on the buttons' container.
+   */
+  function radioButtons(buttons, isOn) {
+    const sync = () => {
+      const on = buttons.map((btn, i) => isOn(i));
+      const entry = Math.max(0, on.indexOf(true));
+      buttons.forEach((btn, i) => {
+        btn.setAttribute('role', 'radio');
+        btn.setAttribute('aria-checked', on[i] ? 'true' : 'false');
+        btn.classList.toggle('sel', on[i]);
+        btn.tabIndex = i === entry ? 0 : -1;
+      });
+    };
+    buttons.forEach((btn, i) => btn.addEventListener('keydown', (ev) => {
+      const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[ev.key];
+      if (!step) return;
+      ev.preventDefault();
+      const next = buttons[(i + step + buttons.length) % buttons.length];
+      next.focus();
+      if (next.getAttribute('aria-checked') !== 'true') next.click();
+    }));
+    sync();
+    return sync;
   }
 
   function syncOptSel(group) {
@@ -110,19 +135,17 @@
   }
 
   function segButtons(q, values, labels) {
-    const seg = el('div', { class: q.type === 'scale' ? 'scale' : 'seg' });
-    const buttons = [];
-    values.forEach((v, i) => {
-      const b = el('button', { type: 'button' }, labels[i]);
-      setPressed(b, state.answers[q.id] === v);
-      b.addEventListener('click', () => {
-        if (state.answers[q.id] === v) delete state.answers[q.id];
-        else state.answers[q.id] = v;
-        for (const x of buttons) setPressed(x, state.answers[q.id] === values[buttons.indexOf(x)]);
+    const seg = el('div', { class: q.type === 'scale' ? 'scale' : 'seg', role: 'radiogroup' });
+    const buttons = values.map((v, i) => el('button', { type: 'button' }, labels[i]));
+    const sync = radioButtons(buttons, (i) => state.answers[q.id] === values[i]);
+    buttons.forEach((btn, i) => {
+      btn.addEventListener('click', () => {
+        if (state.answers[q.id] === values[i]) delete state.answers[q.id];
+        else state.answers[q.id] = values[i];
+        sync();
         clearErr(q.id);
       });
-      buttons.push(b);
-      seg.append(b);
+      seg.append(btn);
     });
     return seg;
   }
@@ -133,13 +156,13 @@
     // Up to 11 steps fit one even row on a phone; the end labels move under it
     // so they do not squeeze the buttons. Longer scales keep the wrapping row.
     if (values.length <= 11) {
-      const steps = '--n:' + values.length;
-      const grid = el('div', { class: 'scale scale-fit', style: steps }, ...seg.children);
+      const steps = '--n:' + values.length + ';--half:' + Math.ceil(values.length / 2);
+      const grid = el('div', { class: 'scale scale-fit' + (values.length >= 8 ? ' scale-long' : ''), style: steps, role: 'radiogroup' }, ...seg.children);
       if (!q.minLabel && !q.maxLabel) return grid;
       return el('div', {}, grid, el('div', { class: 'scale-ends', style: steps },
         el('span', {}, q.minLabel || ''), el('span', {}, q.maxLabel || '')));
     }
-    const row = el('div', { class: 'scale' });
+    const row = el('div', { class: 'scale', role: 'radiogroup' });
     if (q.minLabel) row.append(el('span', { class: 'slabel' }, q.minLabel));
     row.append(...seg.children);
     if (q.maxLabel) row.append(el('span', { class: 'slabel' }, q.maxLabel));
@@ -159,23 +182,22 @@
     const cur = () => (state.answers[q.id] && typeof state.answers[q.id] === 'object' && !Array.isArray(state.answers[q.id])
       ? state.answers[q.id] : (state.answers[q.id] = {}));
     for (const o of q.options) {
-      const seg = el('div', { class: 'chk-seg' });
-      const buttons = [];
-      for (const s of q.statuses) {
-        const b = el('button', { type: 'button', class: 'chk-status' + (s.tone ? ' tone-' + s.tone : '') }, s.label);
-        setPressed(b, cur()[o.value] === s.value);
-        b.addEventListener('click', () => {
+      const labelId = uid('chk');
+      const seg = el('div', { class: 'chk-seg', role: 'radiogroup', 'aria-labelledby': labelId });
+      const buttons = q.statuses.map((st) => el('button', { type: 'button', class: 'chk-status' + (st.tone ? ' tone-' + st.tone : '') }, st.label));
+      const sync = radioButtons(buttons, (i) => cur()[o.value] === q.statuses[i].value);
+      buttons.forEach((btn, i) => {
+        btn.addEventListener('click', () => {
           const m = cur();
-          if (m[o.value] === s.value) delete m[o.value];
-          else m[o.value] = s.value;
-          for (const x of buttons) setPressed(x.btn, m[o.value] === x.val);
+          if (m[o.value] === q.statuses[i].value) delete m[o.value];
+          else m[o.value] = q.statuses[i].value;
+          sync();
           clearErr(q.id);
         });
-        buttons.push({ btn: b, val: s.value });
-        seg.append(b);
-      }
-      wrap.append(el('div', { class: 'chk-row', role: 'group', 'aria-label': o.label },
-        el('div', { class: 'chk-body' }, el('div', { class: 'ol' }, o.label), o.description ? el('div', { class: 'od' }, o.description) : null),
+        seg.append(btn);
+      });
+      wrap.append(el('div', { class: 'chk-row' },
+        el('div', { class: 'chk-body' }, el('div', { class: 'ol', id: labelId }, o.label), o.description ? el('div', { class: 'od' }, o.description) : null),
         seg));
     }
     return wrap;

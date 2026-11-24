@@ -1,5 +1,19 @@
 # Changelog
 
+### 0.25.0: no confirm prompt on submit when the agent is waiting, and radio controls
+
+Changed
+- When an agent is waiting in `relay_result`, a submitted inline board hands it the answers and sends no
+  chat message. Hosts such as T3 Code ask the person to confirm every message a board sends, so the
+  usual flow (show the board, then wait) now has no prompt. With no agent waiting, `relay_submit` holds
+  for up to 2.5 seconds, then the board posts the message as before, so answers are never stranded.
+  `relay_submit` returns `delivered`. The `relay_board` result tells agents to wait this way.
+- Yes/No, scale and checklist status buttons are radio groups: each says whether it is checked, Tab enters at the
+  chosen one, and the arrow keys move and choose. Checklist rows take their name from the visible label.
+- A scale of 8 or more steps splits into two rows on a phone narrower than 400px, so each step stays
+  near 44px wide or wider.
+- The "Submitted" line uses an SVG check instead of a check character.
+
 ### 0.24.0: the inline board fits chat apps and phones, and works with a screen reader
 
 Changed

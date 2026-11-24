@@ -22,7 +22,7 @@ body{ margin:0; }
 .mcp-status{ font:13px/1.5 var(--sans, -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif); color:var(--muted,#8a8580); padding:18px 16px; }
 /* post-submit: a slim one-line confirmation so the iframe collapses small */
 .mcp-done{ display:flex; align-items:center; gap:8px; padding:11px 16px; font:14px/1.4 var(--sans, -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif); color:var(--fg,#1c1b19); }
-.mcp-done .mark{ font-size:15px; font-weight:700; color:var(--ok,#4d8a66); }
+.mcp-done .mark{ display:inline-flex; color:var(--ok,#4d8a66); }
 .mcp-done .lead{ font-weight:600; }
 .mcp-done .sub{ color:var(--muted,#8a8580); }
 /* Inline in a chat thread the host frames the board and caps its height, so
@@ -59,6 +59,8 @@ body{ margin:0; }
 :root:not(.mcp-fullscreen) .submit{ padding:8px 22px; font-size:.95rem; }
 :root:not(.mcp-fullscreen) .scale-fit{ display:grid; grid-template-columns:repeat(var(--n),minmax(0,1fr)); gap:4px; }
 :root:not(.mcp-fullscreen) .scale-fit button{ width:auto; height:40px; border-radius:8px; }
+/* 8+ steps on a phone narrower than 400px: two even rows keep each step near 44px wide */
+@media (max-width: 400px){ :root:not(.mcp-fullscreen) .scale-long{ grid-template-columns:repeat(var(--half),minmax(0,1fr)); } }
 .scale-ends{ display:flex; justify-content:space-between; gap:12px; margin-top:4px; color:var(--muted); font-size:.8rem; }
 /* Fullscreen keeps 44px steps, so the end labels span the buttons, not the whole column. */
 .mcp-fullscreen .scale-fit{ display:grid; grid-template-columns:repeat(var(--n),44px); gap:8px; }

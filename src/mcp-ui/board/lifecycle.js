@@ -87,7 +87,7 @@
       await boot(view.spec, true, view.draft);
       if (view.finished) {
         submitted = true;
-        showDone(true, false);
+        showDone('delivered');
         return true;
       }
       startDraftSync();

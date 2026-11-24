@@ -43,6 +43,8 @@
       // A free-text answer is named by its question, not by its placeholder.
       const field = control.querySelector(':scope > input[type="text"], :scope > textarea');
       if (field) field.setAttribute('aria-labelledby', labelId);
+      const radios = control.querySelector('[role="radiogroup"]:not([aria-labelledby])');
+      if (radios) radios.setAttribute('aria-labelledby', labelId);
       card.append(control);
       if (q.note) {
         const noteInput = el('textarea', { class: 'qnote', rows: 2, placeholder: 'optional note about this answer…', 'aria-label': 'Note about this answer' });
@@ -145,7 +147,15 @@
     submitBtn.disabled = true;
     submitBtn.textContent = 'Submitting…';
     const data = payload();
-    const stored = BOARD.token ? await storeSubmission(data) : false;
+    const outcome = BOARD.token ? await storeSubmission(data) : { stored: false, delivered: false };
+    const stored = outcome.stored;
+    // An agent already waiting in relay_result has the answers, so no message is
+    // needed to wake it, and the host does not ask the person to confirm one.
+    if (outcome.delivered) {
+      submitted = true;
+      showDone('delivered');
+      return;
+    }
     const text = stored
       ? 'Relay board ' + BOARD.id + ' submitted. Read it with relay_result {"boardId":"' + BOARD.id + '"}.'
       : summarize(data);
@@ -159,15 +169,16 @@
     }
     const messageDelivered = await sendUserMessage(content, text);
     submitted = true;
-    showDone(messageDelivered, stored);
+    showDone(messageDelivered ? 'delivered' : stored ? 'stored' : 'local');
   }
 
+  /** Stores the answers; `delivered` says a waiting agent already collected them. */
   async function storeSubmission(data) {
     try {
-      await callServerTool('relay_submit', { boardId: BOARD.id, token: BOARD.token, payload: data });
-      return true;
+      const res = await callServerTool('relay_submit', { boardId: BOARD.id, token: BOARD.token, payload: data }, 15000);
+      return { stored: true, delivered: res.delivered === true };
     } catch {
-      return false;
+      return { stored: false, delivered: false };
     }
   }
 
@@ -187,17 +198,25 @@
     return false;
   }
 
-  function showDone(messageDelivered, contextDelivered) {
+  // delivery: 'delivered' (the agent has the answers), 'stored' (saved, the agent
+  // still needs a nudge) or 'local' (nothing reached the server).
+  /** Lucide "check" icon for the done line. */
+  function doneMark() {
+    const mark = el('span', { class: 'mark', 'aria-hidden': 'true' });
+    mark.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M20 6 9 17l-5-5"/></svg>';
+    return mark;
+  }
+  function showDone(delivery) {
     // Collapse: leave fullscreen, drop the whole form for a one-line confirmation
     // so the host shrinks the iframe to a small footprint in the transcript.
     if (Annotate) { try { Annotate.teardown(); } catch { /* nothing to tear down */ } }
     document.documentElement.classList.remove('mcp-fullscreen');
     app.replaceChildren(el('div', { class: 'mcp-done' },
-      el('span', { class: 'mark' }, '✓'),
+      doneMark(),
       el('span', { class: 'lead' }, QS.length ? 'Submitted' : 'Acknowledged'),
-      el('span', { class: 'sub' }, messageDelivered
+      el('span', { class: 'sub' }, delivery === 'delivered'
         ? '· sent back to the agent'
-        : contextDelivered
+        : delivery === 'stored'
           ? '· saved; send the agent a message to continue'
         : '· tell the agent you’ve responded')));
     // Report the small height immediately, then again next frame / after layout

@@ -65,6 +65,31 @@ function oneAtATime(boardId, task) {
   return run;
 }
 
+// Boards whose final answers a waiting relay_result call has handed to an agent,
+// with the time. Module level because a stateless HTTP host builds a fresh server
+// per request. relay_submit reads it to tell the board whether the agent already
+// has the answers, so the board can skip the chat message that wakes the agent.
+// Hosts such as T3 Code confirm every such message with the person. A wrong
+// "delivered" strands the answers, so only a waiter whose request is still open
+// counts, and only a pickup made after this submit began.
+const pickedUp = new Map();
+const PICKUP_GRACE_MS = 2500;
+function notePickup(boardId) {
+  const now = Date.now();
+  for (const [id, at] of pickedUp) if (now - at > 60_000) pickedUp.delete(id);
+  pickedUp.set(String(boardId), now);
+}
+/** Waits briefly for an agent that is blocked in relay_result to collect a board submitted at `since`. */
+async function waitForPickup(boardId, since) {
+  const picked = () => (pickedUp.get(String(boardId)) ?? -1) >= since;
+  const until = Date.now() + PICKUP_GRACE_MS;
+  while (Date.now() < until) {
+    if (picked()) return true;
+    await sleep(100);
+  }
+  return picked();
+}
+
 const appMeta = (visibility) => ({ ui: { resourceUri: BOARD_URI, visibility } });
 const modelMeta = { ...appMeta(['model', 'app']), 'openai/outputTemplate': BOARD_URI };
 
@@ -109,8 +134,12 @@ function registerReadTools({ server, store }) {
     for (;;) {
       const record = await store.get(boardId);
       if (!record) return errorResult(`relay: no board "${boardId}"`);
-      if (isFinal(record) || Date.now() >= deadline || ctx?.mcpReq?.signal?.aborted) {
+      const aborted = Boolean(ctx?.mcpReq?.signal?.aborted);
+      if (isFinal(record) || Date.now() >= deadline || aborted) {
         const out = resultOf(record);
+        // A disconnected client never gets this result (the SDK drops it), and a
+        // plain status read is not an agent waiting for the answers.
+        if (isFinal(record) && wait_seconds > 0 && !aborted) notePickup(boardId);
         return json(out, { boardId, status: out.status });
       }
       await sleep(500);
@@ -161,12 +190,20 @@ function registerAppTools({ server, options, store, key }) {
     const outcome = await handleSurfaceAction(store, record, args);
     return outcome.ok ? text('recorded') : errorResult(`relay: ${outcome.error}`);
   }));
-  appTool(TOOL.submit, { description: 'Stores the final answers.', inputSchema: submitInput }, (args) => oneAtATime(args.boardId, async () => {
-    const { record, error } = await guard(args);
-    if (error) return error;
-    const outcome = await submitBoard(store, record, args.payload);
-    return outcome.ok ? json({ status: outcome.status }) : errorResult(`relay: ${outcome.error}`);
-  }));
+  appTool(TOOL.submit, { description: 'Stores the final answers and says whether a waiting agent already collected them.', inputSchema: submitInput }, async (args) => {
+    let since = 0;
+    const outcome = await oneAtATime(args.boardId, async () => {
+      const { record, error } = await guard(args);
+      if (error) return { error };
+      since = Date.now();
+      return submitBoard(store, record, args.payload);
+    });
+    if (outcome.error && typeof outcome.error === 'object') return outcome.error;
+    if (!outcome.ok) return errorResult(`relay: ${outcome.error}`);
+    // Outside the board queue, so a relay_result for this board is not held up.
+    const delivered = await waitForPickup(args.boardId, since);
+    return json({ status: outcome.status, delivered }, { status: outcome.status, delivered });
+  });
   appTool(TOOL.asset, { description: 'One chunk of a vendored library, for hosts that refuse resources/read.', inputSchema: assetInput }, ({ name, index }) => {
     const chunk = vendorChunk(name, index);
     return chunk ? json({ name, index, count: chunk.count }, chunk) : errorResult(`relay: no asset "${name}" chunk ${index}`);

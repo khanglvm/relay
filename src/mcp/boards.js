@@ -53,7 +53,7 @@ export function questionList(spec, labelMax = 80) {
 export function boardResult(record, spec, mode) {
   const title = limit(spec.title, 120);
   const text = mode === 'ask'
-    ? `Board "${title}" (${record.id}) is on screen${spec.questions.length ? ` with ${spec.questions.length} question${spec.questions.length === 1 ? '' : 's'}` : ' for the person to acknowledge'}. They answer there. Read the answers with relay_result {boardId, wait_seconds}. Do not re-ask them in chat.`
+    ? `Board "${title}" (${record.id}) is on screen${spec.questions.length ? ` with ${spec.questions.length} question${spec.questions.length === 1 ? '' : 's'}` : ' for the person to acknowledge'}. They answer there. Call relay_result {boardId, wait_seconds: 600} now and again while it says open: answers collected that way arrive without a chat message the person must confirm. Do not re-ask them in chat.`
     : `Board "${title}" (${record.id}) is on screen, display-only. Continue without waiting.`;
   for (const labelMax of [80, 40, 20, 0]) {
     const structuredContent = { boardId: record.id, mode, title, questions: questionList(spec, labelMax) };

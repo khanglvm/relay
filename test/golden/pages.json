@@ -33,8 +33,8 @@
     ]
   },
   "mcp": {
-    "bytes": 377395,
-    "sha256": "bdd3ac899bc1ae9aad9988d41f695f812e72bbc0806feb066b1405b095649048",
+    "bytes": 379922,
+    "sha256": "148ef2a8a7c262849017f3fc8afd43bec4dfe5f875dabf7b8616f05006e0ec7a",
     "scripts": [
       {
         "bytes": 23,
@@ -52,15 +52,15 @@
         "head": "/* relay annotate — element-level comments (window.RelayAnno"
       },
       {
-        "bytes": 65661,
-        "sha256": "268634d175c272a67c9a650738cb532511fc5a691578ab64948558d7136c9eb6",
+        "bytes": 67981,
+        "sha256": "c85db7bcea18836f2715a38b17dc62f8bb6187c2acb3bf704082a84eca4663cd",
         "head": "// board.js — the relay board as an MCP App (SEP-1865 \"io.mo"
       }
     ],
     "styles": [
       {
-        "bytes": 92575,
-        "sha256": "18547a8e09960ecaf24670046143c9c2f29639eafb81683bc7ce12ca6ef018f8",
+        "bytes": 92782,
+        "sha256": "b4bbffc130ab35efee7b0fc8e743d8f9cf7c1b0cdb0fe2678dae3233f4fc6a33",
         "head": "/* quest-board theme — editorial minimalism in the spirit of"
       },
       {
