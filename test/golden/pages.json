@@ -1,7 +1,7 @@
 {
   "web": {
-    "bytes": 381176,
-    "sha256": "942ac6eb66e80b4a110f51b647d7e37f3d2f97319d4b8cd1904e12c82eb9a3f5",
+    "bytes": 381956,
+    "sha256": "02b266e9ea8fe6af28f34b991777bb84acf69bd82b78ebf4fd9e4083e4d54132",
     "scripts": [
       {
         "bytes": 2004,
@@ -19,22 +19,22 @@
         "head": "/* relay annotate — element-level comments (window.RelayAnno"
       },
       {
-        "bytes": 73325,
-        "sha256": "9b8e07a6bb7da48ea31ffc59b78c19659a0cc9f98b865800d6db97233e2c3cc1",
+        "bytes": 73336,
+        "sha256": "4cceeb03e20abe184c39ee7e33b149c05efc65e848f36b6bd9c89edef45c63f7",
         "head": "(() => {\n  'use strict';\n\n  const boot = JSON.parse(document"
       }
     ],
     "styles": [
       {
-        "bytes": 86366,
-        "sha256": "063d63eac246481a7ebf33d478e8a442cfeff2302043bdc49e7b10a4cac45e72",
+        "bytes": 87135,
+        "sha256": "cc085066c939dad02c29a2a9d760840b9f97b416c0d10e434422d5b0190ff59d",
         "head": "/* quest-board theme — editorial minimalism in the spirit of"
       }
     ]
   },
   "mcp": {
-    "bytes": 369436,
-    "sha256": "1fd635252478756960b079a20524f6bbe9a907b388485f2448b0c39bbf5da6b8",
+    "bytes": 377395,
+    "sha256": "bdd3ac899bc1ae9aad9988d41f695f812e72bbc0806feb066b1405b095649048",
     "scripts": [
       {
         "bytes": 23,
@@ -52,15 +52,15 @@
         "head": "/* relay annotate — element-level comments (window.RelayAnno"
       },
       {
-        "bytes": 62317,
-        "sha256": "d3b9953f208e8b5962d399c0a84e84cf1ed107a65b6e89506bfcbb17c380921a",
+        "bytes": 65661,
+        "sha256": "268634d175c272a67c9a650738cb532511fc5a691578ab64948558d7136c9eb6",
         "head": "// board.js — the relay board as an MCP App (SEP-1865 \"io.mo"
       }
     ],
     "styles": [
       {
-        "bytes": 87960,
-        "sha256": "1de46e256acbae22388bb33dcb7ff902c8dd0e2bb37a2ab73b42594b70b05591",
+        "bytes": 92575,
+        "sha256": "18547a8e09960ecaf24670046143c9c2f29639eafb81683bc7ce12ca6ef018f8",
         "head": "/* quest-board theme — editorial minimalism in the spirit of"
       },
       {

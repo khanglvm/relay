@@ -9,7 +9,7 @@
   --card: #ffffff;
   --fg: #1c1b19;            /* deep warm charcoal */
   --fg-2: #57534e;          /* secondary copy */
-  --muted: #8a8580;         /* eyebrow / captions */
+  --muted: #6f6a64;         /* captions; 5:1 on white, so small text passes WCAG AA */
   --accent: #c2674b;        /* terracotta / clay */
   --accent-hover: #b25a40;
   --accent-fg: #fcfaf7;     /* text on accent */
@@ -164,7 +164,6 @@ h1 {
   margin: 8px 0; cursor: pointer;
   transition: border-color 150ms var(--ease), background 150ms var(--ease);
 }
-.opt:hover { border-color: var(--accent); }
 .opt.sel { border-color: var(--accent); background: var(--accent-soft); }
 .opt input { margin-top: 4px; accent-color: var(--accent); flex: none; }
 .opt .ol { font-weight: 500; }
@@ -178,7 +177,6 @@ h1 {
   margin: 8px 0;
   transition: border-color 150ms var(--ease), background 150ms var(--ease);
 }
-.optwrap:hover { border-color: var(--accent); }
 .optwrap.sel { border-color: var(--accent); background: var(--accent-soft); }
 .optwrap > .opt { border: none; margin: 0; background: none; }
 .optwrap > .blocks { padding: 0 14px 12px 40px; }
@@ -196,7 +194,6 @@ h1 {
   transition: border-color 150ms var(--ease), background 150ms var(--ease),
     color 150ms var(--ease), transform 200ms var(--ease), box-shadow 200ms var(--ease);
 }
-.seg button:hover, .scale button:hover { border-color: var(--accent); transform: translateY(-1px); }
 .seg button.sel, .scale button.sel {
   background: var(--accent); color: var(--accent-fg); border-color: var(--accent);
 }
@@ -233,7 +230,6 @@ h1 {
   cursor: pointer; font-size: 14px; line-height: 1;
   transition: border-color 150ms var(--ease);
 }
-.rank-btn:hover:not(:disabled) { border-color: var(--accent); }
 .rank-btn:disabled { opacity: 0.35; cursor: default; }
 
 /* checklist — one row per item with a Pass/Fail/N·A segmented status control */
@@ -250,7 +246,6 @@ h1 {
   border: 1px solid var(--border-strong); border-radius: 8px;
   transition: border-color 150ms var(--ease), background 150ms var(--ease), color 150ms var(--ease);
 }
-.chk-status:hover { border-color: var(--accent); }
 .chk-status.sel { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 .chk-status.tone-ok.sel { background: var(--ok); border-color: var(--ok); color: #fff; }
 .chk-status.tone-bad.sel { background: var(--danger); border-color: var(--danger); color: var(--danger-fg); }
@@ -310,7 +305,16 @@ textarea { min-height: 90px; resize: vertical; }
   padding: 12px 30px; font: inherit; font-size: 1rem; font-weight: 600; cursor: pointer;
   transition: background 150ms var(--ease), transform 200ms var(--ease), box-shadow 200ms var(--ease);
 }
-.submit:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: var(--shadow-lift); }
+/* Hover only where a pointer can hover: a phone applies :hover on tap and keeps
+   it, which left a tapped option outlined as if it were still chosen. */
+@media (hover: hover) and (pointer: fine) {
+  .opt:hover, .optwrap:hover, .chk-status:hover, .rank-btn:hover:not(:disabled) { border-color: var(--accent); }
+  .seg button:hover, .scale button:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .submit:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: var(--shadow-lift); }
+}
+/* The radio or checkbox inside an option is tiny, so the keyboard ring goes on the whole option. */
+.opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.seg button:focus-visible, .scale button:focus-visible, .chk-status:focus-visible, .rank-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .submit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .submit:disabled { opacity: 0.55; cursor: default; transform: none; box-shadow: none; }
 .hint { color: var(--muted); font-size: 0.82rem; }

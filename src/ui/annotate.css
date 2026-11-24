@@ -276,9 +276,12 @@
   border-left: 1px solid var(--border);
   box-shadow: var(--shadow-lift);
   transform: translateX(100%);
-  transition: transform 240ms var(--ease);
+  /* Parked off-screen its shadow still bled onto the page's right edge, and its
+     controls stayed in the tab order; hide it once the slide-out ends. */
+  visibility: hidden;
+  transition: transform 240ms var(--ease), visibility 0s linear 240ms;
 }
-.ann-rail.open { transform: translateX(0); }
+.ann-rail.open { transform: translateX(0); visibility: visible; transition: transform 240ms var(--ease); }
 .ann-rail-head {
   flex: none;
   display: flex; align-items: center; gap: 8px;

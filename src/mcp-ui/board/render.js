@@ -19,10 +19,15 @@
 
     QS.forEach((q, idx) => {
       const required = q.required || !spec.allowPartial;
-      const card = el('div', { class: 'card' },
-        el('div', { class: 'qnum' }, 'Q' + (idx + 1)),
-        el('p', { class: 'qlabel' }, q.label, required ? el('span', { class: 'req' }, ' *') : null),
-        q.description ? el('p', { class: 'qdesc' }, q.description) : null);
+      // Each question is a labelled group, so a screen reader announces the
+      // question with its options; ids use the index because spec ids may hold
+      // characters that are awkward in an id reference.
+      const labelId = 'q' + idx + '-label';
+      const descId = q.description ? 'q' + idx + '-desc' : '';
+      const card = el('div', { class: 'card', role: 'group', 'aria-labelledby': labelId, 'aria-describedby': descId || null, 'data-desc': descId, 'data-err': 'q' + idx + '-err' },
+        el('div', { class: 'qnum', 'aria-hidden': 'true' }, 'Q' + (idx + 1)),
+        el('p', { class: 'qlabel', id: labelId }, q.label, required ? requiredMark() : null),
+        q.description ? el('p', { class: 'qdesc', id: descId }, q.description) : null);
       renderBlocks(card, q.blocks || [], q.id);
       const control = el('div', { class: 'control' });
       if (q.type === 'single') control.append(controlSingle(q));
@@ -35,24 +40,27 @@
       else if (q.type === 'allocate') control.append(controlAllocate(q));
       else if (q.type === 'pick') control.append(window.RelayPick.control(q, state, { onChange: () => clearErr(q.id) }));
       else control.append(controlText(q, q.type === 'textarea'));
+      // A free-text answer is named by its question, not by its placeholder.
+      const field = control.querySelector(':scope > input[type="text"], :scope > textarea');
+      if (field) field.setAttribute('aria-labelledby', labelId);
       card.append(control);
       if (q.note) {
-        const noteInput = el('textarea', { class: 'qnote', rows: 2, placeholder: 'optional note about this answer…' });
+        const noteInput = el('textarea', { class: 'qnote', rows: 2, placeholder: 'optional note about this answer…', 'aria-label': 'Note about this answer' });
         noteInput.value = typeof state.notes[q.id] === 'string' ? state.notes[q.id] : '';
         noteInput.addEventListener('input', () => { state.notes[q.id] = noteInput.value; });
         card.append(el('div', { class: 'qnotewrap' }, noteInput));
       }
-      card.append(el('p', { class: 'errmsg' }, 'This question is required.'));
+      card.append(el('p', { class: 'errmsg', id: card.dataset.err }, 'This question is required.'));
       cards[q.id] = card;
       app.append(card);
     });
 
     if (spec.note && spec.responseRequired !== false) {
-      const note = el('textarea', { placeholder: 'optional note back to the agent…' });
+      const note = el('textarea', { placeholder: 'optional note back to the agent…', 'aria-labelledby': 'overall-label' });
       note.value = state.comment || '';
       note.addEventListener('input', () => { state.comment = note.value; });
-      app.append(el('div', { class: 'card' },
-        el('p', { class: 'qlabel' }, 'Anything else?'),
+      app.append(el('div', { class: 'card overall' },
+        el('p', { class: 'qlabel', id: 'overall-label' }, 'Anything else?'),
         el('p', { class: 'qdesc' }, 'Free-text note returned to the agent along with your answers.'),
         el('div', { class: 'control' }, note)));
     }
@@ -82,10 +90,18 @@
     for (const q of QS) {
       const required = q.required || !spec.allowPartial;
       const bad = required && (getValue(q) === undefined || (q.type === 'pick' && window.RelayPick.short(q, state.answers[q.id])));
-      cards[q.id].classList.toggle('error', bad);
+      markError(cards[q.id], bad);
       if (bad && !firstBad) firstBad = cards[q.id];
     }
-    if (firstBad) firstBad.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (firstBad) {
+      firstBad.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Focus lands on the first unanswered question, which reads its label and
+      // the error, so a keyboard or screen-reader user is not left on Submit.
+      // The answer control comes first: blocks above it may hold their own buttons.
+      const focusable = 'input:not(:disabled), textarea:not(:disabled), select:not(:disabled), button:not(:disabled), [tabindex]:not([tabindex="-1"])';
+      const target = firstBad.querySelector('.control ' + focusable.split(', ').join(', .control ')) || firstBad.querySelector(focusable);
+      if (target) target.focus({ preventScroll: true });
+    }
     return !firstBad;
   }
 

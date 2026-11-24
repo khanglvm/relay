@@ -25,6 +25,59 @@ body{ margin:0; }
 .mcp-done .mark{ font-size:15px; font-weight:700; color:var(--ok,#4d8a66); }
 .mcp-done .lead{ font-weight:600; }
 .mcp-done .sub{ color:var(--muted,#8a8580); }
+/* Inline in a chat thread the host frames the board and caps its height, so
+   the full-page spacing would push questions behind an inner scrollbar.
+   Fullscreen keeps the roomy web layout. */
+:root:not(.mcp-fullscreen) .wrap{ padding:
+    calc(10px + var(--mcp-safe-top, 0px))
+    calc(12px + var(--mcp-safe-right, 0px))
+    calc(10px + var(--mcp-safe-bottom, 0px))
+    calc(12px + var(--mcp-safe-left, 0px)); }
+:root:not(.mcp-fullscreen) .qb-header h1{ font-size:1.2rem; }
+:root:not(.mcp-fullscreen) .intro{ margin:2px 0 8px; font-size:.92rem; }
+:root:not(.mcp-fullscreen) .card{ padding:0; margin:14px 0 0; background:none; box-shadow:none; border-radius:0; }
+:root:not(.mcp-fullscreen) .card.error{ box-shadow:none; }
+/* with no frame to outline, the label carries the required-question error */
+:root:not(.mcp-fullscreen) .card.error .qlabel{ color:var(--danger); }
+:root:not(.mcp-fullscreen) .qnum{ display:none; }
+:root:not(.mcp-fullscreen) .qlabel{ font-size:.95rem; }
+:root:not(.mcp-fullscreen) .control{ margin-top:8px; }
+:root:not(.mcp-fullscreen) .opt{ padding:7px 12px; margin:5px 0; border-radius:8px; }
+:root:not(.mcp-fullscreen) .opt input{ margin-top:3px; }
+:root:not(.mcp-fullscreen) .opt:not(.sel) .otherbox{ display:none; }
+/* Heights are whole lines (line-height 1.6) plus padding and border, so a
+   one-line box shows its text without clipping. Only the board's own boxes:
+   the comment popover and pick/a2ui fields keep their sizes. A textarea
+   question asks for a longer answer, so it gets two lines. */
+:root:not(.mcp-fullscreen) .otherbox .otherinput,
+:root:not(.mcp-fullscreen) .overall .control > textarea{ min-height:0; padding:8px 12px; height:calc(1.6em + 18px); }
+:root:not(.mcp-fullscreen) .card:not(.overall) > .control > textarea{ min-height:0; padding:8px 12px; height:calc(3.2em + 18px); }
+:root:not(.mcp-fullscreen) .qnotewrap{ margin-top:6px; }
+:root:not(.mcp-fullscreen) .qnotewrap .qnote{ min-height:0; padding:6px 10px; height:calc(1.6em + 14px); }
+:root:not(.mcp-fullscreen) .overall .qdesc{ display:none; }
+:root:not(.mcp-fullscreen) .submitbar{ padding:12px 0 2px; }
+:root:not(.mcp-fullscreen) .submit{ padding:8px 22px; font-size:.95rem; }
+:root:not(.mcp-fullscreen) .scale-fit{ display:grid; grid-template-columns:repeat(var(--n),minmax(0,1fr)); gap:4px; }
+:root:not(.mcp-fullscreen) .scale-fit button{ width:auto; height:40px; border-radius:8px; }
+.scale-ends{ display:flex; justify-content:space-between; gap:12px; margin-top:4px; color:var(--muted); font-size:.8rem; }
+/* Fullscreen keeps 44px steps, so the end labels span the buttons, not the whole column. */
+.mcp-fullscreen .scale-fit{ display:grid; grid-template-columns:repeat(var(--n),44px); gap:8px; }
+.mcp-fullscreen .scale-ends{ width:calc(var(--n) * 44px + (var(--n) - 1) * 8px); max-width:100%; }
+:root:not(.mcp-fullscreen) .seg button{ padding:8px 20px; }
+.sr-only{ position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+/* Touch screens (T3 and Sushi on a phone): the browser's grey tap flash is
+   replaced by each control's own pressed state; text fields use 16px, below
+   which iOS zooms the page on focus; tap targets grow toward 44px. */
+html{ -webkit-tap-highlight-color:transparent; }
+@media (pointer: coarse){
+  input, textarea, select, .qnotewrap .qnote, .otherbox .otherinput{ font-size:16px; }
+  /* not on a chosen button: its light text would vanish on the soft tint while pressed */
+  .opt:active, .seg button:not(.sel):active, .scale button:not(.sel):active, .chk-status:not(.sel):active, .rank-btn:active{ background:var(--accent-soft); }
+  .seg button{ min-height:44px; }
+  :root:not(.mcp-fullscreen) .scale-fit button{ height:44px; }
+  .chk-status{ min-height:40px; padding:6px 16px; }
+  .rank-btn{ width:40px; height:40px; }
+}
 /* in fullscreen the host fills the window — keep text to a readable column */
 .mcp-fullscreen .wrap{ max-width:760px; margin:0 auto; }
 /* progressive preview: shown while the agent is still streaming the spec */

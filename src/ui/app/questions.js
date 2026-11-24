@@ -306,7 +306,7 @@
     const refresh = () => {
       const m = cur();
       const sum = (q.options || []).reduce((a, o) => a + (Number(m[o.value]) || 0), 0);
-      const tail = sum > total ? ` (over by ${sum - total})` : sum < total ? ` (${total - sum} left)` : ' ✓';
+      const tail = sum > total ? ` (over by ${sum - total})` : sum < total ? ` (${total - sum} left)` : ' (all assigned)';
       sumEl.textContent = `${sum} / ${total}${unit}${tail}`;
       sumEl.classList.toggle('over', sum > total);
       sumEl.classList.toggle('exact', sum === total);

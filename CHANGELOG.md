@@ -1,5 +1,34 @@
 # Changelog
 
+### 0.24.0: the inline board fits chat apps and phones, and works with a screen reader
+
+Changed
+- Inline in a chat app (T3 Code, Claude and Codex desktop, Sushi), the board uses less space: a smaller
+  title, questions without card frames or "Q1" labels, tighter options, one-line note boxes, and the
+  "Other" box only once Other is picked. Fullscreen keeps the roomy layout.
+- On a phone: text fields use 16px so iOS no longer zooms the page on focus; Yes/No, scale, Pass/Fail and
+  rank buttons grow toward 44px touch targets; a scale of up to 11 steps fits one even row with its end
+  labels under it; the grey tap flash is replaced by each control's own pressed state.
+- Hover styles apply only where a pointer can hover, so a tapped option no longer stays outlined.
+- Grey caption text is darker in the light theme (5:1 on white), which passes WCAG AA.
+
+Accessibility
+- Each question is a labelled group, so a screen reader announces the question with its options and says
+  when it is required. Submitting with a required question unanswered moves focus to that question and
+  adds the error to its description.
+- Yes/No, scale and Pass/Fail buttons report `aria-pressed`; checklist rows are named groups; note boxes,
+  "Other" boxes and text answers have labels instead of placeholders only.
+- A keyboard focus ring shows on the whole option, not on the small radio or checkbox inside it.
+- Rank buttons use SVG chevrons instead of arrow characters, and a fully assigned allocate total reads
+  "(all assigned)" instead of a check mark.
+
+Fixed
+- T3 Code asked "Allow … to run …?" for every call the board made, including the autosave every few
+  seconds. The board's own tools (load, save draft, submit, asset chunks, a2ui events) now carry
+  `readOnlyHint`, since they act only on the board the person is using, at their request.
+- The closed comments panel no longer casts a shadow along the right edge of the page or stays in the
+  tab order.
+
 ### 0.23.2: no browser tab under T3 Code or Sushi
 
 Changed

@@ -1,4 +1,19 @@
-  function clearErr(qid) { if (cards[qid]) cards[qid].classList.remove('error'); }
+  function clearErr(qid) { if (cards[qid]) markError(cards[qid], false); }
+  /** Shows or hides a question's required error, and adds it to the group's description while it shows. */
+  function markError(card, bad) {
+    card.classList.toggle('error', bad);
+    const ids = [card.dataset.desc, bad ? card.dataset.err : ''].filter(Boolean).join(' ');
+    if (ids) card.setAttribute('aria-describedby', ids);
+    else card.removeAttribute('aria-describedby');
+  }
+  function requiredMark() {
+    return el('span', { class: 'req' }, el('span', { 'aria-hidden': 'true' }, ' *'), el('span', { class: 'sr-only' }, ' (required)'));
+  }
+  /** Toggle buttons say whether they are on, since their colour alone does not reach a screen reader. */
+  function setPressed(button, on) {
+    button.classList.toggle('sel', on);
+    button.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
 
   function syncOptSel(group) {
     for (const lab of group.querySelectorAll('label.opt')) {
@@ -49,7 +64,7 @@
     }
     if (q.other) {
       otherRadio = el('input', { type: 'radio', name: q.id });
-      const text = el('textarea', { class: 'otherinput', rows: '2', placeholder: 'your own answer…' });
+      const text = el('textarea', { class: 'otherinput', rows: '2', placeholder: 'your own answer…', 'aria-label': 'Your own answer' });
       text.value = (state.other[q.id] && state.other[q.id].text) || '';
       otherRadio.checked = otherOn();
       const ensureOther = () => state.other[q.id] || (state.other[q.id] = { on: false, text: text.value });
@@ -82,7 +97,7 @@
     if (q.other) {
       const oth = state.other[q.id];
       const box = el('input', { type: 'checkbox' });
-      const text = el('textarea', { class: 'otherinput', rows: '2', placeholder: 'your own answer…' });
+      const text = el('textarea', { class: 'otherinput', rows: '2', placeholder: 'your own answer…', 'aria-label': 'Your own answer' });
       box.checked = Boolean(oth && oth.on);
       text.value = (oth && oth.text) || '';
       const sync = () => { state.other[q.id] = { on: box.checked, text: text.value }; syncOptSel(group); clearErr(q.id); };
@@ -99,11 +114,11 @@
     const buttons = [];
     values.forEach((v, i) => {
       const b = el('button', { type: 'button' }, labels[i]);
-      if (state.answers[q.id] === v) b.classList.add('sel');
+      setPressed(b, state.answers[q.id] === v);
       b.addEventListener('click', () => {
         if (state.answers[q.id] === v) delete state.answers[q.id];
         else state.answers[q.id] = v;
-        for (const x of buttons) x.classList.toggle('sel', state.answers[q.id] === values[buttons.indexOf(x)]);
+        for (const x of buttons) setPressed(x, state.answers[q.id] === values[buttons.indexOf(x)]);
         clearErr(q.id);
       });
       buttons.push(b);
@@ -115,6 +130,15 @@
     const values = [];
     for (let i = q.min; i <= q.max; i++) values.push(i);
     const seg = segButtons(q, values, values.map(String));
+    // Up to 11 steps fit one even row on a phone; the end labels move under it
+    // so they do not squeeze the buttons. Longer scales keep the wrapping row.
+    if (values.length <= 11) {
+      const steps = '--n:' + values.length;
+      const grid = el('div', { class: 'scale scale-fit', style: steps }, ...seg.children);
+      if (!q.minLabel && !q.maxLabel) return grid;
+      return el('div', {}, grid, el('div', { class: 'scale-ends', style: steps },
+        el('span', {}, q.minLabel || ''), el('span', {}, q.maxLabel || '')));
+    }
     const row = el('div', { class: 'scale' });
     if (q.minLabel) row.append(el('span', { class: 'slabel' }, q.minLabel));
     row.append(...seg.children);
@@ -139,18 +163,18 @@
       const buttons = [];
       for (const s of q.statuses) {
         const b = el('button', { type: 'button', class: 'chk-status' + (s.tone ? ' tone-' + s.tone : '') }, s.label);
-        if (cur()[o.value] === s.value) b.classList.add('sel');
+        setPressed(b, cur()[o.value] === s.value);
         b.addEventListener('click', () => {
           const m = cur();
           if (m[o.value] === s.value) delete m[o.value];
           else m[o.value] = s.value;
-          for (const x of buttons) x.btn.classList.toggle('sel', m[o.value] === x.val);
+          for (const x of buttons) setPressed(x.btn, m[o.value] === x.val);
           clearErr(q.id);
         });
         buttons.push({ btn: b, val: s.value });
         seg.append(b);
       }
-      wrap.append(el('div', { class: 'chk-row' },
+      wrap.append(el('div', { class: 'chk-row', role: 'group', 'aria-label': o.label },
         el('div', { class: 'chk-body' }, el('div', { class: 'ol' }, o.label), o.description ? el('div', { class: 'od' }, o.description) : null),
         seg));
     }
@@ -167,7 +191,7 @@
     const refresh = () => {
       const m = cur();
       const sum = (q.options || []).reduce((a, o) => a + (Number(m[o.value]) || 0), 0);
-      const tail = sum > total ? ' (over by ' + (sum - total) + ')' : sum < total ? ' (' + (total - sum) + ' left)' : ' ✓';
+      const tail = sum > total ? ' (over by ' + (sum - total) + ')' : sum < total ? ' (' + (total - sum) + ' left)' : ' (all assigned)';
       sumEl.textContent = sum + ' / ' + total + unit + tail;
       sumEl.classList.toggle('over', sum > total);
       sumEl.classList.toggle('exact', sum === total);
@@ -193,6 +217,10 @@
     refresh();
     return wrap;
   }
+  // Lucide chevron-up / chevron-down; the buttons carry their own aria-label.
+  const RANK_ICON = (d) => '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:auto"><path d="' + d + '"/></svg>';
+  const RANK_ICON_UP = RANK_ICON('m18 15-6-6-6 6');
+  const RANK_ICON_DOWN = RANK_ICON('m6 9 6 6 6-6');
   // Reorderable priority list — see the browser board's controlRank. Answer is
   // the ordered array of option values (highest first); always a full permutation.
   function controlRank(q) {
@@ -213,8 +241,10 @@
       order.forEach((val, i) => {
         const o = byVal.get(val);
         if (!o) return;
-        const up = el('button', { type: 'button', class: 'rank-btn', title: 'Move up', 'aria-label': 'Move "' + o.label + '" up' }, '↑');
-        const down = el('button', { type: 'button', class: 'rank-btn', title: 'Move down', 'aria-label': 'Move "' + o.label + '" down' }, '↓');
+        const up = el('button', { type: 'button', class: 'rank-btn', title: 'Move up', 'aria-label': 'Move "' + o.label + '" up' });
+        const down = el('button', { type: 'button', class: 'rank-btn', title: 'Move down', 'aria-label': 'Move "' + o.label + '" down' });
+        up.innerHTML = RANK_ICON_UP;
+        down.innerHTML = RANK_ICON_DOWN;
         up.disabled = i === 0;
         down.disabled = i === order.length - 1;
         up.addEventListener('click', () => move(i, i - 1));
