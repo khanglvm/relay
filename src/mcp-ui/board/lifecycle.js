@@ -7,12 +7,16 @@
   }
 
   let booted = false;
-  async function boot(rawOrNormalized, alreadyNormalized, draft) {
-    if (booted || submitted) return;
+  // 'raw' while the board shows the agent's own tool input (local image paths
+  // unresolved), 'server' once relay_view's normalized spec is on screen.
+  let bootedFrom = null;
+  async function boot(rawOrNormalized, alreadyNormalized, draft, upgrade) {
+    if ((booted && !upgrade) || submitted) return;
     const next = alreadyNormalized ? rawOrNormalized : clientNormalize(rawOrNormalized);
     if (!next || (!Array.isArray(next.questions)) ) { return; }
     if (!next.questions.length && !(Array.isArray(next.blocks) && next.blocks.length)) return;
     booted = true;
+    bootedFrom = alreadyNormalized ? 'server' : 'raw';
     composing = false;
     if (previewTimer) { clearTimeout(previewTimer); previewTimer = null; }
     spec = next;
@@ -84,7 +88,9 @@
       const view = await callServerTool('relay_view', { boardId: BOARD.id, token: BOARD.token });
       if (!view.spec) return false;
       vendorUrls = view.vendorUrls || null;
-      await boot(view.spec, true, view.draft);
+      // Upgrading a raw-input board keeps what the person already entered there.
+      const upgrade = booted && bootedFrom === 'raw';
+      await boot(view.spec, true, upgrade ? payload() : view.draft, upgrade);
       if (view.finished) {
         submitted = true;
         showDone('delivered');
@@ -100,7 +106,10 @@
 
   onNotify('ui/notifications/tool-result', async (p) => {
     if (rawInputTimer) { clearTimeout(rawInputTimer); rawInputTimer = null; }
-    if (booted) return;
+    // A board that booted from the raw input while relay_board was still running
+    // (it can take seconds to embed images) is swapped for the server's version,
+    // whose images are already data URIs.
+    if (booted && bootedFrom !== 'raw') return;
     if (!(await bootFromServer(p)) && rawInput) boot(rawInput, false);
   });
   onNotify('ui/notifications/tool-input', (p) => {

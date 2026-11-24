@@ -1,5 +1,13 @@
 # Changelog
 
+### 0.25.2: inline board images load when relay_board is slow
+
+Fixed
+- When `relay_board` took more than about a second and a half (embedding several images), the inline board
+  started from the agent's raw tool input, whose images are local paths the widget cannot load, and showed
+  "Image failed to load". It never switched to the server's version afterwards. The board now swaps in the
+  normalized spec from `relay_view` as soon as the tool result arrives and keeps anything already entered.
+
 ### 0.25.1: relay_result waits at most 50 seconds
 
 Fixed
