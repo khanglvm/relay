@@ -2,4 +2,5 @@
 export { mcpConfig } from './config.js';
 export { runMcp, runMcpHttp } from './serve.js';
 export { fileStore } from './store.js';
+export { serveBoardMedia } from './media.js';
 export { registerRelay } from './tools.js';

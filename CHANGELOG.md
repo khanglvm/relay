@@ -1,5 +1,16 @@
 # Changelog
 
+### 0.26.0: local videos and PDFs play on inline boards
+
+Fixed
+- A local video or pdf block on an MCP board reached the board iframe as a bare path on the server, which the
+  iframe cannot load, so the video showed an empty player. `relay_view` now drops the path and points the
+  block at the host's `mediaUrl`.
+
+Added
+- `registerRelay` takes `mediaUrl(boardId, blockId)`, and `@khanglvm/relay/mcp` exports `serveBoardMedia`,
+  which streams the stored file with Range support (so a video can seek) under the board's own file roots.
+
 ### 0.25.2: inline board images load when relay_board is slow
 
 Fixed

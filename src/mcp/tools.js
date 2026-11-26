@@ -13,6 +13,7 @@ import {
 } from './boards.js';
 import { BOARD_URI, MAX_WAIT_SECONDS, TOOL, UI_MIME, VENDOR_URI_PREFIX } from './constants.js';
 import { BOARD_RESOURCE_META, boardPage, DOCS_DIR, vendorChunk, vendorText, VENDOR_FILES } from './page.js';
+import { viewSpec } from './media.js';
 import { actionInput, aliasInput, assetInput, boardInput, draftInput, helpInput, resultInput, submitInput, viewInput } from './schemas.js';
 import { fileStore } from './store.js';
 import { boardToken, loadServerKey, tokenValid } from './token.js';
@@ -41,6 +42,7 @@ const json = (value, structured) => ({ content: [{ type: 'text', text: JSON.stri
  * @param {string | Buffer} [options.tokenKey] the secret behind board tokens; defaults to a key file in the relay home
  * @param {(name: string) => string} [options.assetUrl] URL of a vendor file, for hosts that can fetch it
  * @param {(boardId: string) => string} [options.linkUrl] a URL where a person can open the board outside the host
+ * @param {(boardId: string, blockId: string) => string} [options.mediaUrl] a URL the host serves a local video or pdf block from, with `serveBoardMedia`; without it those blocks show no media
  * @returns the app-only tools, so a server can hide them from a client that cannot render the board
  */
 export function registerRelay(server, options = {}) {
@@ -180,7 +182,7 @@ function registerAppTools({ server, options, store, key }) {
       return { content: [{ type: 'resource', resource: { uri: `a2ui://relay/board/${record.id}`, mimeType: A2UI_MIME, text: JSON.stringify(messages) } }] };
     }
     const vendorUrls = options.assetUrl ? Object.fromEntries(VENDOR_FILES.map((f) => [f, options.assetUrl(f)])) : undefined;
-    return json({ boardId: record.id }, { boardId: record.id, spec: record.spec, draft: record.draft ?? null, finished: Boolean(record.result), vendorUrls });
+    return json({ boardId: record.id }, { boardId: record.id, spec: viewSpec(record.spec, record.id, options.mediaUrl), draft: record.draft ?? null, finished: Boolean(record.result), vendorUrls });
   });
   appTool(TOOL.draft, { description: 'Saves the answers so far.', inputSchema: draftInput }, onOpenBoard(async (record, args) => {
     await saveDraft(store, record.id, args.draft, record.spec);
