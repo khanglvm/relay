@@ -20,9 +20,9 @@ import { boardToken, loadServerKey, tokenValid } from './token.js';
 
 const BOARD_DESCRIPTION = `Put a board in front of the person and collect their answers. It renders inline; the result is a summary with the boardId. Read the outcome with relay_result.
 Spec: {title, intro?, blocks?:[...], questions?:[...]}. With no questions the board is display-only and needs no reply.
-Question: {id,type,label,required?,options?:[{value,label,description?,blocks?}|"text"]}. Types: single multi yesno text textarea scale(min,max) color rank checklist allocate(total).
+Question: {id,type,label,required?,options?:[{value,label,description?,blocks?}|"text"]}. Types: single multi yesno text textarea scale(min,max) color rank checklist allocate(total) pick.
 Blocks: markdown(md|mdFile) code(code|codeFile) diff(diffFile) image(src,alt?,pins?) compare(before,after) chart(kind,labels,series:[{label,data}]) table(columns,rows) kpi(items) mermaid(code) graphviz(dot) html palette video pdf a2ui(express). Local files take absolute paths; inline boards cannot open local links, so embed file content.
-Blocks go on the board, on a question, or on an option. Use ids that stay stable.
+Blocks go on the board, on a question, or in options[].blocks. For live prototypes, use {type:"html", html:document, isolated:true, height:480} inside the option. Inline the prototype’s assets as data URLs or use absolute HTTPS asset URLs. Use ids that stay stable.
 For exact fields call relay_help {topic: questions|blocks|annotate|lifecycle|a2ui|sharing|mcp} or {schema:"chart"}.`;
 
 const readDoc = (file) => fs.readFileSync(path.join(DOCS_DIR, file), 'utf8');

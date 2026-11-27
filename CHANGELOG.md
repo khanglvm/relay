@@ -1,5 +1,12 @@
 # Changelog
 
+### 0.27.0
+
+Added
+- Set `isolated: true` on an HTML block to show a live prototype inside an option.
+  Relay renders the supplied document in its own sandboxed frame and keeps it
+  running when the board theme changes.
+
 ### 0.26.0: local videos and PDFs play on inline boards
 
 Fixed

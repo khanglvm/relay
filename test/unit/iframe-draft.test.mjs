@@ -74,3 +74,35 @@ test('a draft the iframe saved comes back from relay_view with its block edits',
   assert.equal(view.draft.comment, 'wip');
   assert.deepEqual(view.draft.blockEdits, { m: 'graph TD' });
 });
+
+test('the inline renderer keeps an isolated option as supplied and returns its choice', async () => {
+  const client = await stdioClient();
+  const html = '<style>body { color: navy; }</style><button>Preview</button>';
+  const made = await client.callTool({ name: 'relay_board', arguments: {
+    title: 'Live options',
+    questions: [{ id: 'layout', type: 'single', label: 'Which layout?', options: [
+      { value: 'first', label: 'First', blocks: [{ type: 'html', html, isolated: true }] },
+      { value: 'second', label: 'Second', blocks: [{ type: 'html', html }] },
+    ] }],
+  } });
+  const { boardId } = made.structuredContent;
+  const token = made._meta.relay.token;
+  const { spec } = (await client.callTool({ name: 'relay_view', arguments: { boardId, token } })).structuredContent;
+  const [isolated, themed] = spec.questions[0].options.map((option) => option.blocks[0]);
+  const vendors = fs.readFileSync(path.join(ROOT, 'src', 'mcp-ui', 'board', 'vendors.js'), 'utf8');
+  const context = vm.createContext({ Blob, URL, spec, effectiveTheme: () => 'dark' });
+  const urls = vm.runInContext(`${vendors}
+    indexHtmlBlocks(spec);
+    [htmlBlobSrc(${JSON.stringify(isolated.id)}), htmlBlobSrc(${JSON.stringify(themed.id)})];`, context);
+  try {
+    const [isolatedDocument, themedDocument] = await Promise.all(urls.map(async (url) => (await fetch(url)).text()));
+    assert.equal(isolatedDocument, html);
+    assert.match(themedDocument, /color-scheme:dark/);
+  } finally {
+    urls.forEach((url) => URL.revokeObjectURL(url));
+  }
+  const submit = await client.callTool({ name: 'relay_submit', arguments: { boardId, token, payload: { answers: { layout: 'first' } } } });
+  assert.ok(!submit.isError);
+  const result = await client.callTool({ name: 'relay_result', arguments: { boardId } });
+  assert.deepEqual(JSON.parse(result.content[0].text).answers, { layout: 'first' });
+});

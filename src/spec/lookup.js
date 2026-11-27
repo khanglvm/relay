@@ -23,7 +23,7 @@ export const BLOCK_FIELDS = {
   'git-conflict': ['content', 'text', 'file', 'path', 'lang', 'filename'],
   video: ['src', 'alt', 'title'],
   pdf: ['src', 'alt', 'title'],
-  html: ['html', 'htmlFile'],
+  html: ['html', 'htmlFile', 'isolated'],
   image: ['src', 'alt', 'pins'],
   palette: ['palettes', 'colors', 'name'],
   kpi: ['items'],

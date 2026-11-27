@@ -70,6 +70,7 @@ function normalizeBlock(rawBlock, id, files, where) {
     id,
     type: 'html',
     html,
+    ...(rawBlock.isolated === true ? { isolated: true } : {}),
     height: clampInt(rawBlock.height, BLOCK_HEIGHT.min, BLOCK_HEIGHT.max, 360),
   };
 }

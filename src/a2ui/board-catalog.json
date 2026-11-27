@@ -563,6 +563,10 @@
         "component": {
           "const": "Html"
         },
+        "isolated": {
+          "type": "boolean",
+          "description": "Render the supplied document without host theme or annotation code."
+        },
         "title": {
           "$ref": "common_types.json#/$defs/DynamicString"
         },

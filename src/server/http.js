@@ -70,6 +70,18 @@ export function sendDataImage(res, dataUri) {
   return true;
 }
 
+// Keep the document on an opaque origin even when someone opens its URL directly.
+const HTML_DOCUMENT_SANDBOX = 'sandbox allow-scripts allow-forms allow-popups allow-modals';
+
+/** Sends the HTML block as supplied or adds the theme wrapper and annotation bootstrap. */
+export function sendHtmlBlock(res, block, theme, annotate) {
+  const html = block?.html || '';
+  if (block?.isolated === true) {
+    return sendHtml(res, html, { 'content-security-policy': HTML_DOCUMENT_SANDBOX });
+  }
+  return sendHtml(res, wrapFragment(html, theme, annotate));
+}
+
 export function sendJs(res, body) {
   res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' });
   res.end(body);

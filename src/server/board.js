@@ -9,7 +9,7 @@ import { assertSpecReady, cleanAnswers } from '../spec/index.js';
 import { loadBoard, removeRunning, saveBoard, saveBoardArtifact, savePref, saveRunning } from '../store.js';
 import { SHARE_STATE_VERSION, pruneReviewDrafts, reviewSessionCookie, reviewSessionId, sideReviewState } from './reviews.js';
 import { buildLockedPage, buildPage, shareHost } from './page.js';
-import { isDirectLocalRequest, readBody, sameOrigin, sendDataImage, sendFromDir, sendHtml, sendJs, sendJson, wrapFragment } from './http.js';
+import { isDirectLocalRequest, readBody, sameOrigin, sendDataImage, sendFromDir, sendHtml, sendHtmlBlock, sendJs, sendJson } from './http.js';
 import { UI_DIR, VENDOR_DIR } from './paths.js';
 import { findBlock, findHtmlBlock, firstBoardHtml, firstQuestionHtml, sanitizeAnnotations, sanitizeBlockEdits } from './sanitize.js';
 import { ARTIFACT_MAX_BYTES, ARTIFACT_MIMES, artifactBytesMatch, runOnResult } from './result.js';
@@ -289,7 +289,7 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
         const block = findHtmlBlock(record.spec, blockId);
         if (!block) return sendJson(res, 404, { error: `no html block "${blockId}"` });
         const access = accessFor(req, reqUrl);
-        sendHtml(res, wrapFragment(block.html || '', theme, access.canComment === true && record.spec.responseRequired !== false));
+        sendHtmlBlock(res, block, theme, access.canComment === true && record.spec.responseRequired !== false);
       } else if (req.method === 'GET' && pathname.startsWith('/img/b/')) {
         // Embedded image bytes (image blocks authored from local files).
         const blockId = decodeURIComponent(pathname.slice('/img/b/'.length));
@@ -346,14 +346,14 @@ export async function runBoard({ id, port = 0, open = true, timeoutSec = 86400, 
         // Legacy alias → the board's first html block.
         const block = firstBoardHtml(record.spec);
         const access = accessFor(req, reqUrl);
-        sendHtml(res, wrapFragment((block && block.html) || '', theme, access.canComment === true && record.spec.responseRequired !== false));
+        sendHtmlBlock(res, block, theme, access.canComment === true && record.spec.responseRequired !== false);
       } else if (req.method === 'GET' && pathname.startsWith('/html/q/')) {
         const qid = decodeURIComponent(pathname.slice('/html/q/'.length));
         const q = record.spec.questions.find((q) => q.id === qid);
         if (!q) return sendJson(res, 404, { error: `no question "${qid}"` });
         const block = firstQuestionHtml(q);
         const access = accessFor(req, reqUrl);
-        sendHtml(res, wrapFragment((block && block.html) || '', theme, access.canComment === true && record.spec.responseRequired !== false));
+        sendHtmlBlock(res, block, theme, access.canComment === true && record.spec.responseRequired !== false);
       } else if (req.method === 'POST' && pathname === '/api/pref') {
         const body = JSON.parse((await readBody(req)) || '{}');
         if (['auto', 'light', 'dark'].includes(body.theme)) savePref({ theme: body.theme });

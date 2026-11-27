@@ -44,7 +44,7 @@ function clientBlock(b) {
   const extra = {};
   if (b && b.ref !== undefined) extra.ref = b.ref;
   if (b && b.type === 'html') {
-    return { id: b.id, type: 'html', height: b.height, hasHtml: Boolean(b.html), ...extra };
+    return { id: b.id, type: 'html', height: b.height, hasHtml: Boolean(b.html), ...(b.isolated === true ? { isolated: true } : {}), ...extra };
   }
   if (b && b.type === 'image' && typeof b.src === 'string' && b.src.startsWith('data:')) {
     return { id: b.id, type: 'image', alt: b.alt, height: b.height, hasData: true, ...(b.pins ? { pins: true } : {}), ...extra };

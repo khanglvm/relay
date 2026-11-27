@@ -1,7 +1,7 @@
 {
   "web": {
-    "bytes": 381956,
-    "sha256": "02b266e9ea8fe6af28f34b991777bb84acf69bd82b78ebf4fd9e4083e4d54132",
+    "bytes": 382422,
+    "sha256": "71a5d7c3cfd72ddfee3501bed4a89f7bc3ad610e6c61b3f2b25e476d7144866a",
     "scripts": [
       {
         "bytes": 2004,
@@ -9,8 +9,8 @@
         "head": "{\"boardId\":\"(varies)\",\"spec\":{\"title\":\"Auth feature — decisi"
       },
       {
-        "bytes": 175006,
-        "sha256": "d2467ceea0f7353e9d93926e96a5dffe6bec68858e67d6a39edfb26805d09f47",
+        "bytes": 175287,
+        "sha256": "0edf16205815b78dad492d1f011aa99d65bf49df659b5e7a5295170de5e2ee0c",
         "head": "// a2ui-state.js — window.RelayA2uiState: the data model and"
       },
       {
@@ -19,8 +19,8 @@
         "head": "/* relay annotate — element-level comments (window.RelayAnno"
       },
       {
-        "bytes": 73336,
-        "sha256": "4cceeb03e20abe184c39ee7e33b149c05efc65e848f36b6bd9c89edef45c63f7",
+        "bytes": 73521,
+        "sha256": "a6996f2f0ec514df5b9396a97e8ee48445d1d52e857d6d85e39c85047c23871d",
         "head": "(() => {\n  'use strict';\n\n  const boot = JSON.parse(document"
       }
     ],
@@ -33,8 +33,8 @@
     ]
   },
   "mcp": {
-    "bytes": 380577,
-    "sha256": "a7549afa056392df3ad6537161d3868ca4630d47d95b42fecd1416f550411c00",
+    "bytes": 380919,
+    "sha256": "07b9b37bbc595e96282d1436b630e5a154ae1468eaace6112b2ab0b748a9b64f",
     "scripts": [
       {
         "bytes": 23,
@@ -42,8 +42,8 @@
         "head": "{\"version\":\"(version)\"}"
       },
       {
-        "bytes": 175006,
-        "sha256": "d2467ceea0f7353e9d93926e96a5dffe6bec68858e67d6a39edfb26805d09f47",
+        "bytes": 175287,
+        "sha256": "0edf16205815b78dad492d1f011aa99d65bf49df659b5e7a5295170de5e2ee0c",
         "head": "// a2ui-state.js — window.RelayA2uiState: the data model and"
       },
       {
@@ -52,8 +52,8 @@
         "head": "/* relay annotate — element-level comments (window.RelayAnno"
       },
       {
-        "bytes": 68636,
-        "sha256": "16b4d8ef5c7faa392ce14c9239fefd8f696f3437df33cb45e2ec348ff894aa59",
+        "bytes": 68697,
+        "sha256": "5228278eecabc4e8d6ba66e30f3c2ecbf316d9de949855c08bd2149065b2f787",
         "head": "// board.js — the relay board as an MCP App (SEP-1865 \"io.mo"
       }
     ],
@@ -64,8 +64,8 @@
         "head": "/* quest-board theme — editorial minimalism in the spirit of"
       },
       {
-        "bytes": 131306,
-        "sha256": "05b8b86d1dd4f059e5378c36f78c2a6d1c1cb7d281fe901678bf33b48e25ed13",
+        "bytes": 131648,
+        "sha256": "8d961701caed189020d2c1381544e77ae5b7af8a355b3822fe812e534b0afa64",
         "head": ", on* handlers, non-fragment href/xlink:href\n  // (<use>/<im"
       }
     ]

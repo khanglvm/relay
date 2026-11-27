@@ -231,6 +231,10 @@
             "type": "string",
             "description": "html: path to an HTML file (alternative to \"html\")."
           },
+          "isolated": {
+            "type": "boolean",
+            "description": "html: render the document in a sandboxed iframe with its own styles and scripts. Use under options[].blocks for a live preview."
+          },
           "src": {
             "type": "string",
             "description": "image: http(s)/data URL, or a local file path (png/jpg/gif/webp/svg/avif/bmp — embedded at spec time, served offline). video: a YouTube/Vimeo URL (embeds an iframe player), an http(s) media URL, or a local video file (mp4/webm/ogv/mov/mkv/m4v — streamed from the server, never embedded)."
@@ -699,6 +703,10 @@
                           "htmlFile": {
                             "type": "string",
                             "description": "html: path to an HTML file (alternative to \"html\")."
+                          },
+                          "isolated": {
+                            "type": "boolean",
+                            "description": "html: render the document in a sandboxed iframe with its own styles and scripts. Use under options[].blocks for a live preview."
                           },
                           "src": {
                             "type": "string",
@@ -1205,6 +1213,10 @@
                 "htmlFile": {
                   "type": "string",
                   "description": "html: path to an HTML file (alternative to \"html\")."
+                },
+                "isolated": {
+                  "type": "boolean",
+                  "description": "html: render the document in a sandboxed iframe with its own styles and scripts. Use under options[].blocks for a live preview."
                 },
                 "src": {
                   "type": "string",

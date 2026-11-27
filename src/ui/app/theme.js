@@ -13,8 +13,8 @@
     if (theme === 'auto') delete document.documentElement.dataset.theme;
     else document.documentElement.dataset.theme = theme;
     if (themeBtn) themeBtn.textContent = { auto: '◐ auto', light: '☀ light', dark: '☾ dark' }[theme];
-    // Custom-HTML iframes get ?theme=light|dark so authors can match the theme.
-    for (const f of document.querySelectorAll('iframe.viz')) {
+    // Themed frames can adapt to the board. Isolated previews keep their current document state.
+    for (const f of document.querySelectorAll('iframe.viz:not([data-relay-isolated])')) {
       try {
         const u = new URL(f.src);
         if (u.searchParams.get('theme') !== effectiveTheme()) {

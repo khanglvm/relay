@@ -54,10 +54,12 @@
   function blockCtx(questionId) {
     return {
       theme: effectiveTheme,
-      htmlSrc: (blockId) => {
-        const params = new URLSearchParams({ theme: effectiveTheme() });
+      htmlSrc: (blockId, isolated) => {
+        const params = new URLSearchParams();
+        if (!isolated) params.set('theme', effectiveTheme());
         if (access.token) params.set('token', access.token);
-        return '/html/b/' + encodeURIComponent(blockId) + '?' + params.toString();
+        const query = params.toString();
+        return '/html/b/' + encodeURIComponent(blockId) + (query ? '?' + query : '');
       },
       questionId: questionId == null ? null : questionId,
       annotate: responseRequired ? Annotate : null,

@@ -52,7 +52,7 @@ stderr. Exit codes: `0` submitted/acknowledged · `2` timeout · `3` cancelled �
 {"type":"a2ui","title":"Checks","express":"$/runs = [{title: \"Build\", trailing: \"ok\", tone: \"ok\"}]\nroot = Card(\"Checks\", [List($/runs), Button(\"Retry\", action=Event(\"retry\", {}))])"}   // buttons and live status: use a2ui, not html
 {"id":"signoff","type":"checklist","label":"Sign off each area","options":["login","billing"]}   // pass/fail/N-A per item: one checklist, not many yes/no
 {"id":"rank","type":"rank","label":"Priorities","options":["speed","a11y"]}   {"id":"split","type":"allocate","label":"Budget","total":100,"options":["type","space"]}
-{"id":"c","type":"single","label":"Scheme?","options":[{"value":"warm","label":"Warm","blocks":[{"type":"html","html":"<div style='height:100%;background:#c2674b'></div>","height":140}]}]}   // a visual per option
+{"id":"c","type":"single","label":"Scheme?","options":[{"value":"warm","label":"Warm","blocks":[{"type":"html","html":"<!doctype html><html><body style='background:#c2674b'>Warm</body></html>","isolated":true,"height":140}]}]}
 {"id":"hero","type":"pick","label":"Shortlist two","max":2,"items":[{"id":"a","title":"Warm","image":"/abs/a.png","caption":"Terracotta"},{"id":"b","title":"Demo","video":"https://example.com/b.mp4"},{"id":"c","title":"Ref","url":"https://example.com/c"}]}   // media tiles; answer {picks:[{id,note?}],overall?}; max 1 = single, min/max bound a multi
 {"id":"s","type":"scale","label":"Rate","min":1,"max":5}   {"id":"col","type":"color","label":"Brand color"}   {"id":"ship","type":"yesno","label":"Ship?"}
 ```
@@ -377,10 +377,12 @@ Rules of thumb:
 
 - Any block type works inside an option (image, html, chart, mermaid,
   graphviz, plantuml, table, code, markdown).
-- Keep option visuals **compact** — `"height"` ~140–260. They render inside the
-  option card, under the label/description.
-- Interacting with the visual (zoom, annotate, chart hover) never toggles the
-  option; the label row is what selects. Option visuals stay fully annotatable.
+- Put a live prototype in `options[].blocks` with
+  `{"type":"html","html":"<!doctype html>...","isolated":true,"height":480}`.
+  Send the complete document. Inline CSS and JavaScript. Use data URLs for
+  local assets or absolute HTTPS URLs the host allows.
+- Set the preview height to suit the content. Click the option label to select
+  it. Controls inside the preview belong to the embedded page.
 - Use this whenever the choice has visual/example context; skip it for plainly
   textual options. It beats one big side-by-side comparison block because the
   selected visual is unambiguous.
@@ -598,26 +600,26 @@ marker.
 
 ## Custom HTML sizing contract
 
-- Rendered in a **sandboxed iframe** (`allow-scripts allow-forms allow-popups
-  allow-modals`, **no** same-origin/parent access). Ship a self-contained HTML
-  document: inline your CSS/JS; external CDN resources do load, but offline-safe
-  inline is better.
+- Relay renders HTML in a sandboxed iframe. It allows scripts, forms, popups,
+  and modals. The frame has its own origin. Inline your CSS, JavaScript, and
+  local assets so the page can load inside an MCP host.
 - **Width: always 100% of the content column — up to ~820 px on desktop, as
   narrow as ~300 px on phones. Design responsively; don't assume fixed width.**
 - **Height: fixed per block via `height` (px, 100–2400). Default 360.**
   Content taller than that scrolls inside the iframe.
-- **Fragments** (no `<html>` tag) are auto-wrapped in a minimal document whose
-  background/text match the user's current theme. **Full documents** are served
-  verbatim and receive a `?theme=light|dark` query param on theme toggle.
+- Set `"isolated": true` to embed the HTML as supplied. Relay skips its theme
+  wrapper and element-comment script. Changing the board theme leaves the preview
+  running. Comments on the whole block are still available.
+- Other HTML blocks can follow the board theme. Relay wraps fragments in a
+  themed document. On the browser board, complete documents can read the
+  `?theme=light|dark` query parameter.
 
 ### Custom HTML is hover-commentable automatically
 
-Every custom-HTML block is annotatable out of the box — relay injects a tiny
-runtime that lets the user **hover any meaningful element** (headings,
-paragraphs, list items, buttons, images, cards, table cells…) to get a comment
-pin, exactly like the rest of the board. You don't have to do anything. Comments
-come back in `result.annotations` with `target.kind = "html-element"`, a stable
-`target.ref` (the element), and a `target.label` derived from the element.
+On the browser board, hover over an element in a themed HTML block to leave a
+comment. Relay returns it in `result.annotations` with
+`target.kind = "html-element"`, a stable `target.ref`, and a `target.label`
+derived from the element.
 
 Reach for the controls below only when you want to **scope or label** what's
 annotatable — typically for an interactive prototype where blanket hover targets

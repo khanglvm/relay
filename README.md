@@ -33,7 +33,7 @@ rly diff --staged
 ## What you can review
 
 - Plans, documents, charts, and diagrams.
-- Images and HTML prototypes, with comments on individual elements or areas.
+- Images and HTML prototypes. Each choice can show a live prototype in its own sandboxed frame.
 - Source files and diffs, including commit choices and merge conflicts.
 - Questions with choices, notes, and other form controls.
 

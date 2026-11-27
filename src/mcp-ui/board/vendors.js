@@ -90,14 +90,13 @@
     if (jobs.length) await Promise.allSettled(jobs);
   }
 
-  // html blocks: the browser board serves each in its own iframe from
-  // /html/b/<id>. Here we wrap the body into a self-contained document and hand
-  // blocks.js a blob: URL for the iframe src (same sandbox, no server needed).
-  const htmlBodies = new Map();
+  // The inline board uses a blob instead of fetching the document from /html/b/<id>.
+  const htmlBlocks = new Map();
   function indexHtmlBlocks(spec) {
+    htmlBlocks.clear();
     const add = (blocks) => {
       for (const b of Array.isArray(blocks) ? blocks : []) {
-        if (b && b.type === 'html' && typeof b.html === 'string') htmlBodies.set(b.id, b.html);
+        if (b && b.type === 'html' && typeof b.html === 'string') htmlBlocks.set(b.id, b);
       }
     };
     add(spec.blocks);
@@ -107,12 +106,13 @@
     }
   }
   function htmlBlobSrc(blockId) {
-    const body = htmlBodies.get(blockId) || '';
-    const dark = effectiveTheme() === 'dark';
+    const block = htmlBlocks.get(blockId);
+    const body = block?.html ?? '';
     let doc;
-    if (/<html[\s>]/i.test(body)) {
+    if (block?.isolated === true || /<html[\s>]/i.test(body)) {
       doc = body;
     } else {
+      const dark = effectiveTheme() === 'dark';
       const bg = dark ? '#282624' : '#ffffff';
       const fg = dark ? '#edeae4' : '#1c1b19';
       doc =

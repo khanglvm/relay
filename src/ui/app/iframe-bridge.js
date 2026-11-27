@@ -7,8 +7,9 @@
   // We own the annotation state, popover, and the submitted result; the iframe
   // owns hover/pin/badges over its own (cross-origin) DOM.
   if (Annotate && responseRequired) {
+    const commentFrames = () => document.querySelectorAll('iframe.viz[data-relay-hover-comments]');
     const frameOf = (source) => {
-      for (const f of document.querySelectorAll('iframe.viz')) {
+      for (const f of commentFrames()) {
         if (f.contentWindow === source) return f;
       }
       return null;
@@ -28,7 +29,7 @@
     };
     // Refresh badges in every html iframe (called whenever annotations change).
     window.__relayBroadcastCounts = () => {
-      for (const f of document.querySelectorAll('iframe.viz')) postCountsTo(f);
+      for (const f of commentFrames()) postCountsTo(f);
     };
 
     window.addEventListener('message', (e) => {

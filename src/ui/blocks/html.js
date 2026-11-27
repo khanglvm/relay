@@ -16,29 +16,32 @@
 
   function renderHtml(block, ctx, blockId) {
     const height = clampHeight(block.height, 360);
+    const isolated = block.isolated === true;
     const iframe = el('iframe', {
       class: 'viz',
       'data-block-id': blockId,
       'data-question-id': ctx.questionId || '',
-      'data-relay-hover-comments': 'on',
-      src: ctx.htmlSrc(blockId),
+      // Relay's color scheme would otherwise reach the embedded document's media queries.
+      ...(isolated ? { 'data-relay-isolated': '', style: 'color-scheme: normal' } : { 'data-relay-hover-comments': 'on' }),
+      src: ctx.htmlSrc(blockId, isolated),
       height: String(height),
       sandbox: 'allow-scripts allow-forms allow-popups allow-modals',
       loading: 'lazy',
     });
-    iframe.addEventListener('load', () => syncHtmlHoverComments(iframe));
     const wrap = el('div', { class: 'blk-htmlwrap' }, iframe);
+    const hoverComments = isolated ? null : {
+      isEnabled: () => iframe.dataset.relayHoverComments !== 'off',
+      setEnabled: (enabled) => {
+        iframe.dataset.relayHoverComments = enabled ? 'on' : 'off';
+        syncHtmlHoverComments(iframe);
+      },
+    };
+    if (hoverComments) iframe.addEventListener('load', () => syncHtmlHoverComments(iframe));
     attachViewer(wrap, {
       zoomEl: null,
       label: 'embed',
       comment: wholeBlockComment(ctx, blockId, 'embed'),
-      hoverComments: {
-        isEnabled: () => iframe.dataset.relayHoverComments !== 'off',
-        setEnabled: (enabled) => {
-          iframe.dataset.relayHoverComments = enabled ? 'on' : 'off';
-          syncHtmlHoverComments(iframe);
-        },
-      },
+      hoverComments,
     });
     return wrap;
   }

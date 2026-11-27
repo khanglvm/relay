@@ -43,6 +43,8 @@
   }
 
   window.addEventListener('message', (e) => {
+    // Only the app host speaks MCP. Embedded previews are children of this frame.
+    if (e.source !== window.parent) return;
     const msg = e.data;
     if (!msg || typeof msg !== 'object' || msg.jsonrpc !== '2.0') return;
     // A response to one of our requests.

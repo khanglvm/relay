@@ -53,6 +53,7 @@ const BLOCK_SCHEMA = {
       exportable: { type: 'boolean', description: 'table: show a "CSV" button that downloads the (filtered) rows as a CSV file.' },
       html: { type: 'string', description: 'html: custom markup rendered in a sandboxed iframe.' },
       htmlFile: { type: 'string', description: 'html: path to an HTML file (alternative to "html").' },
+      isolated: { type: 'boolean', description: 'html: render the document in a sandboxed iframe with its own styles and scripts. Use under options[].blocks for a live preview.' },
       src: { type: 'string', description: 'image: http(s)/data URL, or a local file path (png/jpg/gif/webp/svg/avif/bmp — embedded at spec time, served offline). video: a YouTube/Vimeo URL (embeds an iframe player), an http(s) media URL, or a local video file (mp4/webm/ogv/mov/mkv/m4v — streamed from the server, never embedded).' },
       alt: { type: 'string', description: 'image: alt text / annotation label. video: accessible title for the player.' },
       palettes: {

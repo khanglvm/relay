@@ -955,6 +955,11 @@ console.log('18. option blocks & image block');
       },
     ],
   };
+  const isolatedHtml = '<!doctype html><html><body>Live preview</body></html>';
+  const isolatedBlock = { type: 'html', html: isolatedHtml, isolated: true, height: 240 };
+  OPT_SPEC.blocks.push(isolatedBlock);
+  OPT_SPEC.questions[0].blocks = [isolatedBlock];
+  OPT_SPEC.questions[0].options[1].blocks.push(isolatedBlock);
   const optSpecPath = path.join(HOME, 'opt-spec.json');
   fs.writeFileSync(optSpecPath, JSON.stringify(OPT_SPEC));
 
@@ -970,6 +975,7 @@ console.log('18. option blocks & image block');
   // Page payload: bodies stripped, metadata + vendor flags kept.
   const page = await (await fetch(url)).text();
   ok(!page.includes('opt html'), 'option html body is NOT inline in the page');
+  ok(page.includes('"id":"pick-o2-b2","type":"html","height":240,"hasHtml":true,"isolated":true'), 'option HTML keeps its isolation flag in the client spec');
   ok(!page.includes(pngB64), 'embedded image bytes are NOT inline in the page');
   ok(page.includes('"hasData":true'), 'embedded image block ships hasData flag');
   if (fs.existsSync(path.join(ROOT, 'vendor', 'chart.umd.js'))) {
@@ -978,7 +984,16 @@ console.log('18. option blocks & image block');
 
   // Serving endpoints reach option scope.
   const oh = await (await fetch(new URL('/html/b/pick-o1-b2', url))).text();
-  ok(oh.includes('<b>opt html</b>'), 'option html block served at /html/b/<id>');
+  ok(oh.includes('<b>opt html</b>') && oh.includes('/kit.js'), 'option HTML can still use the board theme and comments');
+  const isolated = await fetch(new URL('/html/b/pick-o2-b2?theme=dark', url));
+  ok(await isolated.text() === isolatedHtml, 'isolated option HTML is served as supplied');
+  ok(isolated.headers.get('content-security-policy')?.startsWith('sandbox allow-scripts'), 'isolated document URL is also sandboxed');
+  ok(!isolated.headers.get('content-security-policy')?.includes('allow-same-origin'), 'isolated document cannot access the board origin');
+  for (const alias of ['/html/board', '/html/q/pick']) {
+    const response = await fetch(new URL(alias, url));
+    ok(await response.text() === isolatedHtml, `${alias} preserves the isolated document`);
+    ok(response.headers.get('content-security-policy') === isolated.headers.get('content-security-policy'), `${alias} preserves the sandbox policy`);
+  }
   const ir = await fetch(new URL('/img/b/pick-o1-b1', url));
   ok(ir.status === 200 && (ir.headers.get('content-type') || '').includes('image/png'), '/img/b/<id> serves the embedded image with its mime');
   ok(Buffer.from(await ir.arrayBuffer()).equals(Buffer.from(pngB64, 'base64')), 'embedded image bytes round-trip exactly');

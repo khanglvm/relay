@@ -35,7 +35,7 @@ If Relay MCP tools are connected, call `relay_board` with the same spec (questio
 ```
 - Question types: single multi yesno text textarea scale color rank checklist allocate pick.
 - Blocks: markdown(md|mdFile) code(codeFile) diff(diffFile) image compare chart table kpi mermaid graphviz html palette video pdf a2ui. Local files: pass absolute paths.
-- Blocks go at the board root, on a question, or on an option (visual choices).
+- Blocks go at the board root, on a question, or in `options[].blocks`. For a working site or prototype, put its HTML in an option block with `isolated:true`. Use a complete document and inline its local assets as data URLs.
 - Every id is stable and unique. `required:true` only for answers you cannot continue without.
 - A board with `questions` collects answers. One without is display-only.
 
@@ -51,7 +51,7 @@ If Relay MCP tools are connected, call `relay_board` with the same spec (questio
 {"type":"a2ui","title":"Checks","express":"$/runs = [{title: \"Build\", trailing: \"ok\", tone: \"ok\"}]\nroot = Card(\"Checks\", [List($/runs), Button(\"Retry\", action=Event(\"retry\", {}))])"}   // buttons and live status: use a2ui, not html
 {"id":"signoff","type":"checklist","label":"Sign off each area","options":["login","billing"]}   // pass/fail/N-A per item: one checklist, not many yes/no
 {"id":"rank","type":"rank","label":"Priorities","options":["speed","a11y"]}   {"id":"split","type":"allocate","label":"Budget","total":100,"options":["type","space"]}
-{"id":"c","type":"single","label":"Scheme?","options":[{"value":"warm","label":"Warm","blocks":[{"type":"html","html":"<div style='height:100%;background:#c2674b'></div>","height":140}]}]}   // a visual per option
+{"id":"c","type":"single","label":"Scheme?","options":[{"value":"warm","label":"Warm","blocks":[{"type":"html","html":"<!doctype html><html><body style='background:#c2674b'>Warm</body></html>","isolated":true,"height":140}]}]}
 {"id":"hero","type":"pick","label":"Shortlist two","max":2,"items":[{"id":"a","title":"Warm","image":"/abs/a.png","caption":"Terracotta"},{"id":"b","title":"Demo","video":"https://example.com/b.mp4"},{"id":"c","title":"Ref","url":"https://example.com/c"}]}   // media tiles; answer {picks:[{id,note?}],overall?}; max 1 = single, min/max bound a multi
 {"id":"s","type":"scale","label":"Rate","min":1,"max":5}   {"id":"col","type":"color","label":"Brand color"}   {"id":"ship","type":"yesno","label":"Ship?"}
 ```

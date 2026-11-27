@@ -40,7 +40,7 @@ const EVERY_QUESTION = {
   intro: 'One of each.',
   blocks: [{ type: 'markdown', md: '# Hello' }, { type: 'chart', kind: 'bar', labels: ['a', 'b'], series: [{ label: 's', data: [1, 2] }] }],
   questions: [
-    { id: 'one', type: 'single', label: 'Single', options: ['a', { value: 'b', label: 'B', blocks: [{ type: 'markdown', md: 'about b' }] }] },
+    { id: 'one', type: 'single', label: 'Single', options: ['a', { value: 'b', label: 'B', blocks: [{ type: 'html', html: '<p>about b</p>', isolated: true }] }] },
     { id: 'many', type: 'multi', label: 'Multi', options: ['a', 'b', 'c'], other: true },
     { id: 'yn', type: 'yesno', label: 'Yes or no' },
     { id: 'rate', type: 'scale', label: 'Scale', min: 1, max: 5 },
