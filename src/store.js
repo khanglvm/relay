@@ -59,9 +59,9 @@ export function boardFileRoots(record) {
 
 /**
  * @param {any} spec a normalized spec
- * @param {{ fileRoots?: string[], retentionDays?: number | string | boolean }} [options] `fileRoots`: the roots the spec was read under; the live server opens only files inside them. `retentionDays`: how long old boards stay (see `resolveRetentionDays`)
+ * @param {{ cwd?: string, fileRoots?: string[], retentionDays?: number | string | boolean }} [options] `fileRoots`: the roots the spec was read under; the live server opens only files inside them. `retentionDays`: how long old boards stay (see `resolveRetentionDays`)
  */
-export function createBoard(spec, { fileRoots, retentionDays } = {}) {
+export function createBoard(spec, { cwd = process.cwd(), fileRoots, retentionDays } = {}) {
   // A bad retention setting throws here, before any file is written.
   const days = resolveRetentionDays(retentionDays);
   ensureDirs();
@@ -72,8 +72,8 @@ export function createBoard(spec, { fileRoots, retentionDays } = {}) {
     // The directory the board was authored in. Relative file paths an agent
     // writes into the spec (markdown links, ~/… paths) resolve against this, so
     // the live server can open them in the user's default app (POST /api/open).
-    cwd: process.cwd(),
-    fileRoots: fileRoots ?? [process.cwd()],
+    cwd,
+    fileRoots: fileRoots ?? [cwd],
     spec,
     draft: null,
     result: null,

@@ -146,13 +146,25 @@ Tools:
 - `relay_help {topic}` or `relay_help {schema}`: a part of this guide, or the exact fields of one block or question type.
 - `relay_ask` and `relay_show`: the old names, kept as aliases for one more minor version. Use `relay_board`.
 
-The flow: call `relay_board`, tell the person the board is on screen, then call `relay_result {boardId, wait_seconds: 50}` and call it again while it says `open`. When an agent is waiting like this, the board hands it the answers directly. Otherwise the board posts a one-line message naming the board to wake the agent, and some hosts (T3 Code) ask the person to confirm that message. Do not ask the same questions again in chat.
+Call `relay_board` and point the person to the board. Use the returned `next` call to wait for Submit, then repeat it while `relay_result` returns `status: "open"`. Read the submitted `answers`, `notes`, `comment`, `annotations` and `blockEdits` in `structuredContent`. The text result carries the same JSON for older clients. A display-only board has no `next` call.
+
+If a tool already generated a spec, pass its file and add questions in the same call.
+
+```json
+{
+  "specFile": "/path/to/relay-spec.json",
+  "title": "Hero direction",
+  "questions": [{"id":"avoid","type":"textarea","label":"What should we avoid?"}]
+}
+```
+
+Relay displays the file's blocks and questions first, then appends any inline ones. Inline fields such as `title` override the file's values. Adding inline questions opens a display-only file for feedback. `specFile` must be an absolute path on the server, inside an allowed file root. Relative asset paths resolve beside that file. For files on a different machine, send the spec inline with HTTPS or data URLs for its assets.
 
 `rly mcp` speaks stdio to a local desktop host. `rly mcp --http [--port N] [--token-file PATH] [--allow-origin ORIGIN]` serves Streamable HTTP at `/mcp` for hosts that connect over a network. The bearer token comes from `--token-file`, `RLY_MCP_TOKEN` or `--token`; the flag shows in `ps`, so prefer the file or the variable. Boards are stored in the relay home of the machine that runs the server, so `codeFile` and local images resolve there and nowhere else, and only under the server's file roots: none over HTTP unless the operator passes `--root PATH` (repeatable) or `RLY_FILE_ROOTS`, the working directory over stdio (but not when it is `/` or the home directory, where desktop hosts often start it). `--retention-days N` (or `RLY_RETENTION_DAYS`, `off` to keep every board) sets how long unchanged boards stay in the relay home; the default is 30. A host that draws A2UI can show the whole board natively instead of the iframe. It declares the board catalog, `https://github.com/khanglvm/relay/a2ui/catalog/board/v1`, under `extensions.a2ui["1.0"].supportedCatalogIds` when it connects, or per call in `_meta.a2ui`; the call wins over the connection. `relay_view` then returns the board as A2UI messages (`application/a2ui+json`, `application/json+a2ui` is accepted when declared) and the host sends button events to `a2ui_action` with the surface's data model. The catalog is `src/a2ui/board-catalog.json`; `toA2ui(spec)` and `fromA2ui(dataModel, spec)` from `@khanglvm/relay/a2ui-board` convert in both directions, and the result matches what the web board stores. Hosts that did not declare it keep the iframe.
 
 To add the tools to a server you already run, call `registerRelay(server, {store, assetUrl, linkUrl, mediaUrl})` from `@khanglvm/relay/mcp`. `mediaUrl(boardId, blockId)` names a URL the host serves a local video or pdf block from; answer it with `serveBoardMedia(req, res, {boardId, blockId})`, which streams the stored file with Range support.
 
-If the host streams the tool call as you write it, the board renders valid blocks and questions as they arrive and finishes when your call completes.
+If the host streams the tool call, inline boards preview blocks and questions as they arrive. File-backed boards load after the server resolves the file.
 
 Inline boards match the browser board. The server inlines `codeFile`, `htmlFile`, `diffFile` and local images (as data URIs) while it normalizes the spec, so the sandboxed board needs no file access. Element comments work on chart points, diagram nodes, table cells, images and text selections, and come back in `annotations`. The board adopts the host's theme, fonts, colors and full-screen control. Two gaps remain: local video and pdf files play only on a host that passes `mediaUrl` (`rly mcp` does not; use a YouTube, Vimeo or https URL there), and comments on elements inside a custom HTML mockup are not collected.
 

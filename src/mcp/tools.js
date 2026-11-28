@@ -18,12 +18,10 @@ import { actionInput, aliasInput, assetInput, boardInput, draftInput, helpInput,
 import { fileStore } from './store.js';
 import { boardToken, loadServerKey, tokenValid } from './token.js';
 
-const BOARD_DESCRIPTION = `Put a board in front of the person and collect their answers. It renders inline; the result is a summary with the boardId. Read the outcome with relay_result.
-Spec: {title, intro?, blocks?:[...], questions?:[...]}. With no questions the board is display-only and needs no reply.
-Question: {id,type,label,required?,options?:[{value,label,description?,blocks?}|"text"]}. Types: single multi yesno text textarea scale(min,max) color rank checklist allocate(total) pick.
-Blocks: markdown(md|mdFile) code(code|codeFile) diff(diffFile) image(src,alt?,pins?) compare(before,after) chart(kind,labels,series:[{label,data}]) table(columns,rows) kpi(items) mermaid(code) graphviz(dot) html palette video pdf a2ui(express). Local files take absolute paths; inline boards cannot open local links, so embed file content.
-Blocks go on the board, on a question, or in options[].blocks. For live prototypes, use {type:"html", html:document, isolated:true, height:480} inside the option. Inline the prototype’s assets as data URLs or use absolute HTTPS asset URLs. Use ids that stay stable.
-For exact fields call relay_help {topic: questions|blocks|annotate|lifecycle|a2ui|sharing|mcp} or {schema:"chart"}.`;
+const BOARD_DESCRIPTION = `Show a board inline and collect feedback. Pass {title, blocks?, questions?} or {specFile} for a generated board. Inline blocks and questions append to specFile. Boards without questions are display-only by default.
+Questions use {id, type, label, required?, options?}. Types: single multi yesno text textarea scale color rank checklist allocate pick.
+Put blocks at the board root, on a question, or in options[].blocks. Use {type:"html", htmlFile, isolated:true} for a live option preview.
+Follow the returned next call for feedback. For exact fields call relay_help {schema:"pick"} or {topic:"blocks"}.`;
 
 const readDoc = (file) => fs.readFileSync(path.join(DOCS_DIR, file), 'utf8');
 /** @returns {import('./boards.js').ToolResult} */
@@ -128,7 +126,7 @@ function registerReadTools({ server, store }) {
   });
 
   registerAppTool(server, TOOL.result, {
-    description: 'The answers on a board (answers, notes, comment, annotations, blockEdits), or its draft while the person is still filling it in. Pass wait_seconds to block until they submit.',
+    description: 'Read answers, notes, comments, and edits as structured data. Use wait_seconds: 50 to wait for Submit. When status is open, any draft is still in progress.',
     inputSchema: resultInput,
     _meta: modelOnly,
   }, async ({ boardId, wait_seconds = 0 }, ctx) => {
@@ -142,7 +140,7 @@ function registerReadTools({ server, store }) {
         // A disconnected client never gets this result (the SDK drops it), and a
         // plain status read is not an agent waiting for the answers.
         if (isFinal(record) && wait_seconds > 0 && !aborted) notePickup(boardId);
-        return json(out, { boardId, status: out.status });
+        return json(out, out);
       }
       await sleep(500);
     }

@@ -196,16 +196,35 @@ export function resolveReadable(access, raw, where, field) {
  * @param {unknown} raw
  * @param {string} where which block, e.g. `board.blocks[0]`
  * @param {string} field which field, e.g. `codeFile`
+ * @param {{ maxBytes?: number }} [options] Read at most one byte past the limit to detect an oversized file.
  * @returns {{ file: string, stat: fs.Stats, buf: Buffer }}
  */
-export function readReadable(access, raw, where, field) {
+export function readReadable(access, raw, where, field, { maxBytes } = {}) {
   const opened = openReadable(access, raw);
   if (!opened.ok || opened.fd === null) throw refusal(where, field, raw);
+  const { fd, file, stat } = opened;
+  const oversized = () => new CliError(`${where}: ${field}: "${raw}" exceeds the ${maxBytes} byte limit.`);
   try {
-    return { file: opened.file, stat: opened.stat, buf: fs.readFileSync(opened.fd) };
-  } catch {
+    if (maxBytes !== undefined && stat.size > maxBytes) throw oversized();
+    const buf = maxBytes === undefined ? fs.readFileSync(fd) : readAtMost(fd, maxBytes + 1);
+    if (maxBytes !== undefined && buf.length > maxBytes) throw oversized();
+    return { file, stat, buf };
+  } catch (err) {
+    if (err instanceof CliError) throw err;
     throw refusal(where, field, raw);
   } finally {
     fs.closeSync(opened.fd);
   }
+}
+
+// A file may grow after stat, so the read itself has to stop at the limit.
+function readAtMost(fd, limit) {
+  const buffer = Buffer.allocUnsafe(limit);
+  let offset = 0;
+  while (offset < limit) {
+    const bytes = fs.readSync(fd, buffer, offset, limit - offset, null);
+    if (!bytes) break;
+    offset += bytes;
+  }
+  return buffer.subarray(0, offset);
 }

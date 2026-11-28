@@ -7,7 +7,8 @@ import { assertSafeJson } from '../a2ui/compile.js';
 import { fromA2ui } from '../a2ui/from-a2ui.js';
 import { findBlock, sanitizeAnnotations, sanitizeBlockEdits } from '../server/sanitize.js';
 import { ARTIFACT_MAX_BYTES, ARTIFACT_MIMES, artifactBytesMatch } from '../server/result.js';
-import { RESULT_BUDGET_BYTES } from './constants.js';
+import { MAX_WAIT_SECONDS, RESULT_BUDGET_BYTES } from './constants.js';
+import { resolveBoardInput } from './board-input.js';
 
 const MAX_TEXT = 20000;
 const MAX_EVENTS = 200;
@@ -31,12 +32,12 @@ export const modeOf = (spec) => (spec.responseRequired === false ? 'show' : 'ask
  */
 export async function createMcpBoard(store, args, options = {}) {
   const fileRoots = options.fileRoots ?? [];
-  const raw = { ...args };
+  const { raw, cwd, resolvedRoots = fileRoots } = resolveBoardInput(args, fileRoots);
   const hasQuestions = Array.isArray(raw.questions) && raw.questions.length > 0;
   if (options.displayOnly || (!hasQuestions && raw.responseRequired === undefined)) raw.responseRequired = false;
-  const spec = normalizeSpec(raw, { fileRoots });
+  const spec = normalizeSpec(raw, { fileRoots: resolvedRoots, cwd });
   await assertSpecReady(spec);
-  const record = await store.create(spec, { fileRoots });
+  const record = await store.create(spec, { fileRoots: resolvedRoots, ...(cwd ? { cwd } : {}) });
   return { record, spec, mode: modeOf(spec) };
 }
 
@@ -52,15 +53,16 @@ export function questionList(spec, labelMax = 80) {
  */
 export function boardResult(record, spec, mode) {
   const title = limit(spec.title, 120);
+  const next = mode === 'ask' ? { next: { name: 'relay_result', arguments: { boardId: record.id, wait_seconds: MAX_WAIT_SECONDS } } } : {};
   const text = mode === 'ask'
     ? `Board "${title}" (${record.id}) is on screen${spec.questions.length ? ` with ${spec.questions.length} question${spec.questions.length === 1 ? '' : 's'}` : ' for the person to acknowledge'}. They answer there. Call relay_result {boardId, wait_seconds: 50} now and again while it says open: answers collected that way arrive without a chat message the person must confirm. Do not re-ask them in chat.`
     : `Board "${title}" (${record.id}) is on screen, display-only. Continue without waiting.`;
   for (const labelMax of [80, 40, 20, 0]) {
-    const structuredContent = { boardId: record.id, mode, title, questions: questionList(spec, labelMax) };
+    const structuredContent = { boardId: record.id, mode, title, ...next, questions: questionList(spec, labelMax) };
     const size = Buffer.byteLength(text) + Buffer.byteLength(JSON.stringify(structuredContent));
     if (size <= RESULT_BUDGET_BYTES) return { content: [{ type: 'text', text }], structuredContent };
   }
-  const structuredContent = { boardId: record.id, mode, title: limit(spec.title, 80), questionCount: spec.questions.length };
+  const structuredContent = { boardId: record.id, mode, title: limit(spec.title, 80), ...next, questionCount: spec.questions.length };
   return { content: [{ type: 'text', text }], structuredContent };
 }
 

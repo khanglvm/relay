@@ -12,7 +12,7 @@ import { createBoard, loadBoard, saveBoard, saveResultFile } from '../store.js';
 
 /**
  * @typedef {object} RelayStore
- * @property {(spec: any, options?: { fileRoots?: string[] }) => BoardRecord | Promise<BoardRecord>} create
+ * @property {(spec: any, options?: { cwd?: string, fileRoots?: string[] }) => BoardRecord | Promise<BoardRecord>} create
  * @property {(id: string) => BoardRecord | null | Promise<BoardRecord | null>} get
  * @property {(id: string, patch: Partial<BoardRecord>) => BoardRecord | null | Promise<BoardRecord | null>} update
  */

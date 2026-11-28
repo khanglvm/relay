@@ -86,6 +86,7 @@ for (const [name, connect] of [
     assert.equal(r.structuredContent.mode, 'ask');
     assert.deepEqual(r.structuredContent.questions.map((q) => q.id), ['go', 'why']);
     assert.match(r.structuredContent.boardId, /^b-/);
+    assert.deepEqual(r.structuredContent.next, { name: 'relay_result', arguments: { boardId: r.structuredContent.boardId, wait_seconds: 50 } });
     assert.ok(r._meta.relay.token);
     assert.ok(!JSON.stringify(r).includes('xxxx'));
   });
@@ -94,6 +95,7 @@ for (const [name, connect] of [
     const client = await connect({ ui: false });
     const r = await client.callTool({ name: 'relay_board', arguments: { title: 'FYI', blocks: [{ type: 'markdown', md: 'Plan' }] } });
     assert.equal(r.structuredContent.mode, 'show');
+    assert.equal(r.structuredContent.next, undefined);
     const out = jsonOf(await client.callTool({ name: 'relay_result', arguments: { boardId: r.structuredContent.boardId } }));
     assert.equal(out.status, 'display-only');
   });
@@ -115,10 +117,12 @@ for (const [name, connect] of [
     assert.equal(drafted.status, 'open');
     assert.equal(drafted.draft.answers.go, 'yes');
 
-    const long = client.callTool({ name: 'relay_result', arguments: { boardId, wait_seconds: 20 } });
+    const long = client.callTool(made.structuredContent.next);
     const sub = await client.callTool({ name: 'relay_submit', arguments: { boardId, token, payload: { answers: { go: 'yes', why: 'ready' }, comment: 'ok' } } });
     assert.ok(!sub.isError);
-    const done = jsonOf(await long);
+    const response = await long;
+    const done = response.structuredContent;
+    assert.deepEqual(jsonOf(response), done);
     assert.equal(done.status, 'submitted');
     assert.deepEqual(done.answers, { go: 'yes', why: 'ready' });
     assert.equal(done.comment, 'ok');

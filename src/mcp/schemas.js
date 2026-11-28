@@ -6,6 +6,7 @@ const loose = z.record(z.string(), z.unknown());
 
 /** The relay_board input: the spec's top-level fields, with blocks and questions left open. */
 export const boardInput = z.looseObject({
+  specFile: z.string().optional().describe('Absolute path to a board JSON file under a server file root. Inline blocks and questions append.'),
   title: z.string().optional().describe('Board heading'),
   intro: z.string().optional().describe('One line of context under the heading'),
   blocks: z.array(loose).optional().describe('Content blocks, shown above the questions'),

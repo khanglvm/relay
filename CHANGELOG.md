@@ -1,5 +1,11 @@
 # Changelog
 
+### 0.28.0
+
+Added
+- Open a generated board with `relay_board {specFile}` and append inline blocks or questions in the same call.
+- Return the next tool call on boards awaiting feedback. `relay_result` returns answers and drafts as structured data.
+
 ### 0.27.0
 
 Added

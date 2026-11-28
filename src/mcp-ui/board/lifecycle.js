@@ -6,6 +6,14 @@
     if (s) s.textContent = text;
   }
 
+  function showBoardStatus(text, url) {
+    const status = el('div', { class: 'mcp-status', id: 'mcp-status' }, text);
+    if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+      status.replaceChildren(el('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, 'Open Relay board'));
+    }
+    document.getElementById('app').replaceChildren(status);
+  }
+
   let booted = false;
   // 'raw' while the board shows the agent's own tool input (local image paths
   // unresolved), 'server' once relay_view's normalized spec is on screen.
@@ -45,7 +53,7 @@
   let previewTimer = null;
   let vendorsKicked = false;
   function renderPreview(rawArgs) {
-    if (booted || submitted) return;
+    if (booted || submitted || 'specFile' in rawArgs) return;
     const next = clientNormalize(rawArgs);
     if (!next) return;
     const hasContent = (next.questions && next.questions.length) || (Array.isArray(next.blocks) && next.blocks.length);
@@ -106,15 +114,28 @@
 
   onNotify('ui/notifications/tool-result', async (p) => {
     if (rawInputTimer) { clearTimeout(rawInputTimer); rawInputTimer = null; }
+    if (previewTimer) { clearTimeout(previewTimer); previewTimer = null; }
     // A board that booted from the raw input while relay_board was still running
     // (it can take seconds to embed images) is swapped for the server's version,
     // whose images are already data URIs.
     if (booted && bootedFrom !== 'raw') return;
-    if (!(await bootFromServer(p)) && rawInput) boot(rawInput, false);
+    if (await bootFromServer(p)) return;
+    if (rawInput) {
+      boot(rawInput, false);
+      return;
+    }
+    showBoardStatus('Relay could not load this board in chat.', p?.structuredContent?.url);
   });
   onNotify('ui/notifications/tool-input', (p) => {
     const args = p && p.arguments;
     if (!args || typeof args !== 'object' || booted || rawInputTimer) return;
+    // A streamed partial may show only the appended questions before specFile arrives.
+    if ('specFile' in args) {
+      if (previewTimer) clearTimeout(previewTimer);
+      previewTimer = null;
+      showBoardStatus('Loading the board from its file…');
+      return;
+    }
     rawInput = args;
     rawInputTimer = setTimeout(() => { rawInputTimer = null; boot(args, false); }, 1500);
   });

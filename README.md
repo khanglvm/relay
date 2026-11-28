@@ -50,7 +50,11 @@ Install the skill so your agent knows how to create boards and read feedback:
 npx skills add khanglvm/relay --skill relay --all
 ```
 
-Give your agent this instruction:
+With MCP connected, call `relay_board` with inline questions or a generated
+`specFile`. Add questions in the same call and use the returned `next` call to
+wait for answers. See the [MCP authoring guide](docs/AGENT.md#inline-mode-relay-as-an-mcp-app-claude-and-codex-apps).
+
+For a CLI agent, give it this instruction:
 
 ```text
 Use Relay to show work or collect visual feedback. Install the CLI with
